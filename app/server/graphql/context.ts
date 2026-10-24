@@ -141,32 +141,39 @@ export const requireViewer = (context: Context): Viewer => {
   return context.viewer;
 };
 
+/**
+ * Builds a `Context` for an already-resolved viewer. The yoga factory below
+ * derives its viewer from the request's bearer JWT; the MCP server derives its
+ * own from an OAuth grant (`mcp/viewer.ts`). Both end here, so the `Context`
+ * shape is spelled out once — the same reason `test-util.ts`'s `contextFor`
+ * exists on the test side.
+ */
+export const createContextForViewer = (deps: ContextDeps, viewer: Viewer | null): Context => ({
+  viewer,
+  prisma: deps.prisma,
+  thumbnails: deps.thumbnails,
+  replaceStaging: deps.replaceStaging,
+  editionsRoot: deps.editionsRoot,
+  config: deps.config,
+  mailer: deps.mailer,
+  notifications: deps.notifications,
+  vapidPublicKey: deps.vapidPublicKey,
+  mcpUrl: deps.mcpUrl,
+  loadLineage: createLineageLoader(deps.prisma),
+  loadOwner: createOwnerLoader(deps.prisma),
+  loadProgress: createProgressLoader(deps.prisma),
+  loadPendingFix: createPendingFixLoader(deps.prisma),
+  loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
+  loadValidationCounts: createValidationCountsLoader(deps.prisma),
+  loadBookByDocument: createBookByDocumentLoader(deps.prisma),
+  loadDeviceEditionCount: createDeviceEditionCountLoader(deps.prisma),
+  loadViewerRow: createViewerRowLoader(deps.prisma, viewer),
+});
+
 export const createContext =
   (deps: ContextDeps) =>
-  ({ request }: { request: FetchRequest }): Context => {
-    const viewer = viewerFromHeader(
-      deps.jwtSecret,
-      request.headers.get('authorization') ?? undefined
+  ({ request }: { request: FetchRequest }): Context =>
+    createContextForViewer(
+      deps,
+      viewerFromHeader(deps.jwtSecret, request.headers.get('authorization') ?? undefined)
     );
-    return {
-      viewer,
-      prisma: deps.prisma,
-      thumbnails: deps.thumbnails,
-      replaceStaging: deps.replaceStaging,
-      editionsRoot: deps.editionsRoot,
-      config: deps.config,
-      mailer: deps.mailer,
-      notifications: deps.notifications,
-      vapidPublicKey: deps.vapidPublicKey,
-      mcpUrl: deps.mcpUrl,
-      loadLineage: createLineageLoader(deps.prisma),
-      loadOwner: createOwnerLoader(deps.prisma),
-      loadProgress: createProgressLoader(deps.prisma),
-      loadPendingFix: createPendingFixLoader(deps.prisma),
-      loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
-      loadValidationCounts: createValidationCountsLoader(deps.prisma),
-      loadBookByDocument: createBookByDocumentLoader(deps.prisma),
-      loadDeviceEditionCount: createDeviceEditionCountLoader(deps.prisma),
-      loadViewerRow: createViewerRowLoader(deps.prisma, viewer),
-    };
-  };
