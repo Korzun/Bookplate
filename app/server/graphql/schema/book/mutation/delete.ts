@@ -1,10 +1,8 @@
-import { encodeGlobalID } from '@pothos/plugin-relay';
-
 import { deleteBook } from '../../../../services/book-lifecycle';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import { model as library } from '../../library/model';
-import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
+import { NO_MATCH_USER_ID, parseCompoundId, encodeBookGlobalId } from '../../node-scope';
 import { model as book } from '../model';
 
 /**
@@ -122,7 +120,7 @@ builder.mutationField('bookDelete', (t) =>
 
       return {
         __typename: 'BookDeletePayload' as const,
-        deletedId: encodeGlobalID('Book', JSON.stringify([owner.userId, deleted.id])),
+        deletedId: encodeBookGlobalId(owner.userId, deleted.id),
         owner,
       };
     },

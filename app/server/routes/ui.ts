@@ -2,26 +2,25 @@ import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
+import { decodeGlobalID } from '@pothos/plugin-relay';
 import type { PrismaClient } from '@prisma/client';
 import express, { Router, Request, RequestHandler, Response } from 'express';
 import multer from 'multer';
 
-import { parseCompoundId } from '../graphql/schema/node-scope';
+import { encodeBookGlobalId, parseCompoundId } from '../graphql/schema/node-scope';
 import { logger } from '../logger';
 import { emailSetupGate, jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { getCover, getThumbnail } from '../services/book-assets';
-import { getBookById, getSubjects } from '../services/book-catalog';
-import { BookAlreadyExistsError } from '../services/book-errors';
-import { addBook, reimportBook } from '../services/book-lifecycle';
+import { getBookById } from '../services/book-catalog';
+import { reimportBook } from '../services/book-lifecycle';
 import { getStagingDir } from '../services/book-paths';
 import { findUserByEmail } from '../services/email';
-import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
-import { parseEpub, partialMD5 } from '../services/epub-parser';
+import { applyAutoAndAccepted } from '../services/epub-import-pipeline';
+import { parseEpub } from '../services/epub-parser';
+import { importEpub } from '../services/import-epub';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { isMailConfigured, type Mailer } from '../services/mailer';
 import { getMustChangePassword, validateUser } from '../services/password';
-import { upsertPendingFix } from '../services/pending-fix';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import {
@@ -31,8 +30,7 @@ import {
   revokeRefreshToken,
   REFRESH_TOKEN_TTL_MS,
 } from '../services/token';
-import { saveValidation } from '../services/validation';
-import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
+import { AppConfig, MetadataFix, Owner } from '../types';
 import {
   CLIENT_DIST_DIR,
   CLIENT_INDEX_HTML,
@@ -574,7 +572,7 @@ export function createUiRouter({
    * response) or `documentId` (means raw on the GraphQL side).
    */
   function bookGlobalId(owner: Owner, rawId: string): string {
-    return encodeGlobalID('Book', JSON.stringify([owner.userId, rawId]));
+    return encodeBookGlobalId(owner.userId, rawId);
   }
 
   // ── Auth ──────────────────────────────────────────────
@@ -790,147 +788,29 @@ export function createUiRouter({
         proposals: MetadataFix[];
       }[] = [];
       for (const file of files) {
-        const savedPath = file.path;
-        let meta: EpubMeta;
-        try {
-          meta = parseEpub(savedPath);
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          res.status(400).json({
-            error: `Failed to parse EPUB: ${err instanceof Error ? err.message : String(err)}`,
-          });
-          return;
-        }
-
-        // Repair (RSC-005) + validate. Detection is deferred to the
-        // post-addBook applyAutoAndAccepted call below, which re-detects
-        // against the persisted book — skipDetect avoids doing that work twice.
-        let analysis: EpubAnalysis;
-        try {
-          analysis = await analyzeEpub(savedPath, {
-            originalName: file.originalname,
-            librarySubjects: [],
-            validationThreshold: config.validationThreshold,
-            skipDetect: true,
-          });
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          throw err;
-        }
-        if (!analysis.valid) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          res.status(400).json({
-            error: 'EPUB failed validation',
-            validation: {
-              messages: analysis.report.messages,
-              counts: analysis.report.counts,
-              threshold: analysis.report.threshold,
-            },
-          });
-          return;
-        }
-        const structuralFix = analysis.structuralFix;
-
-        // Fingerprint reflects the repaired bytes.
-        let id: string;
-        try {
-          id = partialMD5(savedPath);
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          res.status(400).json({
-            error: `Failed to fingerprint EPUB: ${err instanceof Error ? err.message : String(err)}`,
-          });
-          return;
-        }
-        // parseEpub falls back to the file's basename when no dc:title is present.
-        // Since savedPath is a staging path with a unique prefix, we must ignore
-        // that fallback and use the client's original filename stem instead.
-        const stagedTitleFallback = path.basename(savedPath, path.extname(savedPath));
-        const realTitle = meta.title === stagedTitleFallback ? '' : meta.title.trim();
-        const titleFallback =
-          realTitle || path.basename(file.originalname, path.extname(file.originalname));
-        try {
-          await addBook(prisma, config.booksDir, owner, id, savedPath, {
-            ...meta,
-            title: titleFallback,
-          });
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          if (err instanceof BookAlreadyExistsError) {
+        const outcome = await importEpub({ prisma, config, editionsRoot, thumbnailQueue }, owner, {
+          path: file.path,
+          originalName: file.originalname,
+          size: file.size,
+        });
+        switch (outcome.kind) {
+          case 'parse_failed':
+          case 'fingerprint_failed':
+            res.status(400).json({ error: outcome.message });
+            return;
+          case 'invalid':
+            res
+              .status(400)
+              .json({ error: 'EPUB failed validation', validation: outcome.validation });
+            return;
+          case 'duplicate':
             res.status(409).json({
               error: 'A book with the same fingerprint is already in the library.',
             });
             return;
-          }
-          throw err;
+          case 'imported':
+            break;
         }
-        await saveValidation(prisma, owner, id, analysis.report);
-        // Detect metadata issues; auto-apply the high-confidence ones in-request.
-        let finalId = id;
-        const applied: MetadataFix[] = structuralFix ? [structuralFix] : [];
-        const proposals: MetadataFix[] = [];
-        try {
-          const librarySubjects = await getSubjects(prisma, owner);
-          const created = await getBookById(prisma, config.booksDir, owner, id);
-          if (created) {
-            const result = await applyAutoAndAccepted(
-              {
-                reimportBook: (o, i) => reimportBook(prisma, config.booksDir, editionsRoot, o, i),
-                prisma,
-                validationThreshold: config.validationThreshold,
-              },
-              owner,
-              created,
-              { originalName: file.originalname, librarySubjects, acceptedKeys: [] }
-            );
-            finalId = result.book.id;
-            applied.push(...result.applied);
-            proposals.push(...result.proposals);
-          }
-        } catch (err: unknown) {
-          log.warn(
-            `Metadata detection skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
-
-        if (proposals.length > 0) {
-          try {
-            await upsertPendingFix(prisma, owner, finalId, file.originalname, file.size, {
-              autoFixes: applied,
-              appliedFixes: [],
-              proposals,
-              undo: null,
-            });
-          } catch (err: unknown) {
-            // Never fail an upload because a pending-fix write failed — the upload
-            // already succeeded; the book just won't show proposals until retried.
-            log.warn(
-              `Pending-fix write skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
-            );
-          }
-        }
-
-        thumbnailQueue.enqueue(owner.userId, finalId);
         uploaded.push(file.originalname);
         // `globalId` (Task 7, book-edit spec): `fix-review`'s Edit link
         // needs a Relay global id for books whose only proposals are
@@ -940,10 +820,10 @@ export function createUiRouter({
         // fix), applied additively — `bookId` keeps meaning the raw hash.
         results.push({
           filename: file.originalname,
-          bookId: finalId,
-          globalId: bookGlobalId(owner, finalId),
-          applied,
-          proposals,
+          bookId: outcome.bookId,
+          globalId: bookGlobalId(owner, outcome.bookId),
+          applied: outcome.applied,
+          proposals: outcome.proposals,
         });
       }
       log.info(`Books uploaded: ${uploaded.join(', ')}`);
