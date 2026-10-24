@@ -33,7 +33,6 @@ import {
 } from '../services/token';
 import { saveValidation } from '../services/validation';
 import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
-import { asyncHandler } from '../utils/async-handler';
 import {
   CLIENT_DIST_DIR,
   CLIENT_INDEX_HTML,
@@ -107,9 +106,9 @@ const COVER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
  * generic "Internal server error" 500 catch-all (Task 4). Multer reports
  * its own errors (`MulterError`, `code: 'LIMIT_FILE_SIZE'` here) via
  * `next(err)`, called from INSIDE multer's own middleware function, before
- * the route's `asyncHandler`-wrapped handler ever runs — `asyncHandler`
- * only catches a rejected promise from the handler it wraps, so it cannot
- * intercept an error multer raises one middleware earlier. Any other
+ * the route's handler ever runs — so it is not a rejected handler promise,
+ * which Express 5 would forward to the error middleware by itself, but an
+ * error raised one middleware earlier. Any other
  * multer error (a `fileFilter` rejection never reaches here — it resolves
  * `req.file` to `undefined` instead of erroring, per multer's own
  * contract) is forwarded to `next(err)` unchanged, preserving whatever the
@@ -676,152 +675,142 @@ export function createUiRouter({
   router.use(passwordChangeGate(jwtSecret));
   router.use(emailSetupGate(jwtSecret));
 
-  router.post(
-    '/api/login',
-    loginRateLimit,
-    asyncHandler(async (req: Request, res: Response) => {
-      const { username, password } = (req.body ?? {}) as { username?: string; password?: string };
-      if (typeof username !== 'string' || typeof password !== 'string') {
+  router.post('/api/login', loginRateLimit, async (req: Request, res: Response) => {
+    const { username, password } = (req.body ?? {}) as { username?: string; password?: string };
+    if (typeof username !== 'string' || typeof password !== 'string') {
+      res.sendStatus(401);
+      return;
+    }
+    // The field is named `username` for compatibility — REST's contract is
+    // unchanged — but it is an IDENTIFIER: an address when it contains an `@`,
+    // a username otherwise. Resolving to a username here means everything
+    // below, including the config-admin comparison and `validateUser`, keeps
+    // working on usernames alone and no branch had to be duplicated.
+    //
+    // `@`-detection rather than "try both": a username cannot contain `@`
+    // (`utils/username.ts`), so the two namespaces cannot collide and one
+    // lookup is always enough.
+    let loginName = username;
+    if (username.includes('@')) {
+      const byEmail = await findUserByEmail(prisma, username);
+      if (byEmail === null) {
+        log.warn('Login failed — no account for that email address');
         res.sendStatus(401);
         return;
       }
-      // The field is named `username` for compatibility — REST's contract is
-      // unchanged — but it is an IDENTIFIER: an address when it contains an `@`,
-      // a username otherwise. Resolving to a username here means everything
-      // below, including the config-admin comparison and `validateUser`, keeps
-      // working on usernames alone and no branch had to be duplicated.
-      //
-      // `@`-detection rather than "try both": a username cannot contain `@`
-      // (`utils/username.ts`), so the two namespaces cannot collide and one
-      // lookup is always enough.
-      let loginName = username;
-      if (username.includes('@')) {
-        const byEmail = await findUserByEmail(prisma, username);
-        if (byEmail === null) {
-          log.warn('Login failed — no account for that email address');
-          res.sendStatus(401);
-          return;
-        }
-        loginName = byEmail.username;
-      }
-      if (loginName === config.username && password === config.password) {
-        log.info(`Admin "${loginName}" logged in`);
-        await deleteExpired(prisma);
-        await issueTokens(res, {
-          username: loginName,
-          isAdmin: true,
-          mustChangePassword: false,
-          // By flag, not by `loginName` — see `computeMustSetEmail`'s doc
-          // comment for why a username lookup can answer for the wrong row.
-          mustSetEmail: await computeMustSetEmail(prisma, config, { isConfigAdmin: true }),
-        });
-        return;
-      }
-      // Single-statement `findUnique` with exactly one production caller —
-      // inlined under the placement rule. One query, selecting only
-      // `passwordHash`, answers both "does this user exist" and "does it
-      // have a password set" in a single round-trip. The two outcomes are
-      // still handled separately below: no such user (`loginUser === null`)
-      // falls through to `validateUser` and the generic 401, while a user
-      // that exists but has no password set is reported immediately as its
-      // own 403 — that is a distinct condition from a wrong password, not
-      // something to fold into the generic login failure.
-      const loginUser = await prisma.user.findUnique({
-        where: { username: loginName },
-        select: { passwordHash: true, isConfigAdmin: true },
-      });
-      // `!isConfigAdmin` (G1): the admin row deliberately has NO passwordHash —
-      // the add-on options are its only credential (`services/admin-account.ts`).
-      // Without this, a wrong admin password would fall into this branch and
-      // answer 403 "password not set" instead of the generic 401, which both
-      // differs from every other failed login and confirms the username exists.
-      if (loginUser !== null && !loginUser.passwordHash && !loginUser.isConfigAdmin) {
-        log.warn(`Login failed for "${loginName}" — password not set`);
-        res.sendStatus(403);
-        return;
-      }
-      const userId = await validateUser(prisma, loginName, password);
-      if (userId) {
-        log.info(`User "${loginName}" logged in`);
-        await deleteExpired(prisma);
-        await issueTokens(res, {
-          userId,
-          username: loginName,
-          isAdmin: false,
-          mustChangePassword: await getMustChangePassword(prisma, loginName),
-          mustSetEmail: await computeMustSetEmail(prisma, config, { username: loginName }),
-        });
-        return;
-      }
-      log.warn(`Login failed for username "${loginName}"`);
-      res.sendStatus(401);
-    })
-  );
-
-  router.post(
-    '/api/auth/refresh',
-    asyncHandler(async (req: Request, res: Response) => {
-      const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
-      const reject = (): void => {
-        clearRefreshCookie(res);
-        res.status(401).json({ error: 'Unauthorized' });
-      };
-      if (typeof raw !== 'string' || !raw) {
-        reject();
-        return;
-      }
-      const identity = await consumeRefreshToken(prisma, raw);
-      if (!identity) {
-        log.warn('Refresh rejected — unknown, reused, or expired refresh token');
-        reject();
-        return;
-      }
-      if (identity.username === config.username) {
-        await issueTokens(res, {
-          username: identity.username,
-          isAdmin: true,
-          mustChangePassword: false,
-          // By flag, not by `identity.username` — same reasoning as the login
-          // branch above.
-          mustSetEmail: await computeMustSetEmail(prisma, config, { isConfigAdmin: true }),
-        });
-        return;
-      }
-      // Rebuild claims from current state so renames/deletes and admin actions propagate.
-      // Bare `findUnique` selecting only `id`, existence-checked by the null
-      // branch below — same placement-rule exception as `resolveOwner`'s
-      // identical lookup above.
-      const refreshUser = await prisma.user.findUnique({
-        where: { username: identity.username },
-        select: { id: true },
-      });
-      if (!refreshUser) {
-        log.warn(`Refresh rejected — user "${identity.username}" no longer exists`);
-        reject();
-        return;
-      }
+      loginName = byEmail.username;
+    }
+    if (loginName === config.username && password === config.password) {
+      log.info(`Admin "${loginName}" logged in`);
+      await deleteExpired(prisma);
       await issueTokens(res, {
-        userId: refreshUser.id,
-        username: identity.username,
-        isAdmin: false,
-        mustChangePassword: await getMustChangePassword(prisma, identity.username),
-        mustSetEmail: await computeMustSetEmail(prisma, config, { username: identity.username }),
+        username: loginName,
+        isAdmin: true,
+        mustChangePassword: false,
+        // By flag, not by `loginName` — see `computeMustSetEmail`'s doc
+        // comment for why a username lookup can answer for the wrong row.
+        mustSetEmail: await computeMustSetEmail(prisma, config, { isConfigAdmin: true }),
       });
-    })
-  );
+      return;
+    }
+    // Single-statement `findUnique` with exactly one production caller —
+    // inlined under the placement rule. One query, selecting only
+    // `passwordHash`, answers both "does this user exist" and "does it
+    // have a password set" in a single round-trip. The two outcomes are
+    // still handled separately below: no such user (`loginUser === null`)
+    // falls through to `validateUser` and the generic 401, while a user
+    // that exists but has no password set is reported immediately as its
+    // own 403 — that is a distinct condition from a wrong password, not
+    // something to fold into the generic login failure.
+    const loginUser = await prisma.user.findUnique({
+      where: { username: loginName },
+      select: { passwordHash: true, isConfigAdmin: true },
+    });
+    // `!isConfigAdmin` (G1): the admin row deliberately has NO passwordHash —
+    // the add-on options are its only credential (`services/admin-account.ts`).
+    // Without this, a wrong admin password would fall into this branch and
+    // answer 403 "password not set" instead of the generic 401, which both
+    // differs from every other failed login and confirms the username exists.
+    if (loginUser !== null && !loginUser.passwordHash && !loginUser.isConfigAdmin) {
+      log.warn(`Login failed for "${loginName}" — password not set`);
+      res.sendStatus(403);
+      return;
+    }
+    const userId = await validateUser(prisma, loginName, password);
+    if (userId) {
+      log.info(`User "${loginName}" logged in`);
+      await deleteExpired(prisma);
+      await issueTokens(res, {
+        userId,
+        username: loginName,
+        isAdmin: false,
+        mustChangePassword: await getMustChangePassword(prisma, loginName),
+        mustSetEmail: await computeMustSetEmail(prisma, config, { username: loginName }),
+      });
+      return;
+    }
+    log.warn(`Login failed for username "${loginName}"`);
+    res.sendStatus(401);
+  });
 
-  router.post(
-    '/api/auth/logout',
-    asyncHandler(async (req: Request, res: Response) => {
-      const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
-      if (typeof raw === 'string' && raw) {
-        await revokeRefreshToken(prisma, raw);
-      }
-      log.info('User logged out');
+  router.post('/api/auth/refresh', async (req: Request, res: Response) => {
+    const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
+    const reject = (): void => {
       clearRefreshCookie(res);
-      res.status(204).send();
-    })
-  );
+      res.status(401).json({ error: 'Unauthorized' });
+    };
+    if (typeof raw !== 'string' || !raw) {
+      reject();
+      return;
+    }
+    const identity = await consumeRefreshToken(prisma, raw);
+    if (!identity) {
+      log.warn('Refresh rejected — unknown, reused, or expired refresh token');
+      reject();
+      return;
+    }
+    if (identity.username === config.username) {
+      await issueTokens(res, {
+        username: identity.username,
+        isAdmin: true,
+        mustChangePassword: false,
+        // By flag, not by `identity.username` — same reasoning as the login
+        // branch above.
+        mustSetEmail: await computeMustSetEmail(prisma, config, { isConfigAdmin: true }),
+      });
+      return;
+    }
+    // Rebuild claims from current state so renames/deletes and admin actions propagate.
+    // Bare `findUnique` selecting only `id`, existence-checked by the null
+    // branch below — same placement-rule exception as `resolveOwner`'s
+    // identical lookup above.
+    const refreshUser = await prisma.user.findUnique({
+      where: { username: identity.username },
+      select: { id: true },
+    });
+    if (!refreshUser) {
+      log.warn(`Refresh rejected — user "${identity.username}" no longer exists`);
+      reject();
+      return;
+    }
+    await issueTokens(res, {
+      userId: refreshUser.id,
+      username: identity.username,
+      isAdmin: false,
+      mustChangePassword: await getMustChangePassword(prisma, identity.username),
+      mustSetEmail: await computeMustSetEmail(prisma, config, { username: identity.username }),
+    });
+  });
+
+  router.post('/api/auth/logout', async (req: Request, res: Response) => {
+    const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
+    if (typeof raw === 'string' && raw) {
+      await revokeRefreshToken(prisma, raw);
+    }
+    log.info('User logged out');
+    clearRefreshCookie(res);
+    res.status(204).send();
+  });
 
   // ── Static assets (no auth required) ──────────────────
   // Serves the built client's hashed bundles (/assets/*) plus root brand files
@@ -833,7 +822,7 @@ export function createUiRouter({
     '/api/books/upload',
     requireAuth,
     withUploadLimit(upload.array('files')),
-    asyncHandler(async (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
       const files = req.files as Express.Multer.File[] | undefined;
@@ -1009,13 +998,13 @@ export function createUiRouter({
       }
       log.info(`Books uploaded: ${uploaded.join(', ')}`);
       res.json({ uploaded, results });
-    })
+    }
   );
 
   router.get(
     '/api/books/:id/cover',
     requireAuth,
-    asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
+    async (req: Request<{ id: string }>, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
       const bookId = resolveBookLocalId(owner, req.params.id);
@@ -1073,13 +1062,13 @@ export function createUiRouter({
         versioned ? 'private, max-age=31536000, immutable' : 'private, max-age=0, must-revalidate'
       );
       res.send(data);
-    })
+    }
   );
 
   router.get(
     '/api/books/:id/download',
     requireAuth,
-    asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
+    async (req: Request<{ id: string }>, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
       const bookId = resolveBookLocalId(owner, req.params.id);
@@ -1101,7 +1090,7 @@ export function createUiRouter({
         `attachment; filename*=UTF-8''${encodeURIComponent(book.filename)}`
       );
       res.sendFile(book.path, { dotfiles: 'allow' });
-    })
+    }
   );
 
   /**
@@ -1126,7 +1115,7 @@ export function createUiRouter({
     '/api/books/replace-staging',
     requireAuth,
     withUploadLimit(epubUpload.single('file')),
-    asyncHandler(async (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const identity = requireStagingIdentity(req, res);
       if (!identity) return;
       if (!req.file) {
@@ -1142,7 +1131,7 @@ export function createUiRouter({
         'epub'
       );
       res.json({ stagedUploadId });
-    })
+    }
   );
 
   /**
@@ -1171,7 +1160,7 @@ export function createUiRouter({
     '/api/books/cover-staging',
     requireAuth,
     withUploadLimit(coverUpload.single('cover')),
-    asyncHandler(async (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const identity = requireStagingIdentity(req, res);
       if (!identity) return;
       if (!req.file) {
@@ -1186,7 +1175,7 @@ export function createUiRouter({
         req.file.mimetype
       );
       res.json({ stagedUploadId });
-    })
+    }
   );
 
   /**
