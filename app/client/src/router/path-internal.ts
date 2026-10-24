@@ -7,6 +7,13 @@
  */
 export const upload = () => '/upload';
 export const request = () => '/request';
+/**
+ * The MCP consent screen. The server's OAuth authorize endpoint redirects
+ * here with the request's parameters in the query string (`mcp/oauth-
+ * provider.ts`); `ProtectedRoute`'s `state.from` round-trip carries that
+ * query string through `/login` and back.
+ */
+export const connect = () => '/connect';
 export const book = (bookId: string) => `${library()}/book/${bookId}`;
 export const bookEdit = (bookId: string) => `${library()}/book/${bookId}/edit`;
 export const devices = () => '/devices';

@@ -22,6 +22,11 @@ export default defineConfig({
       // sanctioned client-side touch for this task); no client code
       // consumes it yet.
       '/graphql': apiUrl,
+      // The MCP server and its OAuth endpoints/metadata, so a local
+      // `PUBLIC_URL=http://localhost:5173` gives a working end-to-end
+      // connect flow against the dev server (`app/server/mcp/`).
+      '/mcp': apiUrl,
+      '/.well-known': apiUrl,
     },
     watch: process.env['DOCKER'] ? { usePolling: true } : {},
     host: true,
