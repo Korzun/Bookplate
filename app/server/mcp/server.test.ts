@@ -1,4 +1,4 @@
-import { rawBookId, seedEditableBook } from '../graphql/schema/book/mutation/test-helpers';
+import { seedEditableBook } from '../graphql/schema/book/mutation/test-helpers';
 import { createHarness, type Harness } from '../graphql/test-util';
 import { saveThumbnail } from '../services/book-assets';
 import { resetPassword } from '../services/password';
@@ -55,7 +55,7 @@ type SearchOut = { entries: Entry[]; nextCursor: string | null };
 
 const search = async (client: McpTestClient, args: Record<string, unknown> = {}) => {
   const result = await client.call('search_library', args);
-  expect(result.isError).toBeFalsy();
+  expect(result.isError, textOf(result)).toBeFalsy();
   return result.structuredContent as SearchOut;
 };
 
@@ -152,7 +152,7 @@ describe('read tools', () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
     const betaId = await findId(mcp, 'Beta Book');
     const result = await mcp.call('get_book', { bookId: betaId });
-    expect(result.isError).toBeFalsy();
+    expect(result.isError, textOf(result)).toBeFalsy();
     const book = result.structuredContent as {
       id: string;
       documentId: string;
@@ -237,7 +237,7 @@ describe('read tools', () => {
   it('list_pending_fixes lists books with recommendations', async () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
     const result = await mcp.call('list_pending_fixes');
-    expect(result.isError).toBeFalsy();
+    expect(result.isError, textOf(result)).toBeFalsy();
     const out = result.structuredContent as {
       books: Array<{ title: string; proposals: Array<{ key: string }> }>;
     };
@@ -253,7 +253,7 @@ describe('read tools', () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
     const alphaId = await findId(mcp, 'Alpha Book');
     const result = await mcp.call('get_validation_report', { bookId: alphaId, first: 10 });
-    expect(result.isError).toBeFalsy();
+    expect(result.isError, textOf(result)).toBeFalsy();
     expect(result.structuredContent).toMatchObject({
       valid: true,
       threshold: 'ERROR',
@@ -274,7 +274,7 @@ describe('read tools', () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
     const alphaId = await findId(mcp, 'Alpha Book');
     const result = await mcp.call('get_book_cover', { bookId: alphaId, width: 200 });
-    expect(result.isError).toBeFalsy();
+    expect(result.isError, textOf(result)).toBeFalsy();
     const image = result.content.find((c) => c.type === 'image') as
       | { type: 'image'; data: string; mimeType: string }
       | undefined;
@@ -310,5 +310,141 @@ describe('gates', () => {
   });
 });
 
-// Keeps `rawBookId` referenced for suites that extend this file (Tasks 11–12).
-void rawBookId;
+const WRITE_TOOLS = [
+  'update_book_metadata',
+  'validate_book',
+  'resolve_metadata_fixes',
+  'regenerate_chapters',
+  'delete_book',
+  'request_book',
+];
+
+describe('write tools', () => {
+  it('tools/list names the write tools, with delete marked destructive', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const { tools } = await mcp.client.listTools();
+    const names = tools.map((t) => t.name);
+    for (const name of WRITE_TOOLS) expect(names).toContain(name);
+    const del = tools.find((t) => t.name === 'delete_book')!;
+    expect(del.annotations?.destructiveHint).toBe(true);
+    expect(del.annotations?.readOnlyHint).toBe(false);
+  });
+
+  it('update_book_metadata rewrites the book and returns its new detail', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const result = await mcp.call('update_book_metadata', {
+      bookId: alphaId,
+      title: 'Alpha Renamed',
+      subjects: ['Fiction', 'Space'],
+    });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const book = result.structuredContent as { id: string; title: string; subjects: string[] };
+    expect(book.title).toBe('Alpha Renamed');
+    expect(book.subjects).toEqual(['Fiction', 'Space']);
+    const row = await harness.prisma.book.findFirst({
+      where: { userId: harness.aliceOwner.userId, title: 'Alpha Renamed' },
+    });
+    expect(row).not.toBeNull();
+    expect(textOf(result)).toContain('Alpha Renamed');
+  });
+
+  it('update_book_metadata reports a typed error for an invalid book', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    await harness.prisma.validation.update({
+      where: { userId_bookId: { userId: harness.aliceOwner.userId, bookId: ALPHA_ID } },
+      data: { valid: false },
+    });
+    const result = await mcp.call('update_book_metadata', { bookId: alphaId, title: 'Nope' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('BookNotValidatedError');
+  });
+
+  it('validate_book re-runs validation and returns the new summary', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    vi.mocked(validateEpubReport).mockResolvedValueOnce({
+      valid: false,
+      messages: [{ id: 'RSC-005', severity: 'ERROR', message: 'bad' }],
+      counts: { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 },
+      threshold: 'ERROR',
+    } as never);
+    const result = await mcp.call('validate_book', { bookId: alphaId });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      validation: { valid: false, threshold: 'ERROR', counts: { ERROR: 1 } },
+    });
+    expect(textOf(result)).toContain('INVALID');
+  });
+
+  it('resolve_metadata_fixes ACCEPT applies the proposal and clears it', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const betaId = await findId(mcp, 'Beta Book');
+    const result = await mcp.call('resolve_metadata_fixes', {
+      bookId: betaId,
+      action: 'ACCEPT',
+      fixes: [{ field: 'title', kind: 'title-case', from: 'Beta Book' }],
+    });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const book = result.structuredContent as { title: string; pendingFixes: unknown[] };
+    expect(book.title).toBe('Beta book');
+    expect(book.pendingFixes).toEqual([]);
+  });
+
+  it('regenerate_chapters answers with the book', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const result = await mcp.call('regenerate_chapters', { bookId: alphaId });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    expect((result.structuredContent as { title: string }).title).toBe('Alpha Book');
+  });
+
+  it('delete_book removes the book', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const result = await mcp.call('delete_book', { bookId: alphaId });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    expect(result.structuredContent).toEqual({ deletedId: alphaId, title: 'Alpha Book' });
+    expect(
+      await harness.prisma.book.findUnique({
+        where: { userId_id: { userId: harness.aliceOwner.userId, id: ALPHA_ID } },
+      })
+    ).toBeNull();
+    const again = await mcp.call('delete_book', { bookId: alphaId });
+    expect(again.isError).toBe(true);
+  });
+
+  it('request_book files a request with the admin', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const result = await mcp.call('request_book', {
+      title: 'Dune',
+      author: 'Frank Herbert',
+      note: 'The 1965 one',
+    });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      title: 'Dune',
+      author: 'Frank Herbert',
+      status: 'PENDING',
+    });
+    expect(await harness.prisma.bookRequest.count()).toBe(1);
+    const dup = await mcp.call('request_book', { title: 'Dune', author: 'Frank Herbert' });
+    expect(dup.isError).toBe(true);
+    expect(textOf(dup)).toContain('DuplicateBookRequestError');
+  });
+
+  it('a read-only connection is refused by every write tool', async () => {
+    mcp = await connectMcpClient(
+      app,
+      await mintToken(harness, harness.aliceOwner.userId, ['library:read'])
+    );
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const result = await mcp.call('update_book_metadata', { bookId: alphaId, title: 'X' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe('This connection is read only');
+    const del = await mcp.call('delete_book', { bookId: alphaId });
+    expect(del.isError).toBe(true);
+    expect(textOf(del)).toBe('This connection is read only');
+  });
+});
