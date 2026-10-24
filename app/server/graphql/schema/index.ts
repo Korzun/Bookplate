@@ -26,6 +26,7 @@ import './library-entry';
 import './lineage-entry-not-found-error';
 import './lineage-type';
 import './linked-document';
+import './mcp-connection';
 import './message-segment';
 import './metadata-fix';
 import './pending-fix';

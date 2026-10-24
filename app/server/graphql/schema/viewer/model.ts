@@ -1,4 +1,5 @@
 import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
+import { listMcpConnections } from '../../../services/mcp-connection';
 import { listNotificationPreferences } from '../../../services/notification';
 import { configuredChannels } from '../../../services/notification-channels';
 import { getSyncPassword } from '../../../services/password';
@@ -8,6 +9,7 @@ import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as device } from '../device/model';
 import { model as library } from '../library/model';
+import { model as mcpConnectionModel } from '../mcp-connection/model';
 import { model as notificationPreferenceModel } from '../notification-preference/model';
 import { model as pushSubscriptionModel } from '../push-subscription/model';
 import { model as user } from '../user/model';
@@ -106,6 +108,32 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
         const userId = await resolveViewerUserId(context);
         if (userId === null) return [];
         return listPushSubscriptionRows(context.prisma, userId);
+      },
+    }),
+
+    /**
+     * The MCP trio Settings' "AI assistants" card reads. `mcpUrl` is
+     * `Context.mcpUrl` (null when `public_url` does not allow MCP), and the
+     * connections list is the viewer's own grants — empty for the admin, who
+     * has no library to connect (`mcpAuthorize` refuses it).
+     */
+    mcpEnabled: t.boolean({
+      description: 'Whether this install publishes an MCP server (requires an https public_url).',
+      resolve: (_v, _args, context) => context.mcpUrl !== null,
+    }),
+    mcpUrl: t.string({
+      nullable: true,
+      description:
+        'The URL to add to an AI assistant as a custom MCP connector, or null when disabled.',
+      resolve: (_v, _args, context) => context.mcpUrl,
+    }),
+    mcpConnections: t.field({
+      type: [mcpConnectionModel],
+      description: 'The AI assistants connected to this account over MCP, newest first.',
+      resolve: async (_v, _args, context) => {
+        const userId = await resolveViewerUserId(context);
+        if (userId === null) return [];
+        return listMcpConnections(context.prisma, userId);
       },
     }),
 
