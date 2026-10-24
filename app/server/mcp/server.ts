@@ -19,10 +19,13 @@ import { registerListPendingFixes } from './tools/list-pending-fixes';
 import { registerListReadingProgress } from './tools/list-reading-progress';
 import { registerListSeries } from './tools/list-series';
 import { registerRegenerateChapters } from './tools/regenerate-chapters';
+import { registerReplaceBookFile } from './tools/replace-book-file';
 import { registerRequestBook } from './tools/request-book';
 import { registerResolveMetadataFixes } from './tools/resolve-metadata-fixes';
 import { registerSearchLibrary } from './tools/search-library';
+import { registerStageReplacement } from './tools/stage-replacement';
 import { registerUpdateBookMetadata } from './tools/update-book-metadata';
+import { registerUploadBook } from './tools/upload-book';
 import { registerValidateBook } from './tools/validate-book';
 
 export type { ToolDeps } from './tools/deps';
@@ -53,6 +56,9 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
   registerRegenerateChapters(server, deps);
   registerDeleteBook(server, deps);
   registerRequestBook(server, deps);
+  registerUploadBook(server, deps);
+  registerStageReplacement(server, deps);
+  registerReplaceBookFile(server, deps);
 }
 
 export function buildMcpServer(deps: ToolDeps): McpServer {
