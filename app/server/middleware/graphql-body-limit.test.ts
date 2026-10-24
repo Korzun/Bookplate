@@ -123,6 +123,7 @@ describe('graphqlBodyLimit + graphqlHandler (server.ts mount order)', () => {
         mailer: harness.mailer,
         notifications: harness.notifications,
         vapidPublicKey: harness.vapidPublicKey,
+        mcpUrl: null,
         jwtSecret,
         isProduction: false,
       })
@@ -205,6 +206,7 @@ describe('graphqlBodyLimit + graphqlHandler — chunked transfer-encoding bypass
         mailer: harness.mailer,
         notifications: harness.notifications,
         vapidPublicKey: harness.vapidPublicKey,
+        mcpUrl: null,
         jwtSecret,
         isProduction: true,
       })

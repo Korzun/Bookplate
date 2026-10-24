@@ -2,7 +2,7 @@ import * as path from 'path';
 
 import type { PrismaClient } from '@prisma/client';
 import cookieParser from 'cookie-parser';
-import express, { NextFunction, Request, RequestHandler, Response } from 'express';
+import express, { NextFunction, Request, RequestHandler, Response, Router } from 'express';
 
 import { logger } from './logger';
 import { graphqlBodyLimit } from './middleware/graphql-body-limit';
@@ -26,6 +26,12 @@ export type CreateServerDeps = {
   graphqlHandler: RequestHandler;
   replaceStaging: ReplaceStaging;
   mailer: Mailer | null;
+  /**
+   * `createMcpRouter`'s router, or null when `public_url` does not allow MCP
+   * (`mcp/base-url.ts`). Mounted ahead of `express.json()` below because
+   * `POST /mcp` carries its own, larger body limit — see `mcp/index.ts`.
+   */
+  mcpRouter: Router | null;
 };
 
 export function createServer({
@@ -36,6 +42,7 @@ export function createServer({
   graphqlHandler,
   replaceStaging,
   mailer,
+  mcpRouter,
 }: CreateServerDeps): express.Express {
   // `path.join(config.dataDir, 'editions')` — see `index.ts`'s identical
   // wiring and `graphql/context.ts`'s `Context.editionsRoot` doc comment.
@@ -68,6 +75,10 @@ export function createServer({
   // operation is text-only (query + variables), never a file upload — those
   // go through REST's multer routes instead.
   server.use('/graphql', graphqlBodyLimit(100 * 1024), graphqlHandler);
+
+  // Before the global parser for the reason `CreateServerDeps.mcpRouter`
+  // gives; the OAuth endpoints it carries parse form bodies themselves.
+  if (mcpRouter !== null) server.use(mcpRouter);
 
   server.use(express.json());
   server.use(express.urlencoded({ extended: false }));

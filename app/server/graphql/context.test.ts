@@ -116,6 +116,7 @@ describe('createContext', () => {
       mailer: null,
       notifications,
       vapidPublicKey: 'test-vapid-public-key',
+      mcpUrl: null,
     })({
       request: new Request('http://localhost/graphql', {
         headers: { authorization: `Bearer ${token}` },
@@ -144,6 +145,7 @@ describe('createContext', () => {
       mailer: null,
       notifications,
       vapidPublicKey: 'test-vapid-public-key',
+      mcpUrl: null,
     })({
       request: new Request('http://localhost/graphql'),
     });

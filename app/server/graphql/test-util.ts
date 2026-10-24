@@ -16,7 +16,7 @@ import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
 import { createFakeMailer, MAIL_CONFIG, type FakeMailer } from '../test-support/mail';
 import type { AppConfig, MailConfig, Owner } from '../types';
-import type { Context, Viewer } from './context';
+import type { Context, ContextDeps, Viewer } from './context';
 import {
   createBookByDocumentLoader,
   createDeviceEditionCountLoader,
@@ -51,6 +51,12 @@ export type CreateHarnessOptions = {
    * get a `FakeMailer` wired into every context this harness builds.
    */
   mail?: MailConfig | null;
+  /**
+   * `Context.mcpUrl`. Defaults to a plausible enabled value so the MCP-aware
+   * `Viewer` fields resolve as they would on a configured install; pass
+   * `null` to test the disabled branch.
+   */
+  mcpUrl?: string | null;
 };
 
 export type Harness = {
@@ -68,6 +74,11 @@ export type Harness = {
    * only be forgotten once.
    */
   contextFor: (viewer: Viewer | null) => Context;
+  /**
+   * The deps `contextFor` builds from, for the suites that hand them to
+   * `createMcpRouter`/`createGraphqlHandler` directly.
+   */
+  contextDeps: ContextDeps;
   prisma: PrismaClient;
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
@@ -226,6 +237,21 @@ export const createHarness = async (
   // a test that swaps `harness.replaceStaging` mid-test is seen by the next
   // context built — the same reason the harness exposes that field through an
   // accessor pair rather than a plain value.
+  const mcpUrl =
+    harnessOptions.mcpUrl === undefined ? 'https://books.example/mcp' : harnessOptions.mcpUrl;
+  const contextDeps: ContextDeps = {
+    prisma,
+    thumbnails,
+    replaceStaging,
+    editionsRoot,
+    config,
+    jwtSecret: Buffer.alloc(32, 1),
+    mailer,
+    notifications,
+    vapidPublicKey,
+    mcpUrl,
+  };
+
   const contextFor = (viewer: Viewer | null): Context => ({
     viewer,
     prisma,
@@ -236,6 +262,7 @@ export const createHarness = async (
     mailer,
     notifications,
     vapidPublicKey,
+    mcpUrl,
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
@@ -428,6 +455,7 @@ export const createHarness = async (
     },
     editionsRoot,
     contextFor,
+    contextDeps,
     aliceOwner: { userId: aliceId, username: 'alice' },
     aliceViewer,
     aliceGlobalId,

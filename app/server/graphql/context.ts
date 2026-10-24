@@ -85,6 +85,12 @@ export type Context = {
    * against the same keypair the push driver signs with.
    */
   vapidPublicKey: string;
+  /**
+   * `${public_url}/mcp` when the MCP server is mounted, else null — what
+   * `Viewer.mcpEnabled`/`Viewer.mcpUrl` report so Settings can show the URL
+   * to paste into an assistant, or explain why there is none.
+   */
+  mcpUrl: string | null;
   loadLineage: LineageLoader;
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
@@ -106,6 +112,7 @@ export type ContextDeps = {
   mailer: Mailer | null;
   notifications: NotificationPoker;
   vapidPublicKey: string;
+  mcpUrl: string | null;
 };
 
 /** Derives the viewer from an Authorization header. Pure. */
@@ -151,6 +158,7 @@ export const createContext =
       mailer: deps.mailer,
       notifications: deps.notifications,
       vapidPublicKey: deps.vapidPublicKey,
+      mcpUrl: deps.mcpUrl,
       loadLineage: createLineageLoader(deps.prisma),
       loadOwner: createOwnerLoader(deps.prisma),
       loadProgress: createProgressLoader(deps.prisma),
