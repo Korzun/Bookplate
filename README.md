@@ -61,7 +61,7 @@ Add-on options (set in the **Configuration** tab):
 | `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
 | `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
 | `email_from_name`        | string | *(library name)* | From-display-name for outgoing mail. Defaults to `library_name` when left blank. |
-| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Only adds a clickable link beside the code that every verification/reset email already carries — code-only delivery works fine without it. |
+| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Adds a clickable link beside the code that every verification/reset email already carries, and — when it is an **https** origin — enables the MCP server so AI assistants can connect (see "Connect an AI assistant" below). Email works code-only without it; MCP stays off. |
 
 Example:
 
@@ -86,6 +86,7 @@ The add-on serves three things on port **3000**, all on the same host/origin:
 | **Web UI**  | `/`       | Uploading books, editing metadata, managing users.    |
 | **OPDS**    | `/opds`   | Browsing/downloading the catalog from a reader.        |
 | **KOSync**  | `/sync`   | Syncing reading progress from KOReader.                |
+| **MCP**     | `/mcp`    | Letting an AI assistant work in your library (needs `public_url`). |
 
 The exact URLs for your instance (LAN address, reverse proxy, or Cloudflare
 tunnel) are shown on each user's **settings page** in the web UI — just copy them
@@ -194,6 +195,34 @@ In KOReader: **top menu → tools (🔧) → Progress sync → Custom sync serve
 - Then **Login** with your reader account username and **sync password** (found
   on your settings page in the web UI).
 
+### Connect an AI assistant (MCP)
+
+Bookplate is also a remote [MCP](https://modelcontextprotocol.io) server, so
+Claude (web, desktop or Claude Code) or any other MCP client can search your
+library, read and fix metadata, run validation, upload or replace books, act on
+import recommendations, and request books — as *you*, in *your* library.
+
+1. Set `public_url` to the **https** address your Bookplate is reachable at
+   (a reverse proxy, Cloudflare Tunnel, Nabu Casa URL, …). MCP stays off
+   without it: the OAuth flow needs a stable, secure origin to publish.
+2. Add `<public_url>/mcp` to the assistant as a custom connector / remote MCP
+   server. For Claude Code: `claude mcp add --transport http bookplate <public_url>/mcp`.
+3. The assistant opens Bookplate in your browser. Sign in as a **reader** (the
+   admin account has no library to connect), choose **Read only** if you want
+   the assistant to look but not change anything, and approve.
+4. Every connected assistant is listed under **Settings → AI assistants**,
+   with the date it connected and when it was last used. **Disconnect** cuts
+   its access immediately.
+
+Tools: `search_library`, `get_book`, `get_series`, `list_series`,
+`list_library_facets`, `list_pending_fixes`, `get_validation_report`,
+`list_reading_progress`, `get_book_cover`, `list_book_requests`,
+`update_book_metadata`, `validate_book`, `resolve_metadata_fixes`,
+`regenerate_chapters`, `delete_book`, `request_book`, `upload_book`,
+`stage_replacement` and `replace_book_file`. Uploads take a public https URL
+or inline base64 (up to about 6 MB); URL downloads refuse private and LAN
+addresses.
+
 ## Ports
 
 | Port       | Description                                  |
@@ -243,7 +272,7 @@ variables:
 | `CF_API_TOKEN`  | *(none)* | Same as the add-on's `email_cloudflare_api_token` option above — a Cloudflare API token with the **Email Sending: Edit** permission. Required together with `CF_ACCOUNT_ID` and `EMAIL_FROM`. |
 | `EMAIL_FROM`    | *(none)* | Same as the add-on's `email_from_address` option above. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `CF_ACCOUNT_ID` and `CF_API_TOKEN`. |
 | `EMAIL_FROM_NAME` | *(library name)* | Same as the add-on's `email_from_name` option above. Defaults to `LIBRARY_NAME` when unset. |
-| `PUBLIC_URL`    | *(none)* | Same as the add-on's `public_url` option above. Optional — only adds a clickable link beside the code that every verification/reset email already carries. |
+| `PUBLIC_URL`    | *(none)* | Same as the add-on's `public_url` option above. Optional — adds a clickable link to verification/reset emails and, when https (or `http://localhost` for development), turns on the MCP server. |
 
 ## Release channels
 
