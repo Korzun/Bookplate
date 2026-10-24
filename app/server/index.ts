@@ -6,6 +6,8 @@ import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
+import { resolveMcpBaseUrl, mcpEndpointUrl } from './mcp/base-url';
+import { createMcpRouter } from './mcp/index';
 import { createServer } from './server';
 import { getStagingDir } from './services/book-paths';
 import { CoverBackfill } from './services/cover-backfill';
@@ -85,7 +87,13 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     },
   });
   notificationQueue.start();
-  const graphqlHandler = createGraphqlHandler({
+  // MCP (and its OAuth server) exist only under a public https origin — see
+  // `mcp/base-url.ts`. A LAN-only install logs once and runs without it.
+  const mcpBaseUrl = resolveMcpBaseUrl(config.publicUrl);
+  if (mcpBaseUrl === null) {
+    log.warn('MCP server disabled: set public_url to an https origin to let AI assistants connect');
+  }
+  const contextDeps = {
     prisma,
     thumbnails: thumbnailQueue,
     replaceStaging,
@@ -95,6 +103,10 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     notifications: notificationQueue,
     vapidPublicKey: vapid.publicKey,
     jwtSecret,
+    mcpUrl: mcpBaseUrl === null ? null : mcpEndpointUrl(mcpBaseUrl),
+  };
+  const graphqlHandler = createGraphqlHandler({
+    ...contextDeps,
     // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
     // the default and insecure mode must be opted into explicitly. Nothing in
     // the shipped image sets NODE_ENV — run.sh execs node directly and the
@@ -104,6 +116,19 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     isProduction: process.env.NODE_ENV !== 'development',
   });
 
+  const mcpRouter =
+    mcpBaseUrl === null
+      ? null
+      : createMcpRouter({
+          baseUrl: mcpBaseUrl,
+          prisma,
+          config,
+          contextDeps,
+          thumbnails: thumbnailQueue,
+          replaceStaging,
+          editionsRoot,
+        });
+
   const server = createServer({
     config,
     thumbnailQueue,
@@ -112,6 +137,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     graphqlHandler,
     replaceStaging,
     mailer,
+    mcpRouter,
   });
 
   await startBookplate({

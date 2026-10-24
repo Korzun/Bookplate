@@ -31,6 +31,7 @@ const buildApp = (isProduction: boolean): express.Express => {
       mailer: harness.mailer,
       notifications: harness.notifications,
       vapidPublicKey: harness.vapidPublicKey,
+      mcpUrl: null,
       jwtSecret,
       isProduction,
     })

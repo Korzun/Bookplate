@@ -392,6 +392,7 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     mailer: null,
     notifications,
     vapidPublicKey: 'test-vapid-public-key',
+    mcpUrl: null,
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
