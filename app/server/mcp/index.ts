@@ -28,6 +28,7 @@ import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
 import { resolveLoginClientIp } from '../utils/client-ip';
 import { mcpEndpointUrl } from './base-url';
+import { createMcpRequestHandler } from './handler';
 import { buildOAuthMetadata, OAUTH_PATHS } from './oauth-metadata';
 import { createOAuthProvider } from './oauth-provider';
 import { SCOPES } from './tokens';
@@ -42,11 +43,7 @@ export type McpRouterDeps = {
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
   editionsRoot: string;
-  /**
-   * The authenticated MCP request handler. Supplied by `server.ts`'s
-   * `handleMcpRequest` once the tool layer exists; the default answers 501
-   * so the OAuth half can ship and be tested on its own.
-   */
+  /** Overrides `createMcpRequestHandler(deps)` — tests only. */
   handleMcp?: (req: Request, res: Response) => Promise<void>;
 };
 
@@ -92,11 +89,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     })
   );
 
-  const handleMcp: McpRequestHandler =
-    deps.handleMcp ??
-    (async (_req, res) => {
-      res.status(501).json({ error: 'MCP tools are not available yet' });
-    });
+  const handleMcp: McpRequestHandler = deps.handleMcp ?? createMcpRequestHandler(deps);
 
   const bodyLimitErrors = (
     err: unknown,
