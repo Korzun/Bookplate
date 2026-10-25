@@ -1,7 +1,8 @@
 import { IconProps, defaultStrokeIconProps } from './props';
 
 // Drawn for Bookplate in the Tabler stroke style (see https://tabler.io/icons/icon/hand-stop):
-// a front palm, the second palm meeting it from behind, two motion strokes.
+// two mirrored palms, heels meeting on the centre line, fingers and thumbs
+// fanning outward, three motion strokes above the contact point.
 export const HandsClapIcon = (props: IconProps) => {
   const {
     'aria-hidden': ariaHidden,
@@ -35,13 +36,15 @@ export const HandsClapIcon = (props: IconProps) => {
       xmlns="http://www.w3.org/2000/svg"
     >
       <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-      <path d="M5.5 13.5v-5a1.5 1.5 0 0 1 3 0v3.5" />
-      <path d="M8.5 11.5v-5a1.5 1.5 0 0 1 3 0v5" />
-      <path d="M11.5 11.5v-4a1.5 1.5 0 0 1 3 0v8a5.5 5.5 0 0 1 -5.5 5.5h-.5a4.5 4.5 0 0 1 -3.9 -2.25l-2 -3.5a1.3 1.3 0 0 1 2.2 -1.4l.7 .8" />
-      <path d="M14.5 11l1.2 -2.7a1.5 1.5 0 0 1 2.75 1.2l-1.3 2.9" />
-      <path d="M17.3 12.5l1 -1.7a1.5 1.5 0 0 1 2.6 1.5l-2.7 5.2a6 6 0 0 1 -3.3 3" />
-      <path d="M19 5l.9 -1.4" />
-      <path d="M20.4 7.4l1.3 -.4" />
+      <path d="M5.68 14.71L4.83 10.71A1.3 1.3 0 0 1 7.38 10.16L8.03 13.25" />
+      <path d="M7.38 10.16L7.19 9.28A1.3 1.3 0 0 1 9.75 8.74L12 19.35" />
+      <path d="M5.68 14.71L4.50 13.95A0.81 0.81 0 0 0 3.62 15.31L6.28 17.53L6.89 20.44" />
+      <path d="M18.32 14.71L19.17 10.71A1.3 1.3 0 0 0 16.62 10.16L15.97 13.25" />
+      <path d="M16.62 10.16L16.81 9.28A1.3 1.3 0 0 0 14.25 8.74L12 19.35" />
+      <path d="M18.32 14.71L19.50 13.95A0.81 0.81 0 0 1 20.38 15.31L17.72 17.53L17.11 20.44" />
+      <path d="M12 3v1.8" />
+      <path d="M9.3 3.9l.6 .9" />
+      <path d="M14.7 3.9l-.6 .9" />
     </svg>
   );
 };
