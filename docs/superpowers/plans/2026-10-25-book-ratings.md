@@ -27,8 +27,8 @@
 1. `rate_book` called with only `bookId` must be a no-op that returns the detail, not an error (Task 7 test "no fields is a no-op").
 2. `bookRate` with all five explicitly null must clear every rating and still stamp `ratedAt` (Task 4 test "explicit null clears").
 3. `ratingProfile` on a library with no rated books must return `ratedCount 0`, `mean null` for every field, empty favourites, with no division by zero (Task 5 service test "empty library").
-4. The book page must revert the optimistic selection and toast when the mutation fails (Task 10 test "reverts and toasts on failure").
-5. `RatingPicker` handed a value outside 1–5 (a stale or corrupt cache) must render with nothing checked rather than throw (Task 8 test "out-of-range value").
+4. The book page must revert the optimistic selection and toast when the mutation fails (Task 11 test "reverts and toasts on failure").
+5. `RatingPicker` handed a value outside 1–5 (a stale or corrupt cache) must render with nothing checked rather than throw (Task 9 test "out-of-range value").
 
 ---
 
@@ -472,7 +472,39 @@ git commit -m "feat(mcp): rate_book tool"
 
 ---
 
-### Task 8: Client icons and `RatingPicker` control
+### Task 8: Consent page permission lines
+
+**Files:**
+- Modify: `app/client/src/page/connect/index.tsx` (`PERMISSIONS`)
+- Test: `app/client/src/page/connect/index.test.tsx`
+
+**Interfaces:**
+- Produces: two new lines in `PERMISSIONS`, in this order: `{ text: 'Read your ratings and taste profile', write: false }` directly after `Read book and series details`, and `{ text: 'Rate books', write: true }` directly after `Edit book metadata`. Ten lines total.
+
+- [ ] **Step 1: Update the failing test** "names the client and lists each permission; read-only marks the write lines as not granted": the expected text list becomes the ten lines in the order above; `toHaveLength(10)`; the granted array after the switch flips becomes `['true','true','true','false','false','false','false','false','false','false']`.
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `cd app/client && npx vitest run src/page/connect/index.test.tsx`
+Expected: FAIL on the list comparison.
+
+- [ ] **Step 3: Add the two lines to `PERMISSIONS`** and extend its doc comment with one sentence: the read line covers `get_taste_profile` and the rating on every book read; the write line covers `rate_book`.
+
+- [ ] **Step 4: Run the test**
+
+Run: `cd app/client && npx vitest run src/page/connect/index.test.tsx`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/client/src/page/connect
+git commit -m "feat(client): consent page lists rating permissions"
+```
+
+---
+
+### Task 9: Client icons and `RatingPicker` control
 
 **Files:**
 - Create: `app/client/src/icon/thumb-down.tsx`, `thumb-up.tsx`, `hand-ok.tsx`, `hands-clap.tsx`, `hand-horns.tsx`; modify `app/client/src/icon/index.ts`
@@ -526,13 +558,13 @@ git commit -m "feat(client): rating icons and RatingPicker control"
 
 ---
 
-### Task 9: `BookRating` component
+### Task 10: `BookRating` component
 
 **Files:**
 - Create: `app/client/src/component/book-rating/index.tsx`, `style.ts`, `index.test.tsx`; modify `app/client/src/component/index.ts` (export `BookRating`)
 
 **Interfaces:**
-- Consumes: `RatingPicker`, `RatingValue` (Task 8).
+- Consumes: `RatingPicker`, `RatingValue` (Task 9).
 - Produces:
   - `type RatingFieldKey = 'overall' | 'story' | 'characters' | 'writing' | 'ideas'`
   - `type BookRatingValues = Record<RatingFieldKey, number | null>`
@@ -568,7 +600,7 @@ git commit -m "feat(client): BookRating block"
 
 ---
 
-### Task 10: Book page wiring and the `BookRate` mutation
+### Task 11: Book page wiring and the `BookRate` mutation
 
 **Files:**
 - Modify: `app/client/src/graphql/book.ts` (add `BookRateDocument`), `app/client/src/page/book/query.ts` (`BookDetailDocument` selects `rating { overall story characters writing ideas }`; update the measured breadth/complexity numbers in its doc comment), `app/client/src/page/book/index.tsx`, `app/client/src/page/book/style.ts`
@@ -576,7 +608,7 @@ git commit -m "feat(client): BookRating block"
 - Test: `app/client/src/page/book/index.test.tsx`
 
 **Interfaces:**
-- Consumes: `BookRating`, `RatingFieldKey` (Task 9); `useToast` (`showToast(message, 'error')`); `useIsAdmin`.
+- Consumes: `BookRating`, `RatingFieldKey` (Task 10); `useToast` (`showToast(message, 'error')`); `useIsAdmin`.
 - Produces: `BookRateDocument`:
 
 ```graphql
@@ -647,7 +679,7 @@ git commit -m "feat(client): inline book ratings on the book page"
 
 ---
 
-### Task 11: Whole-branch verification
+### Task 12: Whole-branch verification
 
 **Files:** none new.
 
