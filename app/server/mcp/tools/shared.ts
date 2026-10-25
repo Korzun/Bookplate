@@ -5,6 +5,35 @@
 import { z } from 'zod';
 
 import { fixKey } from '../../services/epub-import-pipeline';
+import { formatRating, RATING_FIELDS, RATING_NAMES, type RatingValue } from '../../services/rating';
+
+export const RATING_FIELDS_GQL = 'rating { overall story characters writing ideas }';
+
+export type RatingGql = {
+  overall: number | null;
+  story: number | null;
+  characters: number | null;
+  writing: number | null;
+  ideas: number | null;
+};
+
+const ratingValue = z.number().nullable();
+export const ratingSchema = z.object({
+  overall: ratingValue.describe('1 Bad, 2 Okay, 3 Nice, 4 Great, 5 Awesome; null if unrated'),
+  story: ratingValue,
+  characters: ratingValue,
+  writing: ratingValue,
+  ideas: ratingValue,
+});
+
+const titleCase = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+export const describeRating = (r: RatingGql): string => {
+  if (RATING_FIELDS.every((f) => r[f] === null)) return 'Rating: not rated';
+  return RATING_FIELDS.map((f) =>
+    f === 'overall' ? `Rating: ${formatRating(r[f])}` : `${titleCase(f)}: ${formatRating(r[f])}`
+  ).join(' · ');
+};
 
 export const BOOK_SUMMARY_FIELDS = `
   id documentId title author
@@ -13,6 +42,7 @@ export const BOOK_SUMMARY_FIELDS = `
   hasCover hasActionablePendingFix
   validation { valid }
   progress { percentage }
+  rating { overall }
 `;
 
 export type BookSummaryGql = {
@@ -32,6 +62,7 @@ export type BookSummaryGql = {
   hasActionablePendingFix: boolean;
   validation: { valid: boolean } | null;
   progress: { percentage: number } | null;
+  rating: { overall: number | null };
 };
 
 export const bookSummarySchema = z.object({
@@ -53,6 +84,7 @@ export const bookSummarySchema = z.object({
   hasPendingFixes: z.boolean(),
   valid: z.boolean().nullable().describe('Last validation outcome; null if never validated'),
   progressPercentage: z.number().nullable(),
+  overallRating: z.number().nullable().describe('Overall rating 1-5; null if unrated'),
 });
 export type BookSummary = z.infer<typeof bookSummarySchema>;
 
@@ -75,6 +107,7 @@ export const summarizeBook = (b: BookSummaryGql): BookSummary => ({
   hasPendingFixes: b.hasActionablePendingFix,
   valid: b.validation?.valid ?? null,
   progressPercentage: b.progress?.percentage ?? null,
+  overallRating: b.rating.overall,
 });
 
 export const describeBook = (b: BookSummary): string => {
@@ -82,6 +115,9 @@ export const describeBook = (b: BookSummary): string => {
   if (b.series !== null) parts.push(`(${b.series} #${b.seriesIndex})`);
   if (b.valid === false) parts.push('[invalid EPUB]');
   if (b.hasPendingFixes) parts.push('[has recommendations]');
+  if (b.overallRating !== null) {
+    parts.push(`rated ${RATING_NAMES[b.overallRating as RatingValue] ?? b.overallRating}`);
+  }
   parts.push(`id=${b.id}`);
   return parts.join(' ');
 };

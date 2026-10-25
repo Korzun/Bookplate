@@ -5,14 +5,18 @@ import type { ToolDeps } from './deps';
 import { decodeBookId, executeDocument, guarded, NOT_FOUND_BOOK, ok, ToolError } from './execute';
 import {
   describeFix,
+  describeRating,
   describeValidation,
   FIX_FIELDS,
   metadataFixSchema,
+  RATING_FIELDS_GQL,
+  ratingSchema,
   toFixOut,
   toValidationSummary,
   VALIDATION_SUMMARY_FIELDS,
   validationSummarySchema,
   type MetadataFixGql,
+  type RatingGql,
   type ValidationSummaryGql,
 } from './shared';
 
@@ -32,6 +36,7 @@ export const BOOK_DETAIL_FIELDS = `
   }
   lineage { type oldId newId timestamp }
   progress { percentage currentChapter device timestamp }
+  ${RATING_FIELDS_GQL}
 `;
 
 export type BookDetailGql = {
@@ -70,6 +75,7 @@ export type BookDetailGql = {
     device: string;
     timestamp: string;
   } | null;
+  rating: RatingGql;
 };
 
 export const bookDetailSchema = {
@@ -107,6 +113,7 @@ export const bookDetailSchema = {
       timestamp: z.string(),
     })
     .nullable(),
+  rating: ratingSchema,
 };
 
 export const toBookDetail = (b: BookDetailGql) => ({
@@ -135,6 +142,7 @@ export const toBookDetail = (b: BookDetailGql) => ({
   autoFixesApplied: (b.pendingFix?.state.autoFixes ?? []).map(toFixOut),
   lineage: b.lineage,
   progress: b.progress,
+  rating: b.rating,
 });
 
 export type BookDetail = ReturnType<typeof toBookDetail>;
@@ -150,6 +158,7 @@ export const describeBookDetail = (b: BookDetail): string => {
       : 'Identifiers: —',
     `Validation: ${describeValidation(b.validation)}`,
   ];
+  lines.splice(2, 0, describeRating(b.rating));
   if (b.description) lines.push(`Description: ${b.description.slice(0, 500)}`);
   if (b.pendingFixes.length > 0) {
     lines.push('Recommendations:');
