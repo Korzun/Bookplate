@@ -27,6 +27,10 @@
       "InvalidInputError",
       "SelfLinkError"
     ],
+    "BookRateResult": [
+      "BookRatePayload",
+      "InvalidInputError"
+    ],
     "BookRegenChaptersResult": [
       "BookHashCollisionError",
       "BookNotValidatedError",

@@ -61,6 +61,7 @@ import type {
 import {
   BookClearEditionsDocument,
   BookDeleteDocument,
+  BookRateDocument,
   BookRegenChaptersDocument,
   BookValidateDocument,
   LineageEntryFragment,
@@ -193,6 +194,14 @@ const bookMock = (overrides: Record<string, unknown> = {}): MockedResponse => ({
             currentChapter: 3,
           },
           validation: validationFixture,
+          rating: {
+            __typename: 'BookRating' as const,
+            overall: 4,
+            story: null,
+            characters: 5,
+            writing: null,
+            ideas: null,
+          },
           ...overrides,
         },
       },
@@ -686,6 +695,46 @@ async function openSeededBookAnd(mocks: MockedResponse[], item: RegExp) {
   await selectMenuItem(item);
   return client;
 }
+
+type RatingFields = {
+  overall: number | null;
+  story: number | null;
+  characters: number | null;
+  writing: number | null;
+  ideas: number | null;
+};
+
+/**
+ * `bookRate` mocks. `input` is matched EXACTLY by `MockLink` (deep equality
+ * on `variables`), so a handler that sent the whole rating rather than the
+ * one changed field would find no mock and error — that exact match IS the
+ * "sends only that field" assertion.
+ */
+const bookRateMock = (input: Record<string, unknown>, rating: RatingFields): MockedResponse => ({
+  request: { query: BookRateDocument, variables: { input } },
+  result: {
+    data: {
+      bookRate: {
+        __typename: 'BookRatePayload' as const,
+        book: {
+          __typename: 'Book' as const,
+          id: BOOK_ID,
+          rating: { __typename: 'BookRating' as const, ...rating },
+        },
+      },
+    },
+  },
+});
+
+const bookRateErrorMock = (input: Record<string, unknown>): MockedResponse => ({
+  request: { query: BookRateDocument, variables: { input } },
+  error: new Error('rate failed'),
+  // Long enough that the optimistic state is observable before the revert.
+  delay: 50,
+});
+
+const ratingGroup = (field: string) =>
+  screen.getByRole('radiogroup', { name: `${field} rating for A Wizard of Earthsea` });
 
 describe('BookPage', () => {
   it('shows a loading state while the book is still resolving', async () => {
@@ -1769,6 +1818,135 @@ describe('BookPage', () => {
       await userEvent.click(trigger);
       const item = await screen.findByRole('menuitem', { name: /^validate$/i });
       expect(item).toBeDisabled();
+    });
+  });
+
+  describe('rating', () => {
+    const owner = { user: { username: 'le', isAdmin: false } };
+
+    it('renders the current ratings from BookDetail', async () => {
+      await renderPage([bookMock(), viewerBootstrapMock()], owner);
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      expect(within(ratingGroup('Overall')).getByRole('radio', { name: 'Great' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      );
+      expect(
+        within(ratingGroup('Characters')).getByRole('radio', { name: 'Awesome' })
+      ).toHaveAttribute('aria-checked', 'true');
+      for (const radio of within(ratingGroup('Story')).getAllByRole('radio')) {
+        expect(radio).toHaveAttribute('aria-checked', 'false');
+      }
+    });
+
+    it('rating a sub-field sends only that field and updates from the payload with no refetch', async () => {
+      bookDetailCounter.requests = 0;
+      const { client } = await renderPage(
+        [
+          // ONE BookDetail mock: a refetch would find no second response.
+          bookMock(),
+          viewerBootstrapMock(),
+          bookRateMock(
+            { id: BOOK_ID, story: 5 },
+            { overall: 4, story: 5, characters: 5, writing: null, ideas: null }
+          ),
+        ],
+        owner
+      );
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' }));
+
+      await waitFor(() =>
+        expect(
+          within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })
+        ).toHaveAttribute('aria-checked', 'true')
+      );
+      expect(within(ratingGroup('Overall')).getByRole('radio', { name: 'Great' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      );
+      // The optimistic layer alone would satisfy the DOM checks above, so
+      // read the NON-optimistic cache (`extract()` defaults to it): the real
+      // payload must have landed on `Book:<id>`. A request whose variables
+      // carried more than `story` would match no mock and never get here.
+      await waitFor(() =>
+        expect(
+          (client.cache.extract() as Record<string, { rating?: { story: number | null } }>)[
+            `Book:${BOOK_ID}`
+          ]?.rating?.story
+        ).toBe(5)
+      );
+      expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      );
+      expect(bookDetailCounter.requests).toBe(1);
+    });
+
+    it('clicking the checked overall clears it', async () => {
+      await renderPage(
+        [
+          bookMock(),
+          viewerBootstrapMock(),
+          bookRateMock(
+            { id: BOOK_ID, overall: null },
+            { overall: null, story: null, characters: 5, writing: null, ideas: null }
+          ),
+        ],
+        owner
+      );
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      await userEvent.click(within(ratingGroup('Overall')).getByRole('radio', { name: 'Great' }));
+
+      await waitFor(() => {
+        for (const radio of within(ratingGroup('Overall')).getAllByRole('radio')) {
+          expect(radio).toHaveAttribute('aria-checked', 'false');
+        }
+      });
+    });
+
+    it('reverts and toasts on failure', async () => {
+      await renderPage(
+        [bookMock(), viewerBootstrapMock(), bookRateErrorMock({ id: BOOK_ID, story: 5 })],
+        owner
+      );
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' }));
+
+      // Optimistic first...
+      await waitFor(() =>
+        expect(
+          within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })
+        ).toHaveAttribute('aria-checked', 'true')
+      );
+      // ...then rolled back once the transport error lands.
+      await waitFor(() =>
+        expect(
+          within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })
+        ).toHaveAttribute('aria-checked', 'false')
+      );
+      expect(await screen.findByText(/rate failed/)).toBeInTheDocument();
+    });
+
+    it('is read-only for an admin viewer', async () => {
+      await renderPage([bookMock(), viewerBootstrapMock()], {
+        user: { username: 'admin', isAdmin: true },
+      });
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      const radios = within(ratingGroup('Overall')).getAllByRole('radio');
+      expect(radios.length).toBe(5);
+      for (const radio of radios) {
+        expect(radio).toHaveAttribute('aria-disabled', 'true');
+      }
+      expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })).toHaveAttribute(
+        'aria-disabled',
+        'true'
+      );
     });
   });
 });

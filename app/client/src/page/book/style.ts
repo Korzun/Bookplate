@@ -56,6 +56,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     minWidth: 0,
     height: '100%',
   },
+  rating: {
+    marginTop: theme.space.md,
+  },
   titleContainer: {
     margin: `0 0 ${theme.space.xs}`,
   },
