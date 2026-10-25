@@ -1,4 +1,5 @@
 export { BookEditForm } from './book-edit-form';
+export { BookRating, type BookRatingValues, type RatingFieldKey } from './book-rating';
 export { BookRequestRow } from './book-request-row';
 export { BookRequestsContent } from './book-requests-content';
 export { BookRow, type BookRowProps } from './book-row';
