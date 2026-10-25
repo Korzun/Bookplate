@@ -112,6 +112,28 @@ describe('RatingPicker', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('ignores keys pressed with Meta, Ctrl or Alt and leaves their default alone', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderWithProviders(<RatingPicker label="Overall" value={2} onChange={onChange} />);
+    const radio = screen.getByRole('radio', { name: 'Okay' });
+    radio.focus();
+    const prevented: string[] = [];
+    // Registered on document so it runs after the group's React handler.
+    const spy = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) prevented.push(event.key);
+    };
+    document.addEventListener('keydown', spy);
+    await user.keyboard('{Meta>}1{/Meta}');
+    await user.keyboard('{Control>}5{/Control}');
+    await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
+    await user.keyboard('{Meta>}{Backspace}{/Meta}');
+    await user.keyboard('{Control>}{End}{/Control}');
+    document.removeEventListener('keydown', spy);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(prevented).toEqual([]);
+  });
+
   it('Space and Enter on the focused radio toggle it', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

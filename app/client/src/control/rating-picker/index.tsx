@@ -71,6 +71,9 @@ export const RatingPicker = ({
 
   const handleKeyDown = (event: KeyboardEvent) => {
     if (readOnly) return;
+    // Leave modified keys to the browser and OS: Cmd/Ctrl+digit switches tabs,
+    // Alt/Cmd+arrow walks history, Cmd+Backspace and so on.
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
     // Position on the 1–5 scale, 0 for no rating.
     const current = checked?.value ?? 0;
     let next: RatingValue | null | undefined;
