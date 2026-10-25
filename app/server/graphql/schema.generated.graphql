@@ -37,6 +37,11 @@ type Book implements Node {
   progress: Progress
   publishDate: String!
   publisher: String!
+
+  """
+  The reader’s ratings, each 1 (bad) to 5 (awesome) or null when unrated. Never derived from the EPUB.
+  """
+  rating: BookRating!
   series: Series
   seriesIndex: Float!
   size: Int!
@@ -123,6 +128,14 @@ The book has not passed validation (or has never been validated), so its metadat
 type BookNotValidatedError implements UserError {
   message: String!
   validation: Validation
+}
+
+type BookRating {
+  characters: Int
+  ideas: Int
+  overall: Int
+  story: Int
+  writing: Int
 }
 
 input BookRegenChaptersInput {

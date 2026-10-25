@@ -1,3 +1,4 @@
+import { ratingOf } from '../../../services/rating';
 import type { Context } from '../../context';
 import {
   epochToDate,
@@ -8,6 +9,7 @@ import {
   parsePendingFixState,
   parseStringArray,
 } from '../../derive';
+import { model as bookRating } from '../book-rating/model';
 import { builder } from '../builder';
 import { model as identifier } from '../identifier';
 // `../linked-document/model`, not `../linked-document`: this file's own rule
@@ -123,6 +125,12 @@ export const model = builder.prismaNode('Book', {
     size: t.exposeInt('size'),
     pageCount: t.exposeInt('pageCount'),
     chapterCount: t.exposeInt('chapterCount'),
+    rating: t.field({
+      type: bookRating,
+      description:
+        'The reader’s ratings, each 1 (bad) to 5 (awesome) or null when unrated. Never derived from the EPUB.',
+      resolve: (book) => ratingOf(book),
+    }),
 
     subjects: t.field({ type: ['String'], resolve: (book) => parseStringArray(book.subjects) }),
     identifiers: t.field({

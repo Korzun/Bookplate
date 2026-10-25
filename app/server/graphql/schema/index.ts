@@ -1,6 +1,7 @@
 import './book';
 import './book-hash-collision-error';
 import './book-not-validated-error';
+import './book-rating';
 import './book-request';
 import './book-request-limit-exceeded-error';
 import './book-request-not-pending-error';

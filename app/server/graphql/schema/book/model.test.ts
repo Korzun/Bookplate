@@ -54,6 +54,28 @@ const bookQuery = (gid: string): string => `{
 }`;
 
 describe('Book', () => {
+  it('rating resolves the five columns, null for unrated', async () => {
+    await harness.prisma.book.update({
+      where: { userId_id: { userId: harness.aliceOwner.userId, id: BOOK_ID } },
+      data: { ratingOverall: 4, ratingCharacters: 5 },
+    });
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { rating { overall story characters writing ideas } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { book: { rating: unknown } } } }).viewer.library.book
+        .rating
+    ).toEqual({
+      overall: 4,
+      story: null,
+      characters: 5,
+      writing: null,
+      ideas: null,
+    });
+  });
+
   it('parses the JSON-string columns into real fields', async () => {
     const result = await harness.execute(
       bookQuery(bookGlobalId(harness.aliceOwner.userId, BOOK_ID)),
