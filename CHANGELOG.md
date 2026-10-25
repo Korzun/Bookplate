@@ -1,3 +1,15 @@
+## 0.11.0
+
+- chore(scripts): add a release watcher that follows the pipeline to publish
+- Keep an edited book in its series after a metadata save
+- Receive reading events from the CrossPoint plugin
+- build(deps): bump find-my-way from 9.6.0 to 9.7.0 in the npm_and_yarn group across 1 directory
+- feat(opds): serve device-sized JPEG covers in device catalogs
+- feat(server): normalize stored book covers to baseline JPEG
+- chore(server): upgrade Express 4 to 5
+- fix(client): keep first-login users signed in after the forced password change
+- feat: OAuth-protected MCP server for AI assistants
+
 ## 0.10.0
 
 - fix(theme): give the segmented-control track its own token so it reads in dark
