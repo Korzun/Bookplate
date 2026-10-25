@@ -2,10 +2,11 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
-import { BrandLockup, Card, Page } from '~/component';
+import { BrandLockup, Card, CardDivider, Page } from '~/component';
 import { Button, Switch } from '~/control';
 import type { McpAuthorizeMutation } from '~/gql/graphql';
 import { McpAuthorizeDocument, McpClientDocument } from '~/graphql/mcp';
+import { CheckIcon } from '~/icon';
 import { unwrapResult } from '~/provider/apollo';
 import { useIsAdmin } from '~/provider/auth';
 import { useToast } from '~/provider/toast';
@@ -140,54 +141,67 @@ export const ConnectPage = () => {
           ) : (
             client.clientName
           )}{' '}
-          is asking to use your Bookplate library. It will be able to:
+          is asking to use your Bookplate library.
         </p>
-        <ul className={styles.bullets}>
-          <li>Search your library and read book and series details</li>
-          {showWrite && (
-            <li>
-              Edit metadata, run validation, upload and replace books, and act on recommendations
-            </li>
-          )}
-        </ul>
+        <CardDivider />
         <Switch
           name="read-only"
           label="Read only"
-          description="Let it look, but not change anything."
           layout="horizontal"
           checked={readOnly}
           onChange={setReadOnly}
         />
-        <div className={styles.actions}>
-          <Button
-            type="default"
-            radius="card"
-            loading={busy === 'deny'}
-            disabled={busy !== null}
-            onClick={() => void decide(false)}
-          >
-            Deny
-          </Button>
-          <Button
-            type="primary"
-            radius="card"
-            loading={busy === 'approve'}
-            disabled={busy !== null}
-            onClick={() => void decide(true)}
-          >
-            Approve
-          </Button>
-        </div>
+        <CardDivider />
+        <ul className={styles.details}>
+          <li className={styles.detail}>
+            <CheckIcon width={14} height={14} className={styles.check} aria-hidden />
+            <span>Search your library and read book and series details</span>
+          </li>
+          {showWrite && (
+            <li className={styles.detail}>
+              <CheckIcon width={14} height={14} className={styles.check} aria-hidden />
+              <span>
+                Edit metadata, run validation, upload and replace books, and act on recommendations
+              </span>
+            </li>
+          )}
+        </ul>
       </div>
     );
   }
+
+  // Approve and Deny live in the card footer, and only once there is
+  // something to decide on — the invalid and admin cards have no actions.
+  const footer =
+    request !== null && !isAdmin && !loading && client !== null ? (
+      <>
+        <Button
+          type="default"
+          radius="card"
+          loading={busy === 'deny'}
+          disabled={busy !== null}
+          onClick={() => void decide(false)}
+        >
+          Deny
+        </Button>
+        <Button
+          type="primary"
+          radius="card"
+          loading={busy === 'approve'}
+          disabled={busy !== null}
+          onClick={() => void decide(true)}
+        >
+          Approve
+        </Button>
+      </>
+    ) : undefined;
 
   return (
     <Page type="minimal">
       <div className={styles.root}>
         <BrandLockup />
         <div className={styles.stack}>
-          <Card>
+          <Card footer={footer}>
             <div className={styles.content}>{body}</div>
           </Card>
         </div>

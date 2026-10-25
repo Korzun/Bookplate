@@ -43,18 +43,25 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     color: theme.color.text.muted,
     fontSize: theme.fontSize.sm,
   },
-  bullets: {
+  details: {
+    listStyle: 'none',
     margin: 0,
-    paddingLeft: theme.space.lg,
+    padding: 0,
     color: theme.color.text.primary,
     fontSize: theme.fontSize.sm,
     display: 'flex',
     flexDirection: 'column',
     gap: theme.space.xs,
   },
-  actions: {
+  detail: {
     display: 'flex',
-    gap: theme.space.md,
-    '& > *': { flex: 1 },
+    alignItems: 'flex-start',
+    gap: theme.space.sm,
+  },
+  check: {
+    flexShrink: 0,
+    color: theme.color.text.faint,
+    // Optically centre the glyph on the first line of text beside it.
+    marginTop: '0.2em',
   },
 }));

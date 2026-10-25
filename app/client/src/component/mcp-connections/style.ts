@@ -8,10 +8,32 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
-  lead: {
-    margin: 0,
-    color: theme.color.text.description,
-    fontSize: theme.fontSize.sm,
+  // The clients modal: the shared modal recipe, as every other modal uses it.
+  modal: {
+    ...theme.recipe.modal.dialog,
+  },
+  dialog: {
+    display: 'flex',
+    flexDirection: 'column',
+    maxHeight: 'calc(100dvh - 150px)',
+    backgroundColor: theme.color.bg.card,
+  },
+  header: {
+    ...theme.recipe.modal.header,
+    flexShrink: 0,
+  },
+  body: {
+    flex: '1 1 auto',
+    minHeight: 0,
+    overflowY: 'auto',
+    paddingLeft: theme.space.xxl,
+    paddingRight: theme.space.xxl,
+    paddingBottom: theme.space.xxxxl,
+    color: theme.color.text.secondary,
+  },
+  footer: {
+    ...theme.recipe.modal.footer,
+    flexShrink: 0,
   },
   hint: {
     margin: 0,
@@ -24,7 +46,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     padding: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.space.sm,
+    gap: theme.space.md,
   },
   row: {
     display: 'flex',

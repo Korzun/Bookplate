@@ -1,7 +1,7 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
 import { useCallback, useState } from 'react';
 
-import { Card, Tag } from '~/component';
+import { Card } from '~/component';
 import { UrlRow } from '~/component/connection-urls';
 import { Button, ConfirmModal } from '~/control';
 import { type FragmentType, useFragment } from '~/gql';
@@ -13,6 +13,7 @@ import {
 import { UserPageDocument } from '~/page/settings';
 import { useToast } from '~/provider/toast';
 
+import { McpClientsModal } from './clients-modal';
 import { useStyle } from './style';
 
 export type McpConnectionsProps = {
@@ -23,17 +24,15 @@ export type McpConnectionsProps = {
   viewer: FragmentType<typeof McpConnectionsFragment> | undefined;
 };
 
-const formatDate = (iso: string): string => new Date(iso).toLocaleDateString();
-
 /**
  * The "AI assistants" settings card: the URL to paste into an assistant as
- * a custom MCP connector, and every assistant this account has approved,
- * each with a Disconnect.
+ * a custom MCP connector, and a "clients" link in the header that opens the
+ * list of every assistant this account has approved, each with a Disconnect.
  *
  * Disconnect is immediate on the server (the grant and its tokens are
  * deleted), so the row is dropped locally the moment the mutation resolves
  * and `UserPageDocument` is refetched to make the cache agree. `removed` is
- * the one piece of local state and holds only ids whose revoke succeeded in
+ * the one piece of list state and holds only ids whose revoke succeeded in
  * this mount — it cannot go stale against a later prop, because a refetched
  * list never contains them either.
  */
@@ -45,9 +44,12 @@ export const McpConnections = ({ viewer: viewerRef }: McpConnectionsProps) => {
   const connections = useFragment(McpConnectionFragment, viewer?.mcpConnections ?? []);
   const [revoke] = useMutation(ViewerRevokeMcpConnectionDocument);
 
+  const [listOpen, setListOpen] = useState(false);
   const [pending, setPending] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [removed, setRemoved] = useState<ReadonlySet<string>>(() => new Set());
+
+  const closeList = useCallback(() => setListOpen(false), []);
 
   const handleConfirm = useCallback(async () => {
     if (pending === null) return;
@@ -76,59 +78,24 @@ export const McpConnections = ({ viewer: viewerRef }: McpConnectionsProps) => {
 
   return (
     <>
-      <Card title="AI assistants">
+      <Card
+        title="AI assistants"
+        headerAction={
+          <Button type="link" onClick={() => setListOpen(true)}>
+            clients
+          </Button>
+        }
+      >
         <div className={style.stack}>
-          <p className={style.lead}>
-            Connect Claude or another MCP assistant to search, fix and add books in your library.
-          </p>
           <UrlRow url={viewer.mcpUrl} />
-          {visible.length === 0 ? (
-            <p className={style.hint}>No assistants connected yet.</p>
-          ) : (
-            <ul className={style.list}>
-              {visible.map((connection) => {
-                const write = connection.scopes.includes('library:write');
-                return (
-                  <li key={connection.id} className={style.row}>
-                    <div className={style.identity}>
-                      <span className={style.nameLine}>
-                        {connection.clientUri !== null ? (
-                          <a
-                            className={style.name}
-                            href={connection.clientUri}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {connection.clientName}
-                          </a>
-                        ) : (
-                          <span className={style.name}>{connection.clientName}</span>
-                        )}
-                        <Tag size="sm">{write ? 'Read & write' : 'Read only'}</Tag>
-                      </span>
-                      <span className={style.meta}>
-                        {`Connected ${formatDate(connection.createdAt)} · ${
-                          connection.lastUsedAt === null
-                            ? 'Never used'
-                            : `Last used ${formatDate(connection.lastUsedAt)}`
-                        }`}
-                      </span>
-                    </div>
-                    <Button
-                      type="link"
-                      danger
-                      ariaLabel={`Disconnect ${connection.clientName}`}
-                      onClick={() => setPending({ id: connection.id, name: connection.clientName })}
-                    >
-                      Disconnect
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
         </div>
       </Card>
+      <McpClientsModal
+        isOpen={listOpen}
+        clients={visible}
+        onClose={closeList}
+        onDisconnect={setPending}
+      />
       <ConfirmModal
         isOpen={pending !== null}
         title={pending === null ? '' : `Disconnect ${pending.name}?`}

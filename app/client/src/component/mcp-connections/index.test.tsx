@@ -85,13 +85,25 @@ describe('McpConnections', () => {
     expect(screen.queryByText('AI assistants')).not.toBeInTheDocument();
   });
 
-  it('shows the MCP URL and the empty state when nothing is connected', () => {
+  it('shows only the MCP URL on the card; the clients live behind the header link', async () => {
+    const user = userEvent.setup();
     renderWithApollo(<McpConnections viewer={viewer({})} />);
     expect(screen.getByText('https://books.example/mcp')).toBeInTheDocument();
-    expect(screen.getByText('No assistants connected yet.')).toBeInTheDocument();
+    expect(screen.queryByText(/Connect Claude or another/)).not.toBeInTheDocument();
+    // The list is a closed <dialog> until the link is clicked.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'clients' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Connected clients')).toBeInTheDocument();
+    expect(within(dialog).getByText('No assistants connected yet.')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('lists each connection with its access level and dates', () => {
+  it('lists each connection with its access level and dates', async () => {
+    const user = userEvent.setup();
     renderWithApollo(
       <McpConnections
         viewer={viewer({
@@ -108,6 +120,7 @@ describe('McpConnections', () => {
         })}
       />
     );
+    await user.click(screen.getByRole('button', { name: 'clients' }));
     const claude = screen.getByRole('link', { name: 'Claude' });
     expect(claude).toHaveAttribute('href', 'https://claude.ai');
     expect(screen.getByText('Claude Code')).toBeInTheDocument();
@@ -116,7 +129,7 @@ describe('McpConnections', () => {
     expect(screen.getByText('Read only')).toBeInTheDocument();
     expect(screen.getAllByText(/Never used/)).toHaveLength(1);
     expect(screen.getAllByText(/Last used/)).toHaveLength(1);
-    expect(screen.getAllByText(/^Connected /)).toHaveLength(2);
+    expect(screen.getAllByText(/^Connected \d/)).toHaveLength(2);
   });
 
   it('disconnects after confirmation and drops the row', async () => {
@@ -131,10 +144,11 @@ describe('McpConnections', () => {
       { mocks: [revokeMock('g1', called)] }
     );
 
+    await user.click(screen.getByRole('button', { name: 'clients' }));
     await user.click(screen.getByRole('button', { name: 'Disconnect Claude' }));
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Disconnect Claude?')).toBeInTheDocument();
-    await user.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+    const confirm = screen.getByText('Disconnect Claude?').closest('dialog');
+    expect(confirm).not.toBeNull();
+    await user.click(within(confirm as HTMLElement).getByRole('button', { name: 'Disconnect' }));
 
     await waitFor(() => expect(called).toHaveBeenCalledTimes(1));
     await waitFor(() =>
@@ -160,9 +174,13 @@ describe('McpConnections', () => {
         ],
       }
     );
+    await user.click(screen.getByRole('button', { name: 'clients' }));
     await user.click(screen.getByRole('button', { name: 'Disconnect Claude' }));
     await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Disconnect' })
+      within(screen.getByText('Disconnect Claude?').closest('dialog') as HTMLElement).getByRole(
+        'button',
+        { name: 'Disconnect' }
+      )
     );
     expect(await screen.findByText('Could not disconnect that assistant')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disconnect Claude' })).toBeInTheDocument();
