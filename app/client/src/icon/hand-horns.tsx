@@ -1,7 +1,7 @@
 import { IconProps, defaultStrokeIconProps } from './props';
 
-// Hugeicons "hand-metal" (stroke rounded), MIT — https://hugeicons.com/icon/hand-metal
-// The five rating icons all come from this set so they read as one family.
+// Adapted from https://tabler.io/icons?icon=hand-love-you (MIT): palm shortened by one unit and shifted .25 right
+// so the ink box matches the other four rating icons. Part of the five-icon rating family.
 export const HandHornsIcon = (props: IconProps) => {
   const {
     'aria-hidden': ariaHidden,
@@ -34,11 +34,10 @@ export const HandHornsIcon = (props: IconProps) => {
       width={width}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path d="M3.5 11V5.25C3.5 4.2835 4.2835 3.5 5.25 3.5C6.2165 3.5 7 4.2835 7 5.25V11" />
-      <path d="M7 12.5V9.75C7 8.7835 7.7835 8 8.75 8C9.7165 8 10.5 8.7835 10.5 9.75V12.5" />
-      <path d="M10.5 12.5V9.75C10.5 8.7835 11.2835 8 12.25 8C13.2165 8 14 8.7835 14 9.75V12.5" />
-      <path d="M17.5 15V3.75C17.5 2.7835 16.7165 2 15.75 2C14.7835 2 14 2.7835 14 3.75V10" />
-      <path d="M3.5 8V13.5C3.5 14.8936 3.5 15.5904 3.5989 16.1725C4.0972 19.1053 6.39469 21.4028 9.32746 21.9011C9.90956 22 10.6231 22 12.0503 22C13.384 22 14.0509 22 14.595 21.9138C17.5903 21.4394 19.9394 19.0903 20.4138 16.095C20.5 15.5509 20.5 14.9006 20.5 13.6V12.5C20.5 11.1193 19.3807 10 18 10" />
+      <path d="M8.25 13v-8.5a1.5 1.5 0 0 1 3 0v7.5" />
+      <path d="M11.25 11.5v-1a1.5 1.5 0 0 1 3 0v1.5" />
+      <path d="M14.25 10.5a1.5 1.5 0 0 1 3 0v1.5" />
+      <path d="M17.25 12v-6.5a1.5 1.5 0 0 1 3 0v9.5a6 6 0 0 1 -6 6h-2h.21a6 6 0 0 1 -5.01 -2.7a69.74 69.74 0 0 1 -.2 -.3c-.31 -.48 -1.41 -2.39 -3.29 -5.73a1.5 1.5 0 0 1 .54 -2.02a1.87 1.87 0 0 1 2.28 .28l1.47 1.47" />
     </svg>
   );
 };

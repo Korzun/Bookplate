@@ -389,18 +389,22 @@ the stroke-icon defaults:
 
 | File | Source |
 |------|--------|
-| `thumb-down.tsx` | Hugeicons `thumbs-down` (stroke rounded) |
-| `thumb-up.tsx` | Hugeicons `thumbs-up` |
-| `hand-ok.tsx` | Hugeicons `ok-finger` |
-| `hands-clap.tsx` | Hugeicons `clapping-02` |
-| `hand-horns.tsx` | Hugeicons `hand-metal` |
+| `thumb-down.tsx` | Drawn for this project: the thumb-up rotated 180° (Tabler's own thumb-down relationship) |
+| `thumb-up.tsx` | Drawn for this project in Tabler's hand construction: side-on fist, four knuckle curls, thumb up, tilted 20° |
+| `hand-ok.tsx` | Drawn for this project: Tabler `hand-three-fingers` construction with index and thumb closed into a ring |
+| `hands-clap.tsx` | Drawn for this project: a `hand-stop`-construction front hand tilted 20° with a mirrored back hand clipped behind it |
+| `hand-horns.tsx` | Tabler `hand-love-you` (MIT), palm shortened 1 unit to match the others' ink box |
 
-All five come from one set (Hugeicons free, MIT, `@hugeicons/core-free-icons`)
-so they read as a family; the first build's Tabler thumbs plus two
-hand-drawn icons did not (the OK ring and the clap were illegible, the
-thumbs sat off-centre). Each file carries the source comment line the other
-icons carry and is drawn at the app's stroke width of 2. Every icon must
-read correctly at 20px, the size the segments use.
+The five are one family by construction, not by source: every finger is a
+3-unit tube with an r=1.5 round tip at a 3-unit pitch, palms close with an
+r=6 arc, there are no cuffs or wrists, no nails or wrinkles, and every
+stroke is the app's width of 2. Their stroked ink boxes are 18.0–18.8 wide
+by 19.6–20.0 tall, all centred on x=12 (measured by rasterising). Two
+earlier sets were rejected: Tabler thumbs plus hand-drawn OK and clap (the
+ring and clap were illegible, the thumbs off-centre), then five Hugeicons
+icons (legible, but mitten thumbs with cuffs beside fingered hands without).
+Each file carries the source comment line the other icons carry. Every icon
+must read correctly at 20px, the size the segments use.
 
 **Control: `~/control/rating-picker`.** A segmented control of five icon
 buttons, in `control/segmented-control`'s visual language.
