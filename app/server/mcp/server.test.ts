@@ -129,6 +129,20 @@ const READ_TOOLS = [
   'list_book_requests',
 ];
 
+describe('initialize', () => {
+  it('identifies the server with the library name, origin and the web app’s icons', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const info = mcp.client.getServerVersion();
+    expect(info?.name).toBe('bookplate');
+    expect(info?.title).toBe('Test Library');
+    expect(info?.websiteUrl).toBe('https://books.example');
+    expect(info?.icons?.map((i) => i.src)).toEqual([
+      'https://books.example/apple-touch-icon-180.png',
+      'https://books.example/favicon.svg',
+    ]);
+  });
+});
+
 describe('tools/list', () => {
   it('names every read tool, each marked read-only', async () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));

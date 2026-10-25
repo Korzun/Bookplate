@@ -13,6 +13,8 @@ import type { AppConfig } from '../../types';
  * services directly because no GraphQL field can carry bytes.
  */
 export type ToolDeps = {
+  /** The MCP origin (`resolveMcpBaseUrl`), for the absolute icon and website URLs in server info. */
+  baseUrl: URL;
   context: Context;
   viewer: Viewer & { userId: string };
   scopes: string[];

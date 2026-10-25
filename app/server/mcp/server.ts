@@ -61,11 +61,28 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
   registerReplaceBookFile(server, deps);
 }
 
+/**
+ * What a client shows for this server once connected: the library's name as
+ * the title, the install's origin as the website, and the web app's own icons.
+ * Same assets `index.html` links, served by `express.static` in production and
+ * vite in dev, so they are reachable at the same origin as `/mcp`.
+ */
+export function serverInfo(deps: Pick<ToolDeps, 'baseUrl' | 'config'>) {
+  const at = (p: string) => new URL(p, deps.baseUrl).href;
+  return {
+    name: 'bookplate',
+    title: deps.config.libraryName,
+    version: APP_VERSION,
+    websiteUrl: deps.baseUrl.origin,
+    icons: [
+      { src: at('/apple-touch-icon-180.png'), mimeType: 'image/png', sizes: ['180x180'] },
+      { src: at('/favicon.svg'), mimeType: 'image/svg+xml', sizes: ['any'] },
+    ],
+  };
+}
+
 export function buildMcpServer(deps: ToolDeps): McpServer {
-  const server = new McpServer(
-    { name: 'bookplate', version: APP_VERSION },
-    { instructions: INSTRUCTIONS }
-  );
+  const server = new McpServer(serverInfo(deps), { instructions: INSTRUCTIONS });
   registerReadTools(server, deps);
   registerWriteTools(server, deps);
   return server;

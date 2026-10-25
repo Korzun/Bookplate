@@ -32,6 +32,7 @@ export const createMcpRequestHandler =
     if (typeof grantId === 'string') await touchGrant(deps.prisma, grantId);
 
     const server = buildMcpServer({
+      baseUrl: deps.baseUrl,
       context: createContextForViewer(deps.contextDeps, viewer),
       viewer: { ...viewer, userId: viewer.userId },
       scopes: auth.scopes,
