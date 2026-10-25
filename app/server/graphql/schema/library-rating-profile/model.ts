@@ -21,7 +21,7 @@ export const model = builder.objectRef<Owner>('LibraryRatingProfile').implement(
     favourites: t.prismaField({
       type: [book],
       description:
-        'Books whose overall rating is at least minOverall, most recently rated first. Default is the Awesome shelf.',
+        'Books whose overall rating is at least minOverall, most recently rated first. Default is the Love shelf.',
       args: {
         minOverall: t.arg.int({ defaultValue: 5, required: false }),
         first: t.arg.int({ defaultValue: 25, required: false }),

@@ -42,7 +42,7 @@ describe('BookRating', () => {
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
     const overall = screen.getByRole('radiogroup', { name: 'Overall rating for Dune' });
-    for (const name of ['Bad', 'Okay', 'Nice', 'Great', 'Awesome']) {
+    for (const name of ['Bad', 'Okay', 'Nice', 'Great', 'Love']) {
       const matches = screen.getAllByText(name);
       expect(matches).toHaveLength(1);
       expect(overall).toContainElement(matches[0]);
@@ -69,7 +69,7 @@ describe('BookRating', () => {
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={onRate} />
     );
     const group = screen.getByRole('radiogroup', { name: 'Story rating for Dune' });
-    await userEvent.click(within(group).getByRole('radio', { name: 'Awesome' }));
+    await userEvent.click(within(group).getByRole('radio', { name: 'Love' }));
     expect(onRate).toHaveBeenCalledWith('story', 5);
   });
 

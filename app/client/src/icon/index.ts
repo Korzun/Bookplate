@@ -10,7 +10,7 @@ export { ChevronIcon } from './chevron';
 export { CircleXIcon } from './circle-x';
 export { ClockIcon } from './clock';
 export { DeviceIcon } from './device';
-export { HandHornsIcon } from './hand-horns';
+export { HandLoveYouIcon } from './hand-love-you';
 export { HandOkIcon } from './hand-ok';
 export { HandsClapIcon } from './hands-clap';
 export { HomeIcon } from './home';

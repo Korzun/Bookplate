@@ -231,7 +231,7 @@ describe('read tools', () => {
       ideas: null,
     });
     expect(textOf(result)).toContain(
-      'Rating: Awesome (5) · Story: unrated · Characters: Awesome (5) · Writing: Nice (3) · Ideas: unrated'
+      'Rating: Love (5) · Story: unrated · Characters: Love (5) · Writing: Nice (3) · Ideas: unrated'
     );
   });
 
@@ -595,7 +595,7 @@ describe('write tools', () => {
     expect(rating.overall).toBe(3);
     expect(rating.story).toBe(5);
     expect(textOf(result)).toMatch(/^Rated\./);
-    expect(textOf(result)).toContain('Awesome (5)');
+    expect(textOf(result)).toContain('Love (5)');
   });
 
   it('rate_book clears with null and with 0', async () => {

@@ -11,7 +11,7 @@ export const RATING_NAMES: Record<RatingValue, string> = {
   2: 'Okay',
   3: 'Nice',
   4: 'Great',
-  5: 'Awesome',
+  5: 'Love',
 };
 
 export const RATING_COLUMNS: Record<

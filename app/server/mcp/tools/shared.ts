@@ -19,7 +19,7 @@ export type RatingGql = {
 
 const ratingValue = z.number().nullable();
 export const ratingSchema = z.object({
-  overall: ratingValue.describe('1 Bad, 2 Okay, 3 Nice, 4 Great, 5 Awesome; null if unrated'),
+  overall: ratingValue.describe('1 Bad, 2 Okay, 3 Nice, 4 Great, 5 Love; null if unrated'),
   story: ratingValue,
   characters: ratingValue,
   writing: ratingValue,

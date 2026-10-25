@@ -7,14 +7,14 @@ the requester's.
 ## Intent
 
 Let a reader record how they felt about a book: one overall rating plus four
-sub-ratings that explain it, each a whole number from 1 (bad) to 5 (awesome),
+sub-ratings that explain it, each a whole number from 1 (bad) to 5 (love),
 each shown as a named hand-gesture icon so a value is recognisable at a glance
 without counting symbols. Rating happens in place on the book page, with no
 trip through the metadata edit form, and the same ratings are readable and
 writable through the MCP server so an assistant can answer "what did I think
 of X?", record a rating the reader dictates, and, the purpose the requester
 settled on, use the ratings to GIVE AND GET RECOMMENDATIONS: pick the next
-book from the shelf, suggest new ones like the Awesome ones, and help the
+book from the shelf, suggest new ones like the Love ones, and help the
 reader tell a friend why they'd like a book.
 
 The request (requester's words, across the conversation): "add the ability to
@@ -23,12 +23,12 @@ rate books … a Total rating, and some small number of sub ratings. I often
 if the story is flat … display the rating and allow editing of it without
 having to jump into editing the whole book's metadata … supported in both the
 UI and the MCP … a 6-point scale, and not allow half-steps (0:null, 1:bad,
-2:okay, 3:nice, 4:great, 5:awesome) these should be accompanied by an icon to
+2:okay, 3:nice, 4:great, 5:love) these should be accompanied by an icon to
 make the number easily to visually identify. I like this design from Dribbble
 https://dribbble.com/shots/27657779-Rating-icons … I want this rating system
 to be useful to the user and help them get/give recommendations … let's go
 forward with Story, Characters, Writing, and Ideas. Let's also include those
-two MCP additions" (the taste profile: per-field means and the Awesome shelf,
+two MCP additions" (the taste profile: per-field means and the Love shelf,
 below).
 
 ## The scale (requester's)
@@ -40,7 +40,7 @@ below).
 | 2 | Okay | thumbs up |
 | 3 | Nice | OK sign |
 | 4 | Great | clapping hands |
-| 5 | Awesome | rock horns |
+| 5 | Love | ASL "I love you" (index, little finger and thumb extended) |
 
 Values are integers only. "Unrated" is stored and transported as null, never
 as 0; 0 is accepted on the MCP input as a synonym for "clear" (below) because
@@ -139,7 +139,7 @@ conversation record): each names a SOURCE OF ENJOYMENT the reader alone can
 report. Mood, pace and plot-versus-character-driven are attributes of the
 book that an assistant can infer from subjects, description and its own
 knowledge; "couldn't put it down" is already in reading progress. The
-pattern across the Awesome shelf ("Characters always 5, Writing anywhere,
+pattern across the Love shelf ("Characters always 5, Writing anywhere,
 Story merely Nice") is a taste profile the assistant can match against
 unread books, and multi-criteria recommender research finds a few chosen
 dimensions beat many, with the residual after the overall still improving
@@ -194,7 +194,7 @@ rated_at          REAL    NULL
 No conversion layer: the stored integer IS the value the API carries.
 `rated_at` (epoch ms, the `addedAt`/`mtime` convention) is set on every
 successful `bookRate` write, including one that clears, and is what orders
-the taste profile's favourites so "recent Awesomes" come first. Author's
+the taste profile's favourites so "recent Loves" come first. Author's
 call: one column and one assignment, and without it the profile has no
 notion of recency.
 
@@ -216,7 +216,7 @@ migration uses. DDL migration `20261026000000_add_book_ratings` is a `SELECT
 validation, used by the GraphQL mutation and the MCP tool descriptions:
 
 - `RATING_FIELDS = ['overall', 'story', 'characters', 'writing', 'ideas'] as const`
-- `RATING_NAMES = { 1: 'Bad', 2: 'Okay', 3: 'Nice', 4: 'Great', 5: 'Awesome' } as const`
+- `RATING_NAMES = { 1: 'Bad', 2: 'Okay', 3: 'Nice', 4: 'Great', 5: 'Love' } as const`
 - `isRatingValue(n: unknown): n is 1 | 2 | 3 | 4 | 5`
 - `formatRating(value: number | null): string` for MCP text: `4` renders as
   `Great (4)`, null as `unrated`.
@@ -239,7 +239,7 @@ type BookRating {
 
 type Book {
   …
-  "The reader's ratings, each 1 (bad) to 5 (awesome) or null when unrated. Never derived from the EPUB."
+  "The reader's ratings, each 1 (bad) to 5 (love) or null when unrated. Never derived from the EPUB."
   rating: BookRating!
 }
 ```
@@ -266,7 +266,7 @@ input BookRateInput {
 type BookRatePayload { book: Book! }
 union BookRateResult = BookRatePayload | InvalidInputError
 type Mutation {
-  "Sets any of a book’s five ratings. An omitted field is left as it is; an explicit null clears it. Values are integers 1 (bad) to 5 (awesome). Never rewrites the EPUB, never changes the id, and is not gated on validation. Resolves to null when the book does not exist for the resolved owner."
+  "Sets any of a book’s five ratings. An omitted field is left as it is; an explicit null clears it. Values are integers 1 (bad) to 5 (love). Never rewrites the EPUB, never changes the id, and is not gated on validation. Resolves to null when the book does not exist for the resolved owner."
   bookRate(input: BookRateInput!): BookRateResult
 }
 ```
@@ -304,7 +304,7 @@ type LibraryRatingProfile {
   ratedCount: Int!
   "One entry per RatingField, in enum order."
   fields: [RatingFieldSummary!]!
-  "Books whose overall rating is at least minOverall, most recently rated first. Default is the Awesome shelf."
+  "Books whose overall rating is at least minOverall, most recently rated first. Default is the Love shelf."
   favourites(minOverall: Int = 5, first: Int = 25): [Book!]!
 }
 
@@ -331,7 +331,7 @@ is testable without GraphQL.
 - `get_book`: `bookDetailSchema` and the detail selection gain
   `rating: { overall, story, characters, writing, ideas }` (nullable integers).
   `describeBookDetail` adds one line after the series line:
-  `Rating: Great (4) · Story: Awesome (5) · Characters: Nice (3) · Writing: Okay (2) · Ideas: unrated`,
+  `Rating: Great (4) · Story: Love (5) · Characters: Nice (3) · Writing: Okay (2) · Ideas: unrated`,
   or `Rating: not rated` when all five are null.
 - `search_library`'s `BOOK_SUMMARY_FIELDS` gains `rating { overall }` and the
   summary schema gains `overallRating: number | null`, so an assistant can
@@ -359,7 +359,7 @@ is testable without GraphQL.
 - New write tool `rate_book`:
   - input: `bookId: string`, and `overall`, `story`, `characters`, `writing`,
     `ideas`, each `z.number().int().min(0).max(5).nullable().optional()`
-    described as "1 bad, 2 okay, 3 nice, 4 great, 5 awesome. Omit to leave
+    described as "1 bad, 2 okay, 3 nice, 4 great, 5 love. Omit to leave
     unchanged; 0 or null clears." The tool maps 0 to null before calling the
     mutation, so the GraphQL contract stays "null clears" and 0 is an
     MCP-only courtesy.
@@ -390,10 +390,10 @@ the stroke-icon defaults:
 | File | Source |
 |------|--------|
 | `thumb-down.tsx` | Drawn for this project: the thumb-up rotated 180° (Tabler's own thumb-down relationship) |
-| `thumb-up.tsx` | Drawn for this project in Tabler's tube construction: side-on fist with four knuckle curls, a 6-unit thumb leaning 15° back, the hand tilted 8° |
+| `thumb-up.tsx` | Drawn for this project in Tabler's tube construction: side-on fist with four knuckle curls, a 4.5-unit thumb leaning 5° back, the hand tilted 8° |
 | `hand-ok.tsx` | Hugeicons `ok-finger` (`@hugeicons/core-free-icons` 4.3.5, MIT) at stroke 2, its open wrist closed with a palm heel |
 | `hands-clap.tsx` | Hugeicons `clapping-02` (MIT) at stroke 2: front hand with four fingers and its thumb, back hand showing its thumb and two fingers |
-| `hand-horns.tsx` | Drawn for this project in Tabler's tube construction: index and little finger up, middle and ring folded to stubs, thumb folded across below them |
+| `hand-love-you.tsx` | Drawn for this project in Tabler's tube construction: ASL "I love you", index and little finger up, middle and ring folded to stubs, thumb extended from the lower palm |
 
 The five are one family by construction: every finger is a 3-unit tube
 (Hugeicons' 2.8) with a round tip, every thumb is a visible tube of its own
@@ -425,7 +425,7 @@ buttons, in `control/segmented-control`'s visual language.
   (the only way to clear by pointer, and it needs no extra button).
 - Keyboard: Arrow Right/Up moves to the next value, Left/Down to the
   previous (no wrap, unlike the segmented control, because wrapping from
-  Awesome to Bad would be a surprising jump); Home and End go to 1 and 5;
+  Love to Bad would be a surprising jump); Home and End go to 1 and 5;
   digits 1–5 select directly; Backspace or Delete clears; Space or Enter on
   the focused radio toggles it (select, or clear if already selected).
 - Rendering: five equal-width segments on a rail; the checked
