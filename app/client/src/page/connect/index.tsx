@@ -55,12 +55,15 @@ const wantsWrite = (scope: string | null): boolean =>
  * One line per capability, so the reader can see exactly what the assistant
  * gets. Every line is ALWAYS rendered: with Read only on, the write lines
  * stay in place but are marked as not granted, so the card never changes
- * height as the switch flips.
+ * height as the switch flips. The read line covers `get_taste_profile` and the
+ * rating carried on every book read; the write line covers `rate_book`.
  */
 const PERMISSIONS: ReadonlyArray<{ text: string; write: boolean }> = [
   { text: 'Search your library', write: false },
   { text: 'Read book and series details', write: false },
+  { text: 'Read your ratings and taste profile', write: false },
   { text: 'Edit book metadata', write: true },
+  { text: 'Rate books', write: true },
   { text: 'Run validation', write: true },
   { text: 'Upload and replace books', write: true },
   { text: 'Act on metadata recommendations', write: true },
