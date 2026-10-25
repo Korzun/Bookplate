@@ -435,6 +435,7 @@ const WRITE_TOOLS = [
   'regenerate_chapters',
   'delete_book',
   'request_book',
+  'rate_book',
 ];
 
 describe('write tools', () => {
@@ -552,6 +553,69 @@ describe('write tools', () => {
     expect(textOf(dup)).toContain('DuplicateBookRequestError');
   });
 
+  it('rate_book sets ratings and returns the detail with names', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const betaId = await findId(mcp, 'Beta Book');
+    const result = await mcp.call('rate_book', { bookId: betaId, overall: 3, story: 5 });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const rating = (result.structuredContent as { rating: Record<string, number | null> }).rating;
+    expect(rating.overall).toBe(3);
+    expect(rating.story).toBe(5);
+    expect(textOf(result)).toMatch(/^Rated\./);
+    expect(textOf(result)).toContain('Awesome (5)');
+  });
+
+  it('rate_book clears with null and with 0', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const cleared = await mcp.call('rate_book', { bookId: alphaId, writing: null });
+    expect(cleared.isError, textOf(cleared)).toBeFalsy();
+    let rating = (cleared.structuredContent as { rating: Record<string, number | null> }).rating;
+    expect(rating.writing).toBeNull();
+    expect(rating.characters).toBe(5);
+    const zeroed = await mcp.call('rate_book', { bookId: alphaId, characters: 0 });
+    expect(zeroed.isError, textOf(zeroed)).toBeFalsy();
+    rating = (zeroed.structuredContent as { rating: Record<string, number | null> }).rating;
+    expect(rating.characters).toBeNull();
+    expect(rating.overall).toBe(5);
+  });
+
+  it('rate_book with only bookId is a no-op that returns the detail', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const result = await mcp.call('rate_book', { bookId: alphaId });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const rating = (result.structuredContent as { rating: Record<string, number | null> }).rating;
+    expect(rating.overall).toBe(5);
+    expect(rating.characters).toBe(5);
+    expect(rating.writing).toBe(3);
+    expect(textOf(result)).toMatch(/^Rated\./);
+  });
+
+  it('rate_book rejects 6 and 2.5 before reaching GraphQL', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    for (const [arg, args] of [
+      ['overall', { overall: 6 }],
+      ['story', { story: 2.5 }],
+    ] as const) {
+      const result = await mcp.call('rate_book', { bookId: alphaId, ...args });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain(arg);
+      expect(textOf(result)).not.toMatch(/not found|unknown tool/i);
+    }
+  });
+
+  it('rate_book refuses another reader’s id with the not-found message', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const bob = await connectMcpClient(app, await mintToken(harness, harness.bobOwner.userId));
+    const bobBookId = await findId(bob, 'Bob Secret');
+    await bob.close();
+    const result = await mcp.call('rate_book', { bookId: bobBookId, overall: 1 });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe('No book with that id in your library');
+  });
+
   it('a read-only connection is refused by every write tool', async () => {
     mcp = await connectMcpClient(
       app,
@@ -564,6 +628,9 @@ describe('write tools', () => {
     const del = await mcp.call('delete_book', { bookId: alphaId });
     expect(del.isError).toBe(true);
     expect(textOf(del)).toBe('This connection is read only');
+    const rate = await mcp.call('rate_book', { bookId: alphaId, overall: 1 });
+    expect(rate.isError).toBe(true);
+    expect(textOf(rate)).toBe('This connection is read only');
   });
 });
 
