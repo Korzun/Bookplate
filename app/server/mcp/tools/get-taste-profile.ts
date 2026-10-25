@@ -53,11 +53,10 @@ export function registerGetTasteProfile(server: McpServer, deps: ToolDeps): void
     {
       title: 'Get your taste profile',
       description:
-        'A factual summary of your ratings: for each rating field (overall, story, characters, ' +
-        'writing, ideas) how many books you rated, the mean, and the 1-5 distribution, plus your ' +
-        'favourite books (overall rating at or above minOverall, most recently rated first). ' +
-        'Ratings are 1 Bad, 2 Okay, 3 Nice, 4 Great, 5 Awesome. Use it to ground recommendations ' +
-        'in what you actually rated highly.',
+        'Read before recommending. The means and the distribution show which sources of ' +
+        'enjoyment the reader scores highest; the favourites show, book by book, what carried ' +
+        "the reader's best reads. Combine with search_library and get_book for subjects and " +
+        'descriptions.',
       inputSchema: {
         minOverall: z
           .number()
@@ -103,9 +102,10 @@ export function registerGetTasteProfile(server: McpServer, deps: ToolDeps): void
           ...summarizeBook(b),
           rating: b.rating,
         }));
+        // The text rounds the mean to one decimal; structuredContent keeps the exact value.
         const lines = profile.fields.map(
           (f) =>
-            `${titleCase(f.field)}: ${f.count} rated, mean ${f.mean ?? '—'}, 1/2/3/4/5 = ${f.distribution.join('/')}`
+            `${titleCase(f.field)}: ${f.count} rated, mean ${f.mean === null ? '—' : f.mean.toFixed(1)}, 1/2/3/4/5 = ${f.distribution.join('/')}`
         );
         lines.push('', `Favourites (overall ≥ ${args.minOverall}):`);
         if (favourites.length === 0) lines.push('  none');
