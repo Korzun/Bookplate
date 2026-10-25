@@ -998,10 +998,16 @@ describe('legacy id-recompute and page-count migrations', () => {
 
   it('data_v24: adds the six nullable rating columns to books and is idempotent', async () => {
     await runMigrations(prisma, booksRoot);
-    const columns = await prisma.$queryRawUnsafe<Array<{ name: string; notnull: number | bigint; type: string }>>(
-      `PRAGMA table_info("books")`
-    );
-    for (const name of ['rating_overall', 'rating_story', 'rating_characters', 'rating_writing', 'rating_ideas']) {
+    const columns = await prisma.$queryRawUnsafe<
+      Array<{ name: string; notnull: number | bigint; type: string }>
+    >(`PRAGMA table_info("books")`);
+    for (const name of [
+      'rating_overall',
+      'rating_story',
+      'rating_characters',
+      'rating_writing',
+      'rating_ideas',
+    ]) {
       const col = columns.find((c) => c.name === name);
       expect(col, name).toBeDefined();
       expect(Number(col!.notnull)).toBe(0);
@@ -1011,7 +1017,14 @@ describe('legacy id-recompute and page-count migrations', () => {
     expect(ratedAt).toBeDefined();
     expect(ratedAt!.type).toBe('REAL');
     await prisma.book.create({
-      data: { userId: 'usr_test000000000000000', id: 'bk-rating', title: 'T', size: 1, mtime: 0, addedAt: 0 },
+      data: {
+        userId: 'usr_test000000000000000',
+        id: 'bk-rating',
+        title: 'T',
+        size: 1,
+        mtime: 0,
+        addedAt: 0,
+      },
     });
     const row = await prisma.book.findUniqueOrThrow({
       where: { userId_id: { userId: 'usr_test000000000000000', id: 'bk-rating' } },
