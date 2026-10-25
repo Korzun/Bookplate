@@ -206,6 +206,23 @@ describe('RatingPicker', () => {
     expect(lenses()).toHaveLength(0);
   });
 
+  it('paints its own track by default and none on the row surface', () => {
+    const css = () =>
+      Array.from(document.querySelectorAll('style'))
+        .map((el) => el.textContent ?? '')
+        .join('\n');
+    const has = (group: HTMLElement, value: string) =>
+      Array.from(group.classList).some((cls) =>
+        new RegExp(`\\.${cls}\\s*\\{[^}]*background-color:\\s*${value}`).test(css())
+      );
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={null} onChange={vi.fn()} />
+    );
+    expect(has(screen.getByRole('radiogroup'), 'transparent')).toBe(false);
+    rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} surface="row" />);
+    expect(has(screen.getByRole('radiogroup'), 'transparent')).toBe(true);
+  });
+
   it('out-of-range value renders with nothing checked', () => {
     expect(() =>
       renderWithProviders(<RatingPicker label="Overall" value={0 as never} />)

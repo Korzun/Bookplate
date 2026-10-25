@@ -15,23 +15,25 @@ const empty: BookRatingValues = {
 };
 
 describe('BookRating', () => {
-  it('labels each row, Overall first, matching the radiogroup order', () => {
+  it('renders one row per field, Overall first, each a label then its radiogroup', () => {
     renderWithProviders(
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
-    const root = screen.getByRole('radiogroup', { name: 'Overall rating for Dune' }).parentElement!;
-    const rows = Array.from(root.children);
-    // Label, picker, label, picker…: ten children in strict alternation.
-    expect(rows).toHaveLength(10);
-    expect(rows.filter((_, i) => i % 2 === 0).map((el) => el.textContent)).toEqual([
+    const firstRow = screen.getByRole('radiogroup', {
+      name: 'Overall rating for Dune',
+    }).parentElement!;
+    const rows = Array.from(firstRow.parentElement!.children);
+    expect(rows).toHaveLength(5);
+    expect(rows.map((row) => row.firstElementChild!.textContent)).toEqual([
       'Overall',
       'Story',
       'Characters',
       'Writing',
       'Ideas',
     ]);
-    for (const [i, el] of rows.entries()) {
-      expect(el.getAttribute('role')).toBe(i % 2 === 0 ? null : 'radiogroup');
+    for (const row of rows) {
+      expect(row.children).toHaveLength(2);
+      expect(row.lastElementChild).toHaveAttribute('role', 'radiogroup');
     }
   });
 
@@ -78,26 +80,30 @@ describe('BookRating', () => {
     for (const radio of radios) expect(radio).toHaveAttribute('aria-disabled', 'true');
   });
 
-  // jsdom does no layout, so this checks the declared rules, not measured
-  // widths: a label column and a picker column, collapsing to one column (label
-  // above picker) at phone width.
-  it('lays the rows out as label and picker columns, one column at phone width', () => {
+  // jsdom does no layout, so this checks the declared rules, not pixels: the
+  // row is the shaded panel (its own background and radius; the picker inside
+  // paints none, `surface="row"`), and it stacks label over picker at phone
+  // width.
+  it('each row is a shaded panel that stacks at phone width; the picker paints no track', () => {
     renderWithProviders(
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
-    const grid = screen.getByRole('radiogroup', { name: 'Story rating for Dune' }).parentElement!;
+    const group = screen.getByRole('radiogroup', { name: 'Story rating for Dune' });
+    const row = group.parentElement!;
     const css = Array.from(document.querySelectorAll('style'))
       .map((el) => el.textContent ?? '')
       .join('\n');
+    const rowRule = new RegExp(`\\.${row.className}\\s*\\{[^}]*`);
+    expect(css.match(rowRule)![0]).toMatch(/background-color:/);
+    expect(css.match(rowRule)![0]).toMatch(/border-radius:/);
     expect(css).toMatch(
       new RegExp(
-        `\\.${grid.className}\\s*\\{[^}]*grid-template-columns:\\s*max-content minmax\\(0, 1fr\\)`
+        `@media \\(max-width: 640px\\)\\s*\\{\\s*\\.${row.className}\\s*\\{[^}]*flex-direction:\\s*column`
       )
     );
-    expect(css).toMatch(
-      new RegExp(
-        `@media \\(max-width: 640px\\)\\s*\\{\\s*\\.${grid.className}\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0, 1fr\\)`
-      )
+    const transparent = Array.from(group.classList).some((cls) =>
+      new RegExp(`\\.${cls}\\s*\\{[^}]*background-color:\\s*transparent`).test(css)
     );
+    expect(transparent).toBe(true);
   });
 });

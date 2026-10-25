@@ -14,8 +14,9 @@ export const useStyle = createUseStyles((theme: Theme) => {
       gridAutoFlow: 'column',
       gridAutoColumns: '1fr',
       padding: 0,
-      backgroundColor: theme.color.bg.track,
       borderRadius: radius,
+      '&$track': { backgroundColor: theme.color.bg.track },
+      '&$row': { backgroundColor: 'transparent' },
       userSelect: 'none',
       '-webkit-user-select': 'none',
       '&:not($readOnly) $segment:hover': { color: theme.color.text.secondary },
@@ -77,5 +78,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
     },
     active: {},
     readOnly: {},
+    track: {},
+    row: {},
   };
 });
