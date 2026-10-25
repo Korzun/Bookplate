@@ -30,7 +30,9 @@ const toRatingValue = (value: number | null): RatingValue | null =>
 /**
  * One row per rating field — the field's name, then a segmented picker — with
  * Overall first and set in the primary text colour, since the sub-ratings
- * explain it rather than add up to it.
+ * explain it rather than add up to it. Only the Overall row names its
+ * segments; the four rows beneath share the same five icons in the same
+ * order, so the names would repeat four times for nothing.
  */
 export const BookRating = ({ rating, bookTitle, readOnly, onRate }: BookRatingProps) => {
   const style = useStyle();
@@ -44,6 +46,7 @@ export const BookRating = ({ rating, bookTitle, readOnly, onRate }: BookRatingPr
           <span className={cx(style.label, { [style.overall]: field === 'overall' })}>{label}</span>
           <RatingPicker
             label={`${label} rating for ${bookTitle}`}
+            showNames={field === 'overall'}
             value={toRatingValue(rating[field])}
             onChange={handler(field)}
           />

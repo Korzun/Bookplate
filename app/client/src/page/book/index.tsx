@@ -813,7 +813,7 @@ export const BookPage = () => {
           </div>
         </div>
       </Card>
-      <Card title="Ratings">
+      <Card title="Rating">
         <BookRating
           rating={book.rating}
           bookTitle={book.title}

@@ -1842,10 +1842,10 @@ describe('BookPage', () => {
 
     // The ratings have a card of their own, between the title card and the
     // Description card, rather than sharing the title card's header row.
-    it('shows the ratings in their own card titled Ratings', async () => {
+    it('shows the ratings in their own card titled Rating', async () => {
       await renderPage([bookMock(), viewerBootstrapMock()], owner);
       const heading = await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
-      const title = screen.getByText('Ratings');
+      const title = screen.getByText('Rating');
       // Card: root > header > titleGroup > title.
       const card = title.parentElement!.parentElement!.parentElement!;
       expect(card.contains(ratingGroup('Overall'))).toBe(true);

@@ -408,7 +408,8 @@ buttons, in `control/segmented-control`'s visual language.
 - Props: `value: 1 | 2 | 3 | 4 | 5 | null`,
   `onChange?: (value: 1 | 2 | 3 | 4 | 5 | null) => void` (absent means
   read-only), `label: string` (accessible name, e.g.
-  "Overall rating for Dune"), `showNames?: boolean` (default on).
+  "Overall rating for Dune"), `showNames?: boolean` (default on; the book page turns it on for the
+  Overall row only).
 - Semantics are a radio group with an optional selection, so the markup is
   `role="radiogroup"` with five `role="radio"` buttons, following
   `control/segmented-control`'s pattern (roving `tabIndex`, `aria-checked`).
@@ -441,7 +442,9 @@ buttons, in `control/segmented-control`'s visual language.
 - Layout: five rows, one per field, Overall first, each `Label   [picker]`
   in a two-column grid (`max-content` label column, the picker filling the
   rest) so every picker starts on the same line. The Overall label is
-  `text.primary` semibold, the sub-rating labels `text.secondary`. At
+  `text.primary` semibold, the sub-rating labels `text.secondary`. Only the
+  Overall row shows the value names under its icons; the four rows beneath
+  use the same icons in the same order, so repeating the names adds noise. At
   phone width the grid collapses to one column: label above its picker,
   picker the full card width. Sub-ratings are always visible; they are the
   point of the feature, and hiding them behind a disclosure would make the
@@ -452,7 +455,7 @@ buttons, in `control/segmented-control`'s visual language.
   and friends use) shows the message.
 
 **Book page (`page/book/index.tsx`).** The block is its own `Card` titled
-"Ratings", placed between the title card and the Description card, so the
+"Rating", placed between the title card and the Description card, so the
 five rows have the card's full width at every size. `readOnly` is `isAdmin`.
 `BookDetailDocument` selects `rating { overall story characters writing ideas }`.
 A new `BookRateDocument` mutation selects `book { id rating { … } }` and
