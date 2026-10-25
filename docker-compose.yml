@@ -17,6 +17,9 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASS: ${ADMIN_PASS:-changeme}
       BOOKS_DIR: /media/books
+      # Optional: `PUBLIC_URL=http://localhost:<client port> make dev` turns on
+      # the MCP server (app/server/mcp/) for a local end-to-end connect flow.
+      PUBLIC_URL: ${PUBLIC_URL:-}
     ports:
       - "${SERVER_PORT:-3000}:3000"
 
