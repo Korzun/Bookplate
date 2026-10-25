@@ -261,10 +261,11 @@ between `ConnectionUrls` and `EmailSetting`. Data comes from a new
 `McpConnectionsFragment on Viewer { mcpEnabled mcpUrl mcpConnections { id
 clientName clientUri logoUri scopes createdAt lastUsedAt } }` composed into
 `UserPageDocument` (the route's one document). Card title "AI assistants".
-Body: a one-line explanation, the MCP URL pill (copy button), then a list of
-connections, each with name (linking to `clientUri` when present), "Connected
-<date> · Last used <date|never>", a scope word ("read only" / "read & write"),
-and a Disconnect link-button that opens the shared `ConfirmModal`. Disconnect
+Body: just the MCP URL pill (copy button). A blue link-button reading "clients"
+in the card header opens a modal ("Connected clients") listing the connections,
+each with name (linking to `clientUri` when present), "Connected <date> · Last
+used <date|never>", a scope tag ("Read only" / "Read & write"), and a
+Disconnect link-button that opens the shared `ConfirmModal`. Disconnect
 runs `viewerRevokeMcpConnection` and refetches `UserPageDocument`. Empty state:
 "No assistants connected yet." When `mcpEnabled` is false (no https
 `public_url`) the reader's card renders nothing at all — a reader cannot change
@@ -276,11 +277,13 @@ the connection URL readers paste into their assistant. It reads a small
 `McpStatus` query of its own, since the admin branch sends no
 `UserPageDocument`.
 
-`page/connect`: a `Page type="minimal"` with `BrandLockup`, a `Card` titled
-"Connect <client name>?" whose body says what the assistant will be able to do
-(bullets derived from the scopes that would be granted), a "Read only" `Switch`
-that drops the write bullets when on, and a Deny (default) and Approve
-(primary) button.
+`page/connect`: a `Page type="minimal"` with `BrandLockup` and a `Card`. Body,
+top to bottom: title "Connect <client name>?" and a one-line subtitle ("<client>
+is asking to use your Bookplate library."), a divider, a "Read only" `Switch`
+(no helper text), a divider, then what the assistant will be able to do as a
+list with small grey check icons (derived from the scopes that would be
+granted; the write line drops when Read only is on). Deny (default) and Approve
+(primary) sit in the card footer.
 Bad or missing query params render a card saying the link is invalid. An admin
 viewer sees "The admin account has no library to connect. Sign in as a reader."
 
