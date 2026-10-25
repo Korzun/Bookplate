@@ -771,14 +771,14 @@ export const BookPage = () => {
           <div className={styles.detail}>
             {book.hasCover ? (
               <img
-                className={styles.coverImg}
+                className={`${styles.coverImg} ${styles.cover}`}
                 src={coverSrc}
                 alt={book.title}
                 width={160}
                 height={240}
               />
             ) : (
-              <div className={styles.coverPlaceholder} />
+              <div className={`${styles.coverPlaceholder} ${styles.cover}`} />
             )}
             <div className={styles.info}>
               <div className={styles.titleContainer}>
@@ -806,14 +806,14 @@ export const BookPage = () => {
                   {book.author}
                 </div>
               )}
-              <div className={styles.rating}>
-                <BookRating
-                  rating={book.rating}
-                  bookTitle={book.title}
-                  readOnly={isAdmin}
-                  onRate={handleRate}
-                />
-              </div>
+            </div>
+            <div className={styles.rating}>
+              <BookRating
+                rating={book.rating}
+                bookTitle={book.title}
+                readOnly={isAdmin}
+                onRate={handleRate}
+              />
             </div>
           </div>
           <div className={styles.metadata}>
