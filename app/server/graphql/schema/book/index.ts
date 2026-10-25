@@ -5,6 +5,7 @@ import './mutation/clear-edit-lineage';
 import './mutation/clear-editions';
 import './mutation/delete';
 import './mutation/link-document';
+import './mutation/rate';
 import './mutation/regen-chapters';
 import './mutation/replace';
 import './mutation/resolve-pending-fix';
