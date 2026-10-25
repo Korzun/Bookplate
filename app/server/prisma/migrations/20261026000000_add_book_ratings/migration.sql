@@ -1,0 +1,11 @@
+-- NO-OP BY DESIGN. `books.rating_*` and `books.rated_at` are added by the
+-- `data_v24_book_ratings` data migration in `db/migrate.ts`, not here.
+--
+-- `data_v11_per_user_libraries` rebuilds "books" from an explicit column list
+-- (on a fresh database as well as a legacy one), so a column added in this DDL
+-- pass would be dropped when that data migration runs after it.
+-- `20260613200000_add_series_table` is a no-op for the same reason; see its
+-- comment and `data_v12_series_table`.
+--
+-- This file exists so `_prisma_migrations` stays in step with the schema.
+SELECT 1;

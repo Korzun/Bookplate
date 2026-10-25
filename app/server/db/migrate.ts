@@ -991,4 +991,28 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       `CREATE INDEX IF NOT EXISTS "mcp_tokens_expires_at_idx" ON "mcp_tokens" ("expires_at")`
     );
   });
+
+  // Data migration: book ratings (an overall 1-5 score plus four sub-ratings,
+  // and when it was set). Added here, not in the DDL pass, for the reason
+  // `data_v22_book_cover_normalized` records: `data_v11_per_user_libraries`
+  // rebuilds "books" from an explicit column list. The DDL file
+  // `20261026000000_add_book_ratings` is a no-op. All six are nullable with
+  // no default: unrated is null.
+  await runDataMigration(prisma, 'data_v24_book_ratings', async () => {
+    const bookCols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
+    const have = new Set(bookCols.map((c) => c.name));
+    const wanted: Array<[string, 'INTEGER' | 'REAL']> = [
+      ['rating_overall', 'INTEGER'],
+      ['rating_story', 'INTEGER'],
+      ['rating_characters', 'INTEGER'],
+      ['rating_writing', 'INTEGER'],
+      ['rating_ideas', 'INTEGER'],
+      ['rated_at', 'REAL'],
+    ];
+    for (const [name, type] of wanted) {
+      if (!have.has(name)) {
+        await prisma.$executeRawUnsafe(`ALTER TABLE "books" ADD COLUMN "${name}" ${type}`);
+      }
+    }
+  });
 }
