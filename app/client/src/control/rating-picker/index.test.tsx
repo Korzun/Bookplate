@@ -1,0 +1,180 @@
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+
+import { renderWithProviders } from '~/test-utils';
+
+import { RatingPicker } from './index';
+
+const NAMES = ['Bad', 'Okay', 'Nice', 'Great', 'Awesome'];
+
+describe('RatingPicker', () => {
+  it('renders a radiogroup with five radios named Bad, Okay, Nice, Great, Awesome', () => {
+    renderWithProviders(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
+    expect(screen.getByRole('radiogroup', { name: 'Overall' })).toBeInTheDocument();
+    const radios = screen.getAllByRole('radio');
+    expect(radios.map((radio) => radio.getAttribute('aria-label'))).toEqual(NAMES);
+    for (const name of NAMES) {
+      expect(screen.getByRole('radio', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('marks the value as checked and nothing when null', () => {
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={3} onChange={vi.fn()} />
+    );
+    expect(screen.getByRole('radio', { name: 'Nice' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'Nice' })).toHaveAttribute('tabindex', '0');
+    for (const name of ['Bad', 'Okay', 'Great', 'Awesome']) {
+      expect(screen.getByRole('radio', { name })).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByRole('radio', { name })).toHaveAttribute('tabindex', '-1');
+    }
+
+    rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
+    for (const name of NAMES) {
+      expect(screen.getByRole('radio', { name })).toHaveAttribute('aria-checked', 'false');
+    }
+    // Nothing checked: the first radio is the tab stop.
+    expect(screen.getByRole('radio', { name: 'Bad' })).toHaveAttribute('tabindex', '0');
+  });
+
+  it('click selects; clicking the checked radio clears', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={null} onChange={onChange} />
+    );
+    await user.click(screen.getByRole('radio', { name: 'Great' }));
+    expect(onChange).toHaveBeenLastCalledWith(4);
+
+    rerender(<RatingPicker label="Overall" value={4} onChange={onChange} />);
+    await user.click(screen.getByRole('radio', { name: 'Great' }));
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('ArrowRight from Great selects Awesome and from Awesome does nothing (no wrap)', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={4} onChange={onChange} />
+    );
+    screen.getByRole('radio', { name: 'Great' }).focus();
+    await user.keyboard('{ArrowRight}');
+    expect(onChange).toHaveBeenCalledWith(5);
+
+    onChange.mockClear();
+    rerender(<RatingPicker label="Overall" value={5} onChange={onChange} />);
+    screen.getByRole('radio', { name: 'Awesome' }).focus();
+    await user.keyboard('{ArrowRight}');
+    await user.keyboard('{ArrowUp}');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('ArrowLeft from Bad does nothing; Home selects Bad; End selects Awesome', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={1} onChange={onChange} />
+    );
+    screen.getByRole('radio', { name: 'Bad' }).focus();
+    await user.keyboard('{ArrowLeft}');
+    await user.keyboard('{ArrowDown}');
+    expect(onChange).not.toHaveBeenCalled();
+
+    rerender(<RatingPicker label="Overall" value={3} onChange={onChange} />);
+    screen.getByRole('radio', { name: 'Nice' }).focus();
+    await user.keyboard('{ArrowLeft}');
+    expect(onChange).toHaveBeenLastCalledWith(2);
+    await user.keyboard('{Home}');
+    expect(onChange).toHaveBeenLastCalledWith(1);
+    await user.keyboard('{End}');
+    expect(onChange).toHaveBeenLastCalledWith(5);
+  });
+
+  it('digit keys select directly; Backspace and Delete clear', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderWithProviders(<RatingPicker label="Overall" value={2} onChange={onChange} />);
+    screen.getByRole('radio', { name: 'Okay' }).focus();
+    await user.keyboard('4');
+    expect(onChange).toHaveBeenLastCalledWith(4);
+    await user.keyboard('1');
+    expect(onChange).toHaveBeenLastCalledWith(1);
+    await user.keyboard('{Backspace}');
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    onChange.mockClear();
+    await user.keyboard('{Delete}');
+    expect(onChange).toHaveBeenCalledWith(null);
+    onChange.mockClear();
+    await user.keyboard('0');
+    await user.keyboard('6');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('Space and Enter on the focused radio toggle it', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderWithProviders(<RatingPicker label="Overall" value={2} onChange={onChange} />);
+    screen.getByRole('radio', { name: 'Okay' }).focus();
+    await user.keyboard(' ');
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    await user.keyboard('{Enter}');
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    expect(onChange).toHaveBeenCalledTimes(2);
+
+    onChange.mockClear();
+    screen.getByRole('radio', { name: 'Great' }).focus();
+    await user.keyboard('{Enter}');
+    expect(onChange).toHaveBeenCalledWith(4);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('read-only (no onChange) renders aria-disabled radios and ignores clicks and keys', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RatingPicker label="Overall" value={3} />);
+    const group = screen.getByRole('radiogroup');
+    expect(group).toHaveAttribute('aria-disabled', 'true');
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).toHaveAttribute('aria-disabled', 'true');
+      expect(radio).toHaveAttribute('tabindex', '-1');
+    }
+    await user.click(screen.getByRole('radio', { name: 'Awesome' }));
+    screen.getByRole('radio', { name: 'Nice' }).focus();
+    await user.keyboard('{ArrowRight}{Home}5{Backspace}{Enter} ');
+    expect(screen.getByRole('radio', { name: 'Nice' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'Awesome' })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('shows names under the icons only when showNames is set', () => {
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={null} onChange={vi.fn()} />
+    );
+    for (const name of NAMES) {
+      expect(screen.queryByText(name)).not.toBeInTheDocument();
+    }
+    rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} showNames />);
+    for (const name of NAMES) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+  });
+
+  it('titles the group with the checked name at sm', () => {
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={5} size="sm" onChange={vi.fn()} />
+    );
+    expect(screen.getByRole('radiogroup')).toHaveAttribute('title', 'Awesome');
+    rerender(<RatingPicker label="Overall" value={5} onChange={vi.fn()} />);
+    expect(screen.getByRole('radiogroup')).not.toHaveAttribute('title');
+  });
+
+  it('out-of-range value renders with nothing checked', () => {
+    expect(() =>
+      renderWithProviders(<RatingPicker label="Overall" value={0 as never} size="sm" />)
+    ).not.toThrow();
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).toHaveAttribute('aria-checked', 'false');
+    }
+    expect(screen.getByRole('radiogroup')).not.toHaveAttribute('title');
+  });
+});
