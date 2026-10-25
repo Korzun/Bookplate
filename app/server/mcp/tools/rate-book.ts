@@ -26,11 +26,12 @@ const scale = Object.entries(RATING_NAMES)
   .join(', ');
 
 const FIELD_HELP: Record<RatingFieldName, string> = {
-  overall: 'The reader’s gut verdict on the book as a whole, not an average of the others',
-  story: 'How good the plot and pacing are',
-  characters: 'How good the characters are',
-  writing: 'How good the prose and style are',
-  ideas: 'How interesting the ideas and themes are',
+  overall: 'The reader’s gut verdict on the book as a whole, not an average of the sub-ratings',
+  story:
+    'Story: did the plot and its shape pull the reader through and pay off (for non-fiction, the argument’s architecture)',
+  characters: 'Characters: did the reader care about, believe in, or want to stay with the people',
+  writing: 'Writing: sentence-level pleasure (voice, rhythm, humour, dialogue)',
+  ideas: 'Ideas: did it make the reader think (argument, world, themes, information)',
 };
 
 const ratingField = (field: RatingFieldName) =>
@@ -51,11 +52,15 @@ export function registerRateBook(server: McpServer, deps: ToolDeps): void {
     {
       title: 'Rate a book',
       description:
-        `Sets the reader’s ratings on a book, each on a 1-5 scale (${scale}). Rate ${RATING_FIELDS.join(', ')}: ` +
-        'story judges plot and pacing, characters the cast, writing the prose, ideas the themes. ' +
-        'The overall rating is the reader’s gut verdict, not an average of the others. ' +
-        'Omitted fields are left as they are; null (or 0) clears one. Leave a sub-rating unrated ' +
-        'when the reader has no opinion on it rather than guessing.',
+        `Sets the reader’s ratings on a book, each on a 1-5 scale (${scale}). Fields: ${RATING_FIELDS.join(', ')}. ` +
+        'Story judges whether the plot and its shape pulled the reader through and paid off ' +
+        '(for non-fiction, the argument’s architecture). Characters judges whether the reader ' +
+        'cared about, believed in, or wanted to stay with the people. Writing judges sentence-level ' +
+        'pleasure: voice, rhythm, humour, dialogue. Ideas judges whether it made the reader think: ' +
+        'argument, world, themes, information. The overall rating is the reader’s gut verdict, ' +
+        'not an average of the sub-ratings. Sub-ratings are optional: leave one unrated when the ' +
+        'reader has not expressed an opinion on that axis rather than guessing. Omitted fields ' +
+        'are left as they are; null (or 0) clears one.',
       inputSchema: {
         bookId: z.string(),
         overall: ratingField('overall'),

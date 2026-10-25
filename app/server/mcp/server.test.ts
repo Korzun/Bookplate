@@ -165,6 +165,14 @@ describe('tools/list', () => {
       if (tool.name !== 'get_book_cover') expect(tool.outputSchema).toBeDefined();
     }
   });
+
+  it('get_taste_profile says it is for recommending and points at the companion tools', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const { tools } = await mcp.client.listTools();
+    const taste = tools.find((t) => t.name === 'get_taste_profile')!;
+    expect(taste.description).toMatch(/^Read before recommending\./);
+    expect(taste.description).toContain('search_library');
+  });
 });
 
 describe('read tools', () => {
@@ -262,6 +270,22 @@ describe('read tools', () => {
     const wider = await mcp.call('get_taste_profile', { minOverall: 4 });
     const titles = (wider.structuredContent as { favourites: Array<{ title: string }> }).favourites;
     expect(titles.map((b) => b.title)).toEqual(['Alpha Book', 'Beta Book']);
+  });
+
+  it('get_taste_profile rounds the mean to one decimal in the text only', async () => {
+    const gammaId = 'd'.repeat(32);
+    await seedEditableBook(harness, harness.aliceOwner, gammaId, 'Gamma Book');
+    await harness.prisma.book.update({
+      where: { userId_id: { userId: harness.aliceOwner.userId, id: gammaId } },
+      data: { ratingOverall: 5, ratedAt: 3 },
+    });
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const result = await mcp.call('get_taste_profile', {});
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const out = result.structuredContent as { fields: Array<{ field: string; mean: number }> };
+    expect(out.fields[0].field).toBe('OVERALL');
+    expect(out.fields[0].mean).toBeCloseTo(14 / 3, 10);
+    expect(textOf(result)).toMatch(/^Overall: 3 rated, mean 4\.7, 1\/2\/3\/4\/5 = 0\/0\/0\/1\/2\n/);
   });
 
   it('get_taste_profile rejects first above 100 and minOverall of 0', async () => {
@@ -447,6 +471,15 @@ describe('write tools', () => {
     const del = tools.find((t) => t.name === 'delete_book')!;
     expect(del.annotations?.destructiveHint).toBe(true);
     expect(del.annotations?.readOnlyHint).toBe(false);
+  });
+
+  it('rate_book teaches what each rating judges', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const { tools } = await mcp.client.listTools();
+    const rate = tools.find((t) => t.name === 'rate_book')!;
+    expect(rate.description).toContain('not an average');
+    const props = rate.inputSchema.properties as Record<string, { description?: string }>;
+    expect(props.writing.description).toContain('humour');
   });
 
   it('update_book_metadata rewrites the book and returns its new detail', async () => {
