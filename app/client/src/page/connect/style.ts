@@ -27,7 +27,24 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       minWidth: 'auto',
     },
   },
+  // The same section rule `page/book` draws between its cards: an inset 1px
+  // line in `border.section` above every section but the first.
   form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.xxl,
+    '& > $section': {
+      borderTopStyle: 'solid',
+      borderTopWidth: '1px',
+      borderTopColor: theme.color.border.section,
+      paddingTop: theme.space.xl,
+    },
+    '& > $section:first-child': {
+      borderTopStyle: 'none',
+      paddingTop: 0,
+    },
+  },
+  section: {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.space.md,
@@ -66,10 +83,17 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.sm,
     color: theme.color.text.faint,
   },
+  // Green for a granted line, grey for a withheld one, so the switch's effect
+  // reads at a glance.
   check: {
     flexShrink: 0,
-    color: theme.color.text.faint,
+    color: theme.color.success,
     // Optically centre the glyph on the first line of text beside it.
+    marginTop: '0.2em',
+  },
+  cross: {
+    flexShrink: 0,
+    color: theme.color.text.faint,
     marginTop: '0.2em',
   },
 }));

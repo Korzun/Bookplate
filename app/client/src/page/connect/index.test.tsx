@@ -93,17 +93,19 @@ describe('ConnectPage', () => {
       'Run validation',
       'Upload and replace books',
       'Act on metadata recommendations',
-      'Request and delete books',
+      'Request books',
+      'Delete books',
     ]);
     expect(items.every((li) => li.dataset['granted'] === 'true')).toBe(true);
 
     await user.click(screen.getByRole('switch', { name: 'Read only' }));
-    // Same seven lines, same height; only the write ones flip to not granted.
+    // Same eight lines, same height; only the write ones flip to not granted.
     const after = screen.getAllByRole('listitem');
-    expect(after).toHaveLength(7);
+    expect(after).toHaveLength(8);
     expect(after.map((li) => li.dataset['granted'])).toEqual([
       'true',
       'true',
+      'false',
       'false',
       'false',
       'false',
