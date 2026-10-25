@@ -89,7 +89,9 @@ describe('ConnectPage', () => {
     expect(items.map((li) => li.textContent)).toEqual([
       'Search your library',
       'Read book and series details',
+      'Read your ratings and taste profile',
       'Edit book metadata',
+      'Rate books',
       'Run validation',
       'Upload and replace books',
       'Act on metadata recommendations',
@@ -99,12 +101,14 @@ describe('ConnectPage', () => {
     expect(items.every((li) => li.dataset['granted'] === 'true')).toBe(true);
 
     await user.click(screen.getByRole('switch', { name: 'Read only' }));
-    // Same eight lines, same height; only the write ones flip to not granted.
+    // Same ten lines, same height; only the write ones flip to not granted.
     const after = screen.getAllByRole('listitem');
-    expect(after).toHaveLength(8);
+    expect(after).toHaveLength(10);
     expect(after.map((li) => li.dataset['granted'])).toEqual([
       'true',
       'true',
+      'true',
+      'false',
       'false',
       'false',
       'false',
