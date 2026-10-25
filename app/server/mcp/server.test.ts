@@ -266,8 +266,24 @@ describe('read tools', () => {
 
   it('get_taste_profile rejects first above 100 and minOverall of 0', async () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
-    expect((await mcp.call('get_taste_profile', { first: 101 })).isError).toBe(true);
-    expect((await mcp.call('get_taste_profile', { minOverall: 0 })).isError).toBe(true);
+    for (const [arg, args] of [
+      ['first', { first: 101 }],
+      ['minOverall', { minOverall: 0 }],
+    ] as const) {
+      const result = await mcp.call('get_taste_profile', args);
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain(arg);
+      expect(textOf(result)).not.toMatch(/not found|unknown tool/i);
+    }
+  });
+
+  it('get_taste_profile accepts the argument edges first 100 and minOverall 1', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    for (const args of [{ first: 100 }, { minOverall: 1 }]) {
+      const result = await mcp.call('get_taste_profile', args);
+      expect(result.isError, textOf(result)).toBeFalsy();
+      expect((result.structuredContent as { ratedCount: number }).ratedCount).toBe(2);
+    }
   });
 
   it('get_taste_profile works on a read-only connection', async () => {
