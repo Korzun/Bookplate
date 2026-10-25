@@ -44,6 +44,14 @@ model Book {
   chapterSpineMap String          @default("[]") @map("chapter_spine_map")
   chapterNames    String?         @map("chapter_names")
   pageCount       Int             @default(0) @map("page_count")
+  // Book ratings: integers 1-5 or null, see the book-ratings design spec.
+  ratingOverall    Int?   @map("rating_overall")
+  ratingStory      Int?   @map("rating_story")
+  ratingCharacters Int?   @map("rating_characters")
+  ratingWriting    Int?   @map("rating_writing")
+  ratingIdeas      Int?   @map("rating_ideas")
+  // When the rating was last set; null while unrated.
+  ratedAt          Float? @map("rated_at")
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   seriesRel       Series?         @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   thumbnails      BookThumbnail[]
