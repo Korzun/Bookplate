@@ -1,30 +1,44 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
-  // Two columns, label and picker, so every picker starts on the same line
-  // whatever the label's width. At phone width the label moves above its
-  // picker and the picker takes the whole card.
   root: {
-    display: 'grid',
-    gridTemplateColumns: 'max-content minmax(0, 1fr)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.md,
+  },
+  /**
+   * The shaded input row — `bg.cardHeader` + `radius.md`, the label inset on
+   * the left with `TextInput.horizontal`'s offsets — built here because there
+   * is no shared recipe for the shape yet (see `notification-settings`'
+   * `eventRow`, which repeats it for the same reason). The picker paints no
+   * track of its own (`surface="row"`), so this grey IS the track and only the
+   * lens shows, where `TextInput` shows its white field. The row is taller
+   * than a text row, so the label is centred rather than top-aligned. At phone
+   * width it becomes the `vertical` form of the same panel: label above the
+   * picker, inside the grey.
+   */
+  row: {
+    display: 'flex',
     alignItems: 'center',
-    columnGap: theme.space.xxl,
-    rowGap: theme.space.md,
+    gap: theme.space.md,
+    overflow: 'hidden',
+    backgroundColor: theme.color.bg.cardHeader,
+    borderRadius: theme.radius.md,
+    // The picker's children size it; `minWidth: 0` lets it shrink to the row.
+    '& > [role="radiogroup"]': { flexGrow: 1, minWidth: 0 },
     [theme.breakpoint.mobile]: {
-      gridTemplateColumns: 'minmax(0, 1fr)',
-      rowGap: theme.space.sm,
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: theme.space.xs,
     },
   },
   label: {
-    fontSize: theme.fontSize.sm,
-    color: theme.color.text.secondary,
+    ...theme.recipe.label,
+    marginLeft: theme.space.sm,
+    minWidth: '6rem',
     [theme.breakpoint.mobile]: {
-      marginTop: theme.space.md,
-      '&:first-child': { marginTop: 0 },
+      marginLeft: theme.space.md,
+      marginTop: theme.space.xs,
     },
-  },
-  overall: {
-    color: theme.color.text.primary,
-    fontWeight: theme.fontWeight.semibold,
   },
 }));

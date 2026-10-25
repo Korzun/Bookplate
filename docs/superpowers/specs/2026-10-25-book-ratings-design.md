@@ -421,7 +421,7 @@ buttons, in `control/segmented-control`'s visual language.
   Awesome to Bad would be a surprising jump); Home and End go to 1 and 5;
   digits 1–5 select directly; Backspace or Delete clears; Space or Enter on
   the focused radio toggles it (select, or clear if already selected).
-- Rendering: a `bg.track` rail of five equal-width segments; the checked
+- Rendering: five equal-width segments on a rail; the checked
   segment sits on the same sliding lens as the segmented control
   (`bg.input`, hairline border, `shadow.cardStack`), and there is no lens
   when the value is null. Each segment stacks a 20px icon over the value
@@ -429,6 +429,10 @@ buttons, in `control/segmented-control`'s visual language.
   `brand.default`, hover `text.secondary`. The names are hidden by CSS at
   phone width, where five named segments do not fit; the group always
   carries a `title` with the checked name.
+- `surface?: 'track' | 'row'`: `track` (default) paints the rail in
+  `bg.track`; `row` paints no rail, for a picker sitting in a shaded input
+  row whose grey is then the track (below). The rating picker has its own
+  style file, so neither surface touches `control/segmented-control`.
 - Touch targets: a segment is the full track height (icon, gap, name, plus
   `space.sm` top and bottom, about 46px) and a fifth of the track's width.
 - Read-only mode renders the same visuals, no hover state, no focusability
@@ -439,14 +443,19 @@ buttons, in `control/segmented-control`'s visual language.
 **Component: `~/component/book-rating`.** The block the book page renders.
 
 - Props: the five values, `bookTitle`, `readOnly`, and `onRate(field, value)`.
-- Layout: five rows, one per field, Overall first, each `Label   [picker]`
-  in a two-column grid (`max-content` label column, the picker filling the
-  rest) so every picker starts on the same line. The Overall label is
-  `text.primary` semibold, the sub-rating labels `text.secondary`. Only the
-  Overall row shows the value names under its icons; the four rows beneath
-  use the same icons in the same order, so repeating the names adds noise. At
-  phone width the grid collapses to one column: label above its picker,
-  picker the full card width. Sub-ratings are always visible; they are the
+- Layout: five rows, one per field, Overall first. Each row is the shaded
+  input row every labelled control in the app uses (`TextInput`'s
+  `horizontal` layout: `bg.cardHeader`, `radius.md`, the label in
+  `recipe.label` inset `space.sm` with a 6rem minimum width), with the
+  picker on `surface="row"` filling the rest, so the row's grey is the track
+  and the white lens is the only raised element, where a text row shows its
+  white field. All five labels take the same grey label recipe; only the
+  Overall row shows the value names under its icons, since the four rows
+  beneath use the same icons in the same order. The row is taller than a
+  text row, so the label is vertically centred. At phone width the row takes
+  the `vertical` form of the same panel: label above the picker, inside the
+  grey, picker the full row width. Rows are `space.md` apart, as in the
+  other forms. Sub-ratings are always visible; they are the
   point of the feature, and hiding them behind a disclosure would make the
   common case two taps.
 - No "saving…" state: the mutation is sent with an `optimisticResponse`

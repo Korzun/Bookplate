@@ -38,6 +38,14 @@ type RatingPickerProps = {
   label: string;
   /** Render each value's name under its icon (hidden at phone width by CSS). */
   showNames?: boolean;
+  /**
+   * What the picker sits on. `track` (default) paints its own `bg.track`
+   * rail, like `control/segmented-control`. `row` paints nothing: the shaded
+   * input row it sits in (`bg.cardHeader`, the same grey as the rail in light
+   * mode) is the track, and only the lens shows, the way the white field
+   * shows in a `TextInput` row.
+   */
+  surface?: 'track' | 'row';
 };
 
 /**
@@ -50,7 +58,13 @@ type RatingPickerProps = {
  * value without wrapping (from no rating, "next" is Bad); Home and End jump to
  * Bad and Awesome; the digits 1–5 select directly; Backspace and Delete clear.
  */
-export const RatingPicker = ({ value, onChange, label, showNames = true }: RatingPickerProps) => {
+export const RatingPicker = ({
+  value,
+  onChange,
+  label,
+  showNames = true,
+  surface = 'track',
+}: RatingPickerProps) => {
   const style = useStyle();
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const readOnly = onChange === undefined;
@@ -121,7 +135,7 @@ export const RatingPicker = ({ value, onChange, label, showNames = true }: Ratin
       aria-label={label}
       aria-disabled={readOnly ? 'true' : undefined}
       title={checked?.name}
-      className={cx(style.root, { [style.readOnly]: readOnly })}
+      className={cx(style.root, style[surface], { [style.readOnly]: readOnly })}
       style={rootStyle}
       onKeyDown={handleKeyDown}
     >
