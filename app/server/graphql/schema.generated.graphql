@@ -39,7 +39,7 @@ type Book implements Node {
   publisher: String!
 
   """
-  The reader’s ratings, each 1 (bad) to 5 (awesome) or null when unrated. Never derived from the EPUB.
+  The reader’s ratings, each 1 (bad) to 5 (love) or null when unrated. Never derived from the EPUB.
   """
   rating: BookRating!
   series: Series
@@ -558,7 +558,7 @@ type LibraryProgressConnectionEdge {
 
 type LibraryRatingProfile {
   """
-  Books whose overall rating is at least minOverall, most recently rated first. Default is the Awesome shelf.
+  Books whose overall rating is at least minOverall, most recently rated first. Default is the Love shelf.
   """
   favourites(first: Int = 25, minOverall: Int = 5): [Book!]!
 
@@ -697,7 +697,7 @@ type Mutation {
   bookLinkDocument(input: BookLinkDocumentInput!): BookLinkDocumentResult
 
   """
-  Sets any of a book’s five ratings. An omitted field is left as it is; an explicit null clears it. Values are integers 1 (bad) to 5 (awesome). Never rewrites the EPUB, never changes the id, and is not gated on validation. Resolves to null when the book does not exist for the resolved owner.
+  Sets any of a book’s five ratings. An omitted field is left as it is; an explicit null clears it. Values are integers 1 (bad) to 5 (love). Never rewrites the EPUB, never changes the id, and is not gated on validation. Resolves to null when the book does not exist for the resolved owner.
   """
   bookRate(input: BookRateInput!): BookRateResult
 

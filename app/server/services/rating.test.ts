@@ -18,7 +18,7 @@ describe('formatRating', () => {
     [2, 'Okay (2)'],
     [3, 'Nice (3)'],
     [4, 'Great (4)'],
-    [5, 'Awesome (5)'],
+    [5, 'Love (5)'],
     [null, 'unrated'],
   ])('%s → %s', (value, out) => {
     expect(formatRating(value)).toBe(out);

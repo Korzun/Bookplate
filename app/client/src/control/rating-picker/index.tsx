@@ -2,7 +2,7 @@ import cx from 'classnames';
 import { type CSSProperties, type KeyboardEvent, useRef } from 'react';
 
 import {
-  HandHornsIcon,
+  HandLoveYouIcon,
   HandOkIcon,
   HandsClapIcon,
   type IconProps,
@@ -25,7 +25,7 @@ export const RATING_OPTIONS: ReadonlyArray<RatingOption> = [
   { value: 2, name: 'Okay', Icon: ThumbUpIcon },
   { value: 3, name: 'Nice', Icon: HandOkIcon },
   { value: 4, name: 'Great', Icon: HandsClapIcon },
-  { value: 5, name: 'Awesome', Icon: HandHornsIcon },
+  { value: 5, name: 'Love', Icon: HandLoveYouIcon },
 ];
 
 const ICON_SIZE = 20;
@@ -49,14 +49,14 @@ type RatingPickerProps = {
 };
 
 /**
- * A segmented control of five icon radios, Bad to Awesome, in the same
+ * A segmented control of five icon radios, Bad to Love, in the same
  * track-and-lens style as `control/segmented-control`. Unlike that control the
  * value can be empty — no lens — and clicking (or Space/Enter on) the checked
  * segment clears it, so `null` is always reachable.
  *
  * Keyboard, on the group: ArrowRight/ArrowUp and ArrowLeft/ArrowDown step one
  * value without wrapping (from no rating, "next" is Bad); Home and End jump to
- * Bad and Awesome; the digits 1–5 select directly; Backspace and Delete clear.
+ * Bad and Love; the digits 1–5 select directly; Backspace and Delete clear.
  */
 export const RatingPicker = ({
   value,

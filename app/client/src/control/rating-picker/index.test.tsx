@@ -6,10 +6,10 @@ import { renderWithProviders } from '~/test-utils';
 
 import { RatingPicker } from './index';
 
-const NAMES = ['Bad', 'Okay', 'Nice', 'Great', 'Awesome'];
+const NAMES = ['Bad', 'Okay', 'Nice', 'Great', 'Love'];
 
 describe('RatingPicker', () => {
-  it('renders a radiogroup with five radios named Bad, Okay, Nice, Great, Awesome', () => {
+  it('renders a radiogroup with five radios named Bad, Okay, Nice, Great, Love', () => {
     renderWithProviders(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
     expect(screen.getByRole('radiogroup', { name: 'Overall' })).toBeInTheDocument();
     const radios = screen.getAllByRole('radio');
@@ -25,7 +25,7 @@ describe('RatingPicker', () => {
     );
     expect(screen.getByRole('radio', { name: 'Nice' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: 'Nice' })).toHaveAttribute('tabindex', '0');
-    for (const name of ['Bad', 'Okay', 'Great', 'Awesome']) {
+    for (const name of ['Bad', 'Okay', 'Great', 'Love']) {
       expect(screen.getByRole('radio', { name })).toHaveAttribute('aria-checked', 'false');
       expect(screen.getByRole('radio', { name })).toHaveAttribute('tabindex', '-1');
     }
@@ -53,7 +53,7 @@ describe('RatingPicker', () => {
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
-  it('ArrowRight from Great selects Awesome and from Awesome does nothing (no wrap)', async () => {
+  it('ArrowRight from Great selects Love and from Love does nothing (no wrap)', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     const { rerender } = renderWithProviders(
@@ -65,13 +65,13 @@ describe('RatingPicker', () => {
 
     onChange.mockClear();
     rerender(<RatingPicker label="Overall" value={5} onChange={onChange} />);
-    screen.getByRole('radio', { name: 'Awesome' }).focus();
+    screen.getByRole('radio', { name: 'Love' }).focus();
     await user.keyboard('{ArrowRight}');
     await user.keyboard('{ArrowUp}');
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('ArrowLeft from Bad does nothing; Home selects Bad; End selects Awesome', async () => {
+  it('ArrowLeft from Bad does nothing; Home selects Bad; End selects Love', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     const { rerender } = renderWithProviders(
@@ -161,11 +161,11 @@ describe('RatingPicker', () => {
       expect(radio).toHaveAttribute('aria-disabled', 'true');
       expect(radio).toHaveAttribute('tabindex', '-1');
     }
-    await user.click(screen.getByRole('radio', { name: 'Awesome' }));
+    await user.click(screen.getByRole('radio', { name: 'Love' }));
     screen.getByRole('radio', { name: 'Nice' }).focus();
     await user.keyboard('{ArrowRight}{Home}5{Backspace}{Enter} ');
     expect(screen.getByRole('radio', { name: 'Nice' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('radio', { name: 'Awesome' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('radio', { name: 'Love' })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('shows names under the icons unless showNames is false', () => {
@@ -185,7 +185,7 @@ describe('RatingPicker', () => {
     const { rerender } = renderWithProviders(
       <RatingPicker label="Overall" value={5} onChange={vi.fn()} />
     );
-    expect(screen.getByRole('radiogroup')).toHaveAttribute('title', 'Awesome');
+    expect(screen.getByRole('radiogroup')).toHaveAttribute('title', 'Love');
     rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
     expect(screen.getByRole('radiogroup')).not.toHaveAttribute('title');
   });

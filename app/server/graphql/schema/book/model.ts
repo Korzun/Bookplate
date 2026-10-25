@@ -128,7 +128,7 @@ export const model = builder.prismaNode('Book', {
     rating: t.field({
       type: bookRating,
       description:
-        'The reader’s ratings, each 1 (bad) to 5 (awesome) or null when unrated. Never derived from the EPUB.',
+        'The reader’s ratings, each 1 (bad) to 5 (love) or null when unrated. Never derived from the EPUB.',
       resolve: (book) => ratingOf(book),
     }),
 

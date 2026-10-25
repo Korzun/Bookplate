@@ -1833,7 +1833,7 @@ describe('BookPage', () => {
         'true'
       );
       expect(
-        within(ratingGroup('Characters')).getByRole('radio', { name: 'Awesome' })
+        within(ratingGroup('Characters')).getByRole('radio', { name: 'Love' })
       ).toHaveAttribute('aria-checked', 'true');
       for (const radio of within(ratingGroup('Story')).getAllByRole('radio')) {
         expect(radio).toHaveAttribute('aria-checked', 'false');
@@ -1872,12 +1872,13 @@ describe('BookPage', () => {
       );
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
 
-      await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' }));
+      await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' }));
 
       await waitFor(() =>
-        expect(
-          within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })
-        ).toHaveAttribute('aria-checked', 'true')
+        expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' })).toHaveAttribute(
+          'aria-checked',
+          'true'
+        )
       );
       expect(within(ratingGroup('Overall')).getByRole('radio', { name: 'Great' })).toHaveAttribute(
         'aria-checked',
@@ -1894,7 +1895,7 @@ describe('BookPage', () => {
           ]?.rating?.story
         ).toBe(5)
       );
-      expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })).toHaveAttribute(
+      expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' })).toHaveAttribute(
         'aria-checked',
         'true'
       );
@@ -1931,19 +1932,21 @@ describe('BookPage', () => {
       );
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
 
-      await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' }));
+      await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' }));
 
       // Optimistic first...
       await waitFor(() =>
-        expect(
-          within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })
-        ).toHaveAttribute('aria-checked', 'true')
+        expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' })).toHaveAttribute(
+          'aria-checked',
+          'true'
+        )
       );
       // ...then rolled back once the transport error lands.
       await waitFor(() =>
-        expect(
-          within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })
-        ).toHaveAttribute('aria-checked', 'false')
+        expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' })).toHaveAttribute(
+          'aria-checked',
+          'false'
+        )
       );
       expect(await screen.findByText(/rate failed/)).toBeInTheDocument();
     });
@@ -1959,7 +1962,7 @@ describe('BookPage', () => {
       for (const radio of radios) {
         expect(radio).toHaveAttribute('aria-disabled', 'true');
       }
-      expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Awesome' })).toHaveAttribute(
+      expect(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' })).toHaveAttribute(
         'aria-disabled',
         'true'
       );

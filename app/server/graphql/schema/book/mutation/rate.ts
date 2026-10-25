@@ -86,7 +86,7 @@ builder.mutationField('bookRate', (t) =>
     nullable: true,
     description:
       'Sets any of a book’s five ratings. An omitted field is left as it is; an explicit ' +
-      'null clears it. Values are integers 1 (bad) to 5 (awesome). Never rewrites the ' +
+      'null clears it. Values are integers 1 (bad) to 5 (love). Never rewrites the ' +
       'EPUB, never changes the id, and is not gated on validation. Resolves to null when ' +
       'the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
