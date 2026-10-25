@@ -287,8 +287,9 @@ describe('the composite-element list-field inventory', () => {
     'Viewer.devices',
     'Viewer.users',
   ];
-  // Priced in `multiplierFor` instead, by `ids.length`.
-  const PRICED_BY_ARGS = ['Query.nodes'];
+  // Priced in `multiplierFor` instead: `Query.nodes` by `ids.length`, `favourites` by its `first` arg
+  // (via CONNECTION_FIELD_LIMITS).
+  const PRICED_BY_ARGS = ['Query.nodes', 'LibraryRatingProfile.favourites'];
   // A priced connection's own `edges`. NOT priced separately: the parent
   // connection field's multiplier already scales these, so pricing them too
   // would double-count.
@@ -309,6 +310,7 @@ describe('the composite-element list-field inventory', () => {
     'BookAnalyzeReplacePayload.proposals',
     'EpubValidationError.messages',
     'InvalidInputError.issues',
+    'LibraryRatingProfile.fields',
     'PendingFixState.appliedFixes',
     'PendingFixState.autoFixes',
     'PendingFixState.proposals',

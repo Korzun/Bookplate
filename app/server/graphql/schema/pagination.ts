@@ -164,5 +164,6 @@ export const CONNECTION_LIMITS = {
   seriesBooks: { maxSize: 100, defaultSize: 20 },
   validationMessages: { maxSize: 100, defaultSize: 20 },
   userBookRequests: { maxSize: 100, defaultSize: 20 },
+  ratingFavourites: { maxSize: 100, defaultSize: 25 },
   nodesBatch: 100,
 } as const;

@@ -109,6 +109,10 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
   'Library.progress': CONNECTION_LIMITS.libraryProgress,
   'Series.books': CONNECTION_LIMITS.seriesBooks,
   'Validation.messages': CONNECTION_LIMITS.validationMessages,
+  // A plain list, not a connection, but it carries a `first` argument clamped
+  // to this ceiling, so it is priced exactly like one (`Book` reaches
+  // `Book.series`, hence `Series.books`).
+  'LibraryRatingProfile.favourites': CONNECTION_LIMITS.ratingFavourites,
 };
 
 /**
