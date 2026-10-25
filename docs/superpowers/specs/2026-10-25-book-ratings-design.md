@@ -373,6 +373,12 @@ is testable without GraphQL.
     bad value (Zod catches these first; the GraphQL check is the backstop).
 - `server.test.ts` adds `rate_book` to the write-tool list and the read-only
   grant refusal test, matching how the other write tools are covered.
+- The consent page (`page/connect`, the per-capability `PERMISSIONS` list
+  the reader sees when approving an assistant) gains two lines, requester's
+  reminder: "Read your ratings and taste profile" (read) after the
+  book-and-series-details line, and "Rate books" (write) after "Edit book
+  metadata". Every line always renders; the write line flips to not granted
+  under Read only, as the others do.
 
 ### Client
 
