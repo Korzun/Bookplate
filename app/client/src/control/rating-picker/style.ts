@@ -22,13 +22,18 @@ export const useStyle = createUseStyles((theme: Theme) => {
       '&:not($readOnly) $segment:hover': { color: theme.color.text.secondary },
       '&:not($readOnly) $segment$active:hover': { color: theme.color.brand.hover },
     },
+    // Positioned with `left`, not the segmented control's `translateX`. A
+    // transform is rasterised at a fractional offset, while the shaded row
+    // around the picker clips (`overflow: hidden`) at a pixel-snapped edge; at
+    // the right-most segment the two edges coincide and the lens's outer border
+    // pixel was half lost. `left` goes through layout and snaps with the clip.
     lens: {
       position: 'absolute',
       boxSizing: 'border-box',
       zIndex: 0,
       top: 0,
       bottom: 0,
-      left: 0,
+      left: 'calc(var(--seg-index) * (100% / var(--seg-count)))',
       width: 'calc(100% / var(--seg-count))',
       backgroundColor: theme.color.bg.input,
       borderStyle: 'solid',
@@ -36,8 +41,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
       borderColor: theme.color.border.default,
       boxShadow: theme.shadow.cardStack,
       borderRadius: radius,
-      transform: 'translateX(calc(var(--seg-index) * 100%))',
-      transition: `transform ${theme.transition.spring}`,
+      transition: `left ${theme.transition.spring}`,
       '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
     },
     segment: {
