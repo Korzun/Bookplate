@@ -238,6 +238,7 @@ tasks.
 ```bash
 # Live-reload dev stack: backend on :3000, frontend on :5173
 make dev            # BOOKS=/path/to/books make dev  to point at your library
+                    # PUBLIC_URL=http://localhost:<client port> make dev  to turn on MCP locally
 
 # Production-style single container
 make run            # build + run at http://localhost:3000
