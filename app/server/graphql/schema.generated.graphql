@@ -130,6 +130,21 @@ type BookNotValidatedError implements UserError {
   validation: Validation
 }
 
+input BookRateInput {
+  characters: Int
+  id: ID!
+  ideas: Int
+  overall: Int
+  story: Int
+  writing: Int
+}
+
+type BookRatePayload {
+  book: Book!
+}
+
+union BookRateResult = BookRatePayload | InvalidInputError
+
 type BookRating {
   characters: Int
   ideas: Int
@@ -666,6 +681,11 @@ type Mutation {
   Merges a KOReader document id into a book’s lineage. Resolves to null when the book does not exist for the resolved owner.
   """
   bookLinkDocument(input: BookLinkDocumentInput!): BookLinkDocumentResult
+
+  """
+  Sets any of a book’s five ratings. An omitted field is left as it is; an explicit null clears it. Values are integers 1 (bad) to 5 (awesome). Never rewrites the EPUB, never changes the id, and is not gated on validation. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookRate(input: BookRateInput!): BookRateResult
 
   """
   Re-parses a book’s EPUB file to regenerate its chapter list. Resolves to null when the book does not exist for the resolved owner.
