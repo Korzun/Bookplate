@@ -93,7 +93,7 @@ describe('McpConnections', () => {
     // The list is a closed <dialog> until the link is clicked.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'clients' }));
+    await user.click(screen.getByRole('button', { name: 'Clients' }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Connected clients')).toBeInTheDocument();
     expect(within(dialog).getByText('No assistants connected yet.')).toBeInTheDocument();
@@ -120,7 +120,7 @@ describe('McpConnections', () => {
         })}
       />
     );
-    await user.click(screen.getByRole('button', { name: 'clients' }));
+    await user.click(screen.getByRole('button', { name: 'Clients' }));
     const claude = screen.getByRole('link', { name: 'Claude' });
     expect(claude).toHaveAttribute('href', 'https://claude.ai');
     expect(screen.getByText('Claude Code')).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe('McpConnections', () => {
       { mocks: [revokeMock('g1', called)] }
     );
 
-    await user.click(screen.getByRole('button', { name: 'clients' }));
+    await user.click(screen.getByRole('button', { name: 'Clients' }));
     await user.click(screen.getByRole('button', { name: 'Disconnect Claude' }));
     const confirm = screen.getByText('Disconnect Claude?').closest('dialog');
     expect(confirm).not.toBeNull();
@@ -174,7 +174,7 @@ describe('McpConnections', () => {
         ],
       }
     );
-    await user.click(screen.getByRole('button', { name: 'clients' }));
+    await user.click(screen.getByRole('button', { name: 'Clients' }));
     await user.click(screen.getByRole('button', { name: 'Disconnect Claude' }));
     await user.click(
       within(screen.getByText('Disconnect Claude?').closest('dialog') as HTMLElement).getByRole(

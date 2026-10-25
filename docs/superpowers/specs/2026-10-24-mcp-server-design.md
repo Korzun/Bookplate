@@ -261,7 +261,7 @@ between `ConnectionUrls` and `EmailSetting`. Data comes from a new
 `McpConnectionsFragment on Viewer { mcpEnabled mcpUrl mcpConnections { id
 clientName clientUri logoUri scopes createdAt lastUsedAt } }` composed into
 `UserPageDocument` (the route's one document). Card title "AI assistants".
-Body: just the MCP URL pill (copy button). A blue link-button reading "clients"
+Body: just the MCP URL pill (copy button). A blue link-button reading "Clients"
 in the card header opens a modal ("Connected clients") listing the connections,
 each with name (linking to `clientUri` when present), "Connected <date> · Last
 used <date|never>", a scope tag ("Read only" / "Read & write"), and a
