@@ -390,10 +390,10 @@ the stroke-icon defaults:
 | File | Source |
 |------|--------|
 | `thumb-down.tsx` | Drawn for this project: the thumb-up rotated 180° (Tabler's own thumb-down relationship) |
-| `thumb-up.tsx` | Drawn for this project in Tabler's tube construction: side-on fist with four knuckle curls, a 4.5-unit thumb bent 15° toward the knuckles, the hand tilted 5° |
+| `thumb-up.tsx` | Drawn for this project in Tabler's tube construction: side-on fist with four knuckle curls, a 3.5-unit thumb bent 15° toward the knuckles, the hand tilted 5° |
 | `hand-ok.tsx` | Hugeicons `ok-finger` (`@hugeicons/core-free-icons` 4.3.5, MIT) at stroke 2, its open wrist closed with a palm heel |
 | `hands-clap.tsx` | Hugeicons `clapping-02` (MIT) at stroke 2: front hand with four fingers and its thumb, back hand showing its thumb and two fingers |
-| `hand-love-you.tsx` | Drawn for this project in Tabler's tube construction: ASL "I love you", index and little finger up, middle and ring folded to stubs, thumb leaving the index base at 35° to the fingers, the same geometry as the clap's front thumb |
+| `hand-love-you.tsx` | Drawn for this project in Tabler's tube construction: ASL "I love you", index and little finger up, middle and ring folded to stubs, thumb at 35° to the fingers, its inner edge meeting the index base and its outer edge running into the palm edge, the same junction as the clap's front thumb |
 
 The five are one family by construction: every finger is a 3-unit tube
 (Hugeicons' 2.8) with a round tip, every thumb is a visible tube of its own
