@@ -48,10 +48,12 @@ that is how the requester names it, and it is never a stored or returned
 value.
 
 The reference design (the Dribbble shot, screenshot reviewed): five outline
-icons in a row with equal spacing, the selected one drawn white on a filled
-circle, the others as plain outlines on the background, and the name under
-each icon. The shot also shows vote counts under the names; those do not
-apply here.
+icons in a row with equal spacing, the selected one marked out, and the name
+under each icon. The shot also shows vote counts under the names; those do
+not apply here. *Revised after the first build:* the filled circles were
+replaced by the app's own segmented-control style (track, sliding lens),
+each rating got a row of its own, and the rows moved into their own card,
+per the maintainer's review of the first version.
 
 ## Goals
 
@@ -387,21 +389,26 @@ the stroke-icon defaults:
 
 | File | Source |
 |------|--------|
-| `thumb-down.tsx` | Tabler `thumb-down` |
-| `thumb-up.tsx` | Tabler `thumb-up` |
-| `hand-ok.tsx` | Drawn for this project in Tabler's style (Tabler has no OK-sign icon) |
-| `hands-clap.tsx` | Drawn for this project in Tabler's style (Tabler has no clapping icon) |
-| `hand-horns.tsx` | Tabler `hand-love-you` adapted with the thumb folded in (true rock horns), or drawn |
+| `thumb-down.tsx` | Hugeicons `thumbs-down` (stroke rounded) |
+| `thumb-up.tsx` | Hugeicons `thumbs-up` |
+| `hand-ok.tsx` | Hugeicons `ok-finger` |
+| `hands-clap.tsx` | Hugeicons `clapping-02` |
+| `hand-horns.tsx` | Hugeicons `hand-metal` |
 
-Each file carries the source comment line the other icons carry. The two
-drawn icons must read correctly at 20px, which is the sub-rating size.
+All five come from one set (Hugeicons free, MIT, `@hugeicons/core-free-icons`)
+so they read as a family; the first build's Tabler thumbs plus two
+hand-drawn icons did not (the OK ring and the clap were illegible, the
+thumbs sat off-centre). Each file carries the source comment line the other
+icons carry and is drawn at the app's stroke width of 2. Every icon must
+read correctly at 20px, the size the segments use.
 
-**Control: `~/control/rating-picker`.** A row of five icon buttons.
+**Control: `~/control/rating-picker`.** A segmented control of five icon
+buttons, in `control/segmented-control`'s visual language.
 
 - Props: `value: 1 | 2 | 3 | 4 | 5 | null`,
   `onChange?: (value: 1 | 2 | 3 | 4 | 5 | null) => void` (absent means
-  read-only), `size?: 'sm' | 'md'`, `label: string` (accessible name, e.g.
-  "Overall rating for Dune"), `showNames?: boolean`.
+  read-only), `label: string` (accessible name, e.g.
+  "Overall rating for Dune"), `showNames?: boolean` (default on).
 - Semantics are a radio group with an optional selection, so the markup is
   `role="radiogroup"` with five `role="radio"` buttons, following
   `control/segmented-control`'s pattern (roving `tabIndex`, `aria-checked`).
@@ -413,16 +420,16 @@ drawn icons must read correctly at 20px, which is the sub-rating size.
   Awesome to Bad would be a surprising jump); Home and End go to 1 and 5;
   digits 1–5 select directly; Backspace or Delete clears; Space or Enter on
   the focused radio toggles it (select, or clear if already selected).
-- Rendering follows the reference shot: at `md`, each icon sits centred in a
-  circle. The selected circle is filled with `theme.color.brand.default` and
-  the icon drawn in `theme.color.text.onPrimary`; the others have no fill
-  and draw the icon in `theme.color.text.secondary`, moving to
-  `theme.color.text.primary` on hover. When `showNames` is on, the value
-  name sits under each icon in `theme.color.text.secondary` (selected: 
-  `text.primary`). At `sm` the circles shrink, names are off, and the row
-  carries a `title` with the selected name so hover still reveals it.
-- Touch targets: at `md` each button is at least 40px; at `sm` at least
-  32px, with the icon drawn at 20px inside it.
+- Rendering: a `bg.track` rail of five equal-width segments; the checked
+  segment sits on the same sliding lens as the segmented control
+  (`bg.input`, hairline border, `shadow.cardStack`), and there is no lens
+  when the value is null. Each segment stacks a 20px icon over the value
+  name (`fontSize.xs`); icons and names are `text.muted`, the checked one
+  `brand.default`, hover `text.secondary`. The names are hidden by CSS at
+  phone width, where five named segments do not fit; the group always
+  carries a `title` with the checked name.
+- Touch targets: a segment is the full track height (icon, gap, name, plus
+  `space.sm` top and bottom, about 46px) and a fifth of the track's width.
 - Read-only mode renders the same visuals, no hover state, no focusability
   for the unselected buttons, and the radios carry `aria-disabled`. The
   selected name is still available through the group's accessible
@@ -431,20 +438,22 @@ drawn icons must read correctly at 20px, which is the sub-rating size.
 **Component: `~/component/book-rating`.** The block the book page renders.
 
 - Props: the five values, `bookTitle`, `readOnly`, and `onRate(field, value)`.
-- Layout: the Overall row first at `md` with `showNames` on, as in the
-  reference shot. Beneath it the four sub-ratings at `sm`, each as
-  `Label   [five icons]` (Story, Characters, Writing, Ideas) with the label in `text.secondary`, in a two-column
-  grid on wide layouts that wraps to one column at phone width. Sub-ratings
-  are always visible; they are the point of the feature, and hiding them
-  behind a disclosure would make the common case two taps.
+- Layout: five rows, one per field, Overall first, each `Label   [picker]`
+  in a two-column grid (`max-content` label column, the picker filling the
+  rest) so every picker starts on the same line. The Overall label is
+  `text.primary` semibold, the sub-rating labels `text.secondary`. At
+  phone width the grid collapses to one column: label above its picker,
+  picker the full card width. Sub-ratings are always visible; they are the
+  point of the feature, and hiding them behind a disclosure would make the
+  common case two taps.
 - No "saving…" state: the mutation is sent with an `optimisticResponse`
   carrying the new `BookRating`, so the icon flips on tap. On error the cache
   reverts and the page's existing error surface (whatever `handleValidate`
   and friends use) shows the message.
 
-**Book page (`page/book/index.tsx`).** The block sits inside the header card,
-in the `.info` column under the author line, so it reads as part of the
-book's identity rather than as a metadata row. `readOnly` is `isAdmin`.
+**Book page (`page/book/index.tsx`).** The block is its own `Card` titled
+"Ratings", placed between the title card and the Description card, so the
+five rows have the card's full width at every size. `readOnly` is `isAdmin`.
 `BookDetailDocument` selects `rating { overall story characters writing ideas }`.
 A new `BookRateDocument` mutation selects `book { id rating { … } }` and
 nothing else, so the payload normalizes onto the same `Book:<id>` the route
@@ -499,10 +508,8 @@ Client:
 
 ## What's left to the builder
 
-- Exact icon geometry for the two drawn icons and the horns adaptation, and
-  the circle sizes at `md` and `sm`.
-- The exact grid breakpoint for the sub-ratings, within the page's existing
-  responsive rules.
+- Segment padding and the exact phone-width rules for the rows, within the
+  page's existing responsive rules.
 - Whether `BookRating` needs a `typePolicies` `merge: true` entry, or whether
   wholesale replacement from the payload is enough (it should be: the payload
   always carries all five members).

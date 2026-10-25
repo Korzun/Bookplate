@@ -1,57 +1,81 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
-export const useStyle = createUseStyles((theme: Theme) => ({
-  root: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: theme.space.sm,
-  },
-  // The button is the whole hit target — the circle plus, with `showNames`, the
-  // name under it — so clicking the name selects too. It draws nothing itself:
-  // the circle carries the fill and the focus ring, so the ring stays round
-  // whether or not a name hangs below it.
-  radio: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: theme.space.xs,
-    padding: 0,
-    border: 'none',
-    background: 'transparent',
-    color: theme.color.text.secondary,
-    cursor: 'pointer',
-    outline: 'none',
-    fontFamily: 'inherit',
-    '&:focus-visible $circle': { outlineColor: theme.color.brand.outline },
-    '&:hover:not($readOnly)': { color: theme.color.text.primary },
-    '&$checked, &$checked:hover': { color: theme.color.text.primary },
-    '&$readOnly': { cursor: 'default' },
-  },
-  circle: {
-    ...theme.recipe.focusRing,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.radius.circle,
-    color: 'inherit',
-    transition: `background-color ${theme.transition.fast}, color ${theme.transition.fast}`,
-    '$checked &': {
-      backgroundColor: theme.color.brand.default,
-      color: theme.color.text.onPrimary,
+// The same track, lens and segment recipe as `control/segmented-control`
+// (see the notes there on why the track is borderless and the lens carries the
+// only outlined edge). Not shared because this control's lens can be absent —
+// an unrated field has no checked segment — and its segments stack an icon
+// over a name rather than holding a text label.
+export const useStyle = createUseStyles((theme: Theme) => {
+  const radius = theme.radius.md;
+  return {
+    root: {
+      position: 'relative',
+      display: 'grid',
+      gridAutoFlow: 'column',
+      gridAutoColumns: '1fr',
+      padding: 0,
+      backgroundColor: theme.color.bg.track,
+      borderRadius: radius,
+      userSelect: 'none',
+      '-webkit-user-select': 'none',
+      '&:not($readOnly) $segment:hover': { color: theme.color.text.secondary },
+      '&:not($readOnly) $segment$active:hover': { color: theme.color.brand.hover },
     },
-  },
-  md: {
-    '& $circle': { width: '40px', height: '40px' },
-  },
-  sm: {
-    '& $circle': { width: '32px', height: '32px' },
-  },
-  name: {
-    fontSize: theme.fontSize.xs,
-    lineHeight: 1.2,
-    color: theme.color.text.secondary,
-    '$checked &': { color: theme.color.text.primary },
-  },
-  checked: {},
-  readOnly: {},
-}));
+    lens: {
+      position: 'absolute',
+      boxSizing: 'border-box',
+      zIndex: 0,
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: 'calc(100% / var(--seg-count))',
+      backgroundColor: theme.color.bg.input,
+      borderStyle: 'solid',
+      borderWidth: '1px',
+      borderColor: theme.color.border.default,
+      boxShadow: theme.shadow.cardStack,
+      borderRadius: radius,
+      transform: 'translateX(calc(var(--seg-index) * 100%))',
+      transition: `transform ${theme.transition.spring}`,
+      '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+    },
+    segment: {
+      position: 'relative',
+      zIndex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: theme.space.xxs,
+      minWidth: 0,
+      border: 'none',
+      background: 'transparent',
+      cursor: 'pointer',
+      fontFamily: theme.fontFamily.body,
+      color: theme.color.text.muted,
+      padding: `${theme.space.sm} ${theme.space.xs}`,
+      borderRadius: radius,
+      ...theme.recipe.focusRing,
+      transitionProperty: 'color, outline-color',
+      transitionDuration: '0.1s',
+      transitionTimingFunction: 'ease-in',
+      '&:focus-visible': { outlineColor: theme.color.brand.outline },
+      '&$active': { color: theme.color.brand.default },
+      '$readOnly &': { cursor: 'default' },
+    },
+    name: {
+      maxWidth: '100%',
+      fontSize: theme.fontSize.xs,
+      fontWeight: theme.fontWeight.medium,
+      lineHeight: 1.2,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      // Five named segments do not fit a phone-width card; the icons carry the
+      // value there and the group's `title` still names the checked one.
+      [theme.breakpoint.mobile]: { display: 'none' },
+    },
+    active: {},
+    readOnly: {},
+  };
+});

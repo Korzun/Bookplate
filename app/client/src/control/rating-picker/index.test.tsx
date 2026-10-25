@@ -168,31 +168,47 @@ describe('RatingPicker', () => {
     expect(screen.getByRole('radio', { name: 'Awesome' })).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('shows names under the icons only when showNames is set', () => {
+  it('shows names under the icons unless showNames is false', () => {
     const { rerender } = renderWithProviders(
       <RatingPicker label="Overall" value={null} onChange={vi.fn()} />
     );
     for (const name of NAMES) {
-      expect(screen.queryByText(name)).not.toBeInTheDocument();
-    }
-    rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} showNames />);
-    for (const name of NAMES) {
       expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} showNames={false} />);
+    for (const name of NAMES) {
+      expect(screen.queryByText(name)).not.toBeInTheDocument();
     }
   });
 
-  it('titles the group with the checked name at sm', () => {
+  it('titles the group with the checked name, and not at all when unrated', () => {
     const { rerender } = renderWithProviders(
-      <RatingPicker label="Overall" value={5} size="sm" onChange={vi.fn()} />
+      <RatingPicker label="Overall" value={5} onChange={vi.fn()} />
     );
     expect(screen.getByRole('radiogroup')).toHaveAttribute('title', 'Awesome');
-    rerender(<RatingPicker label="Overall" value={5} onChange={vi.fn()} />);
+    rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
     expect(screen.getByRole('radiogroup')).not.toHaveAttribute('title');
+  });
+
+  // The lens is the sliding tile behind the checked segment (a non-button
+  // child of the group); an unrated picker has no checked segment and no lens.
+  it('draws the lens under the checked segment only', () => {
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={3} onChange={vi.fn()} />
+    );
+    const group = screen.getByRole('radiogroup');
+    const lenses = () => Array.from(group.children).filter((el) => el.tagName !== 'BUTTON');
+    expect(lenses()).toHaveLength(1);
+    expect(group.style.getPropertyValue('--seg-count')).toBe('5');
+    expect(group.style.getPropertyValue('--seg-index')).toBe('2');
+
+    rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
+    expect(lenses()).toHaveLength(0);
   });
 
   it('out-of-range value renders with nothing checked', () => {
     expect(() =>
-      renderWithProviders(<RatingPicker label="Overall" value={0 as never} size="sm" />)
+      renderWithProviders(<RatingPicker label="Overall" value={0 as never} />)
     ).not.toThrow();
     for (const radio of screen.getAllByRole('radio')) {
       expect(radio).toHaveAttribute('aria-checked', 'false');

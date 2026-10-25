@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { type KeyboardEvent, useRef } from 'react';
+import { type CSSProperties, type KeyboardEvent, useRef } from 'react';
 
 import {
   HandHornsIcon,
@@ -28,34 +28,29 @@ export const RATING_OPTIONS: ReadonlyArray<RatingOption> = [
   { value: 5, name: 'Awesome', Icon: HandHornsIcon },
 ];
 
-const ICON_SIZE = { sm: 20, md: 24 } as const;
+const ICON_SIZE = 20;
 
 type RatingPickerProps = {
   value: RatingValue | null;
   /** Absent means read-only: the picker shows the value and ignores input. */
   onChange?: (value: RatingValue | null) => void;
-  size?: 'sm' | 'md';
   /** The group's accessible name, e.g. the rating field it edits. */
   label: string;
-  /** Render each value's name under its icon. */
+  /** Render each value's name under its icon (hidden at phone width by CSS). */
   showNames?: boolean;
 };
 
 /**
- * One row of five icon radios, Bad to Awesome. Clicking (or Space/Enter on)
- * the checked radio clears the rating, so `null` is always reachable.
+ * A segmented control of five icon radios, Bad to Awesome, in the same
+ * track-and-lens style as `control/segmented-control`. Unlike that control the
+ * value can be empty — no lens — and clicking (or Space/Enter on) the checked
+ * segment clears it, so `null` is always reachable.
  *
  * Keyboard, on the group: ArrowRight/ArrowUp and ArrowLeft/ArrowDown step one
  * value without wrapping (from no rating, "next" is Bad); Home and End jump to
  * Bad and Awesome; the digits 1–5 select directly; Backspace and Delete clear.
  */
-export const RatingPicker = ({
-  value,
-  onChange,
-  size = 'md',
-  label,
-  showNames = false,
-}: RatingPickerProps) => {
+export const RatingPicker = ({ value, onChange, label, showNames = true }: RatingPickerProps) => {
   const style = useStyle();
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const readOnly = onChange === undefined;
@@ -113,15 +108,24 @@ export const RatingPicker = ({
     if (next !== undefined) select(next);
   };
 
+  // The lens is one segment wide and slides to the checked segment; the
+  // segments are equal columns, so its position is just the checked index.
+  const rootStyle = {
+    '--seg-count': RATING_OPTIONS.length,
+    '--seg-index': Math.max(0, checkedIndex),
+  } as CSSProperties;
+
   return (
     <div
       role="radiogroup"
       aria-label={label}
       aria-disabled={readOnly ? 'true' : undefined}
-      title={size === 'sm' && checked ? checked.name : undefined}
-      className={cx(style.root, style[size])}
+      title={checked?.name}
+      className={cx(style.root, { [style.readOnly]: readOnly })}
+      style={rootStyle}
       onKeyDown={handleKeyDown}
     >
+      {checked !== null && <div className={style.lens} aria-hidden="true" />}
       {RATING_OPTIONS.map(({ value: optionValue, name, Icon }, index) => {
         const isChecked = checked?.value === optionValue;
         const isTabStop = !readOnly && (checked ? isChecked : index === 0);
@@ -137,15 +141,10 @@ export const RatingPicker = ({
             aria-label={name}
             aria-disabled={readOnly ? 'true' : undefined}
             tabIndex={isTabStop ? 0 : -1}
-            className={cx(style.radio, {
-              [style.checked]: isChecked,
-              [style.readOnly]: readOnly,
-            })}
+            className={cx(style.segment, { [style.active]: isChecked })}
             onClick={() => select(isChecked ? null : optionValue)}
           >
-            <span className={style.circle}>
-              <Icon aria-hidden width={ICON_SIZE[size]} height={ICON_SIZE[size]} />
-            </span>
+            <Icon aria-hidden width={ICON_SIZE} height={ICON_SIZE} />
             {showNames && (
               <span className={style.name} aria-hidden>
                 {name}

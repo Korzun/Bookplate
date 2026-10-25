@@ -1,3 +1,6 @@
+import cx from 'classnames';
+import { Fragment } from 'react';
+
 import { RatingPicker, type RatingValue } from '~/control';
 
 import { useStyle } from './style';
@@ -12,7 +15,8 @@ type BookRatingProps = {
   onRate: (field: RatingFieldKey, value: RatingValue | null) => void;
 };
 
-const SUB_RATINGS: ReadonlyArray<{ field: Exclude<RatingFieldKey, 'overall'>; label: string }> = [
+export const RATING_ROWS: ReadonlyArray<{ field: RatingFieldKey; label: string }> = [
+  { field: 'overall', label: 'Overall' },
   { field: 'story', label: 'Story' },
   { field: 'characters', label: 'Characters' },
   { field: 'writing', label: 'Writing' },
@@ -23,6 +27,11 @@ const SUB_RATINGS: ReadonlyArray<{ field: Exclude<RatingFieldKey, 'overall'>; la
 const toRatingValue = (value: number | null): RatingValue | null =>
   value === 1 || value === 2 || value === 3 || value === 4 || value === 5 ? value : null;
 
+/**
+ * One row per rating field — the field's name, then a segmented picker — with
+ * Overall first and set in the primary text colour, since the sub-ratings
+ * explain it rather than add up to it.
+ */
 export const BookRating = ({ rating, bookTitle, readOnly, onRate }: BookRatingProps) => {
   const style = useStyle();
   const handler = (field: RatingFieldKey) =>
@@ -30,26 +39,16 @@ export const BookRating = ({ rating, bookTitle, readOnly, onRate }: BookRatingPr
 
   return (
     <div className={style.root}>
-      <RatingPicker
-        size="md"
-        showNames
-        label={`Overall rating for ${bookTitle}`}
-        value={toRatingValue(rating.overall)}
-        onChange={handler('overall')}
-      />
-      <div className={style.grid}>
-        {SUB_RATINGS.map(({ field, label }) => (
-          <div key={field} className={style.row}>
-            <span className={style.label}>{label}</span>
-            <RatingPicker
-              size="sm"
-              label={`${label} rating for ${bookTitle}`}
-              value={toRatingValue(rating[field])}
-              onChange={handler(field)}
-            />
-          </div>
-        ))}
-      </div>
+      {RATING_ROWS.map(({ field, label }) => (
+        <Fragment key={field}>
+          <span className={cx(style.label, { [style.overall]: field === 'overall' })}>{label}</span>
+          <RatingPicker
+            label={`${label} rating for ${bookTitle}`}
+            value={toRatingValue(rating[field])}
+            onChange={handler(field)}
+          />
+        </Fragment>
+      ))}
     </div>
   );
 };

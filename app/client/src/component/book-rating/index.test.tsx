@@ -15,6 +15,26 @@ const empty: BookRatingValues = {
 };
 
 describe('BookRating', () => {
+  it('labels each row, Overall first, matching the radiogroup order', () => {
+    renderWithProviders(
+      <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+    );
+    const root = screen.getByRole('radiogroup', { name: 'Overall rating for Dune' }).parentElement!;
+    const rows = Array.from(root.children);
+    // Label, picker, label, picker…: ten children in strict alternation.
+    expect(rows).toHaveLength(10);
+    expect(rows.filter((_, i) => i % 2 === 0).map((el) => el.textContent)).toEqual([
+      'Overall',
+      'Story',
+      'Characters',
+      'Writing',
+      'Ideas',
+    ]);
+    for (const [i, el] of rows.entries()) {
+      expect(el.getAttribute('role')).toBe(i % 2 === 0 ? null : 'radiogroup');
+    }
+  });
+
   it('renders five radiogroups labelled for the book', () => {
     renderWithProviders(
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
@@ -46,21 +66,26 @@ describe('BookRating', () => {
     for (const radio of radios) expect(radio).toHaveAttribute('aria-disabled', 'true');
   });
 
-  // jsdom does no layout, so this checks the declared rule, not a measured width:
-  // the sub-rating grid fits as many columns as there is room for rather than a
-  // fixed two that overflowed narrow containers.
-  it('lays the sub-ratings out in an auto-fit grid', () => {
+  // jsdom does no layout, so this checks the declared rules, not measured
+  // widths: a label column and a picker column, collapsing to one column (label
+  // above picker) at phone width.
+  it('lays the rows out as label and picker columns, one column at phone width', () => {
     renderWithProviders(
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
-    const row = screen.getByRole('radiogroup', { name: 'Story rating for Dune' }).parentElement!;
-    const grid = row.parentElement!;
+    const grid = screen.getByRole('radiogroup', { name: 'Story rating for Dune' }).parentElement!;
     const css = Array.from(document.querySelectorAll('style'))
       .map((el) => el.textContent ?? '')
       .join('\n');
-    const rule = new RegExp(
-      `\\.${grid.className}\\s*\\{[^}]*grid-template-columns:\\s*repeat\\(auto-fit,`
+    expect(css).toMatch(
+      new RegExp(
+        `\\.${grid.className}\\s*\\{[^}]*grid-template-columns:\\s*max-content minmax\\(0, 1fr\\)`
+      )
     );
-    expect(css).toMatch(rule);
+    expect(css).toMatch(
+      new RegExp(
+        `@media \\(max-width: 640px\\)\\s*\\{\\s*\\.${grid.className}\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0, 1fr\\)`
+      )
+    );
   });
 });

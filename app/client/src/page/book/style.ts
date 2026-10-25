@@ -11,28 +11,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     padding: theme.space.xxxxxl,
     textAlign: 'center',
   },
-  // Cover in the first column, title block and rating stacked in the second.
-  // At phone width the second column is too narrow for a row of rating circles
-  // (it overflowed and the Card's `overflow: hidden` clipped the Awesome
-  // circle), so the rating drops below the cover and spans the whole card.
-  // A grid rather than a wrapping flex row: on wide layouts the rating must sit
-  // directly under the author, not below the cover's 120px.
   detail: {
-    display: 'grid',
-    gridTemplateColumns: 'auto minmax(0, 1fr)',
-    // The last row absorbs any height the cover adds, so the rating never
-    // drifts away from the author line.
-    gridTemplateRows: 'auto 1fr',
-    columnGap: theme.space.xxxl,
-    alignItems: 'start',
+    display: 'flex',
+    gap: theme.space.xxxl,
+    alignItems: 'flex-start',
     position: 'relative',
-  },
-  cover: {
-    gridColumn: 1,
-    gridRow: '1 / span 2',
-    [theme.breakpoint.mobile]: {
-      gridRow: 1,
-    },
   },
   cardContainer: {
     display: 'flex',
@@ -69,19 +52,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.xxl,
   },
   info: {
-    gridColumn: 2,
-    gridRow: 1,
+    flex: 1,
     minWidth: 0,
-  },
-  rating: {
-    gridColumn: 2,
-    gridRow: 2,
-    minWidth: 0,
-    marginTop: theme.space.md,
-    [theme.breakpoint.mobile]: {
-      gridColumn: '1 / -1',
-      marginTop: theme.space.xl,
-    },
+    height: '100%',
   },
   titleContainer: {
     margin: `0 0 ${theme.space.xs}`,
