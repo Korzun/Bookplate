@@ -44,14 +44,13 @@ type ViewerResendEmailVerificationPayload = Extract<
  * `authenticated`, which is false for a gated viewer — so this component
  * has no `useQuery` of its own.
  *
- * It differs from that page in one important way: confirming here does NOT
- * log the caller out. `userChangePassword` revokes every refresh token as a
- * side effect and therefore has to end the session; setting an address
- * revokes nothing, so on a successful confirm this page mints a fresh
- * access token via `refreshAccessToken()` (`POST /api/auth/refresh` rebuilds
- * claims from current state) and navigates home — the gate lifts
- * immediately instead of after the 15-minute token TTL, and the caller stays
- * signed in throughout.
+ * Both pages keep the caller signed in, but by different routes. Setting an
+ * address revokes nothing, so on a successful confirm this page mints a
+ * fresh access token via `refreshAccessToken()` (`POST /api/auth/refresh`
+ * rebuilds claims from current state) and navigates home — the gate lifts
+ * immediately instead of after the 15-minute token TTL. The password page
+ * cannot refresh (`userChangePassword` revokes every refresh token as a side
+ * effect) and so logs in again with the new password instead.
  */
 export const SetEmailPage = () => {
   const styles = useStyle();

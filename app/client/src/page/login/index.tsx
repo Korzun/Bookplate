@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
-import { extractAccessToken, setToken } from '~/lib/token';
+import { login } from '~/lib/login';
 import { useEmailEnabled } from '~/provider/config';
 import { useToast } from '~/provider/toast';
 import { path } from '~/router';
@@ -20,36 +20,33 @@ export const LoginPage = () => {
   const [password, setPassword] = useState<string | undefined>();
 
   const [, submitAction, isPending] = useActionState(async () => {
-    try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ username: username ?? '', password: password ?? '' }),
-      });
-      if (response.ok) {
-        const accessToken = extractAccessToken(await response.json());
-        if (accessToken) {
-          setToken(accessToken);
-        } else {
-          showToast('Unexpected response from server', 'error');
-        }
-      } else if (response.status === 429) {
+    const result = await login(username ?? '', password ?? '');
+    switch (result.status) {
+      case 'ok':
+        // `login` stored the token; AuthProvider and the route guards take it
+        // from here.
+        break;
+      case 'malformed':
+        showToast('Unexpected response from server', 'error');
+        break;
+      case 'rate-limited':
         // POST /api/login rate-limits at 10 attempts/minute/IP. This is NOT a
         // credentials failure: a successful login does not reset the counter
         // (see routes/ui.ts), so "Invalid credentials" would be both wrong and
         // would not clear on a correct retry.
-        const retryAfter = Number(response.headers.get('Retry-After'));
         showToast(
-          Number.isFinite(retryAfter) && retryAfter > 0
-            ? `Too many attempts — try again in ${retryAfter} seconds`
+          result.retryAfterSeconds !== null
+            ? `Too many attempts — try again in ${result.retryAfterSeconds} seconds`
             : 'Too many attempts — please wait a moment and try again',
           'error'
         );
-      } else {
+        break;
+      case 'rejected':
         showToast('Invalid credentials', 'error');
-      }
-    } catch {
-      showToast('Network error — please try again', 'error');
+        break;
+      case 'network-error':
+        showToast('Network error — please try again', 'error');
+        break;
     }
     return null;
   }, null);

@@ -33,6 +33,13 @@ type UserChangePasswordPayload = Extract<
  * caller out and sends them to `/login`, unconditionally, via the same
  * shared best-effort `logout()` helper (`~/lib/logout`) the explicit "log
  * out" button's hook delegates to.
+ *
+ * `page/password-reset` used to share this contract and no longer does: the
+ * forced first-login change re-logs the caller in with the new password so
+ * they land in the app. That page's caller has never had a session worth
+ * keeping; this form's caller is a settled user changing credentials from
+ * settings, where ending every session (this one included) is the expected
+ * outcome of a password change, so the logout stays here.
  */
 export const UserChangePassword = () => {
   const styles = useStyle();
