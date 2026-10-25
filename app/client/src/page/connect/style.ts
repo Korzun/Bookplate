@@ -58,6 +58,14 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'flex-start',
     gap: theme.space.sm,
   },
+  // A write line while Read only is on: still in the list (same height), but
+  // visibly not part of what is being granted.
+  detailDenied: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.space.sm,
+    color: theme.color.text.faint,
+  },
   check: {
     flexShrink: 0,
     color: theme.color.text.faint,
