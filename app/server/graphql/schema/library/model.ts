@@ -18,6 +18,7 @@ import { isLivePendingFix, parsePendingFixState } from '../../derive';
 import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry/model';
+import { model as libraryRatingProfile } from '../library-rating-profile/model';
 import { isOwnerOrAdmin, parseCompoundId } from '../node-scope';
 import { CONNECTION_LIMITS, rejectOversizePage } from '../pagination';
 import { model as pendingFix } from '../pending-fix';
@@ -208,6 +209,10 @@ builder.node(model, {
     authors: t.field({
       type: ['String'],
       resolve: (owner, _args, context) => getAuthors(context.prisma, owner),
+    }),
+    ratingProfile: t.field({
+      type: libraryRatingProfile,
+      resolve: (owner) => owner,
     }),
 
     /**

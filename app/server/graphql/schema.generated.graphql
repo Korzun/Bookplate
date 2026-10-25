@@ -505,6 +505,7 @@ type Library implements Node {
   The reading positions this library owner has synced, newest first. Paginates in both directions.
   """
   progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
+  ratingProfile: LibraryRatingProfile!
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!
   seriesByName(name: String!): Series
@@ -553,6 +554,19 @@ type LibraryProgressConnection {
 type LibraryProgressConnectionEdge {
   cursor: String!
   node: Progress!
+}
+
+type LibraryRatingProfile {
+  """
+  Books whose overall rating is at least minOverall, most recently rated first. Default is the Awesome shelf.
+  """
+  favourites(first: Int = 25, minOverall: Int = 5): [Book!]!
+
+  """One entry per RatingField, in enum order."""
+  fields: [RatingFieldSummary!]!
+
+  """Books with an overall rating."""
+  ratedCount: Int!
 }
 
 """No lineage entry links this document id to this book."""
@@ -955,6 +969,26 @@ type Query {
   nodes(ids: [ID!]!): [Node]!
   user(id: ID!): User
   viewer: Viewer!
+}
+
+enum RatingField {
+  CHARACTERS
+  IDEAS
+  OVERALL
+  STORY
+  WRITING
+}
+
+type RatingFieldSummary {
+  """Books with this field rated."""
+  count: Int!
+
+  """Five counts, for values 1 through 5 in order."""
+  distribution: [Int!]!
+  field: RatingField!
+
+  """Mean over rated books, null when count is 0."""
+  mean: Float
 }
 
 input SearchSuggestionsFilter {
