@@ -35,6 +35,18 @@ describe('BookRating', () => {
     }
   });
 
+  it('names the segments on the Overall row only', () => {
+    renderWithProviders(
+      <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+    );
+    const overall = screen.getByRole('radiogroup', { name: 'Overall rating for Dune' });
+    for (const name of ['Bad', 'Okay', 'Nice', 'Great', 'Awesome']) {
+      const matches = screen.getAllByText(name);
+      expect(matches).toHaveLength(1);
+      expect(overall).toContainElement(matches[0]);
+    }
+  });
+
   it('renders five radiogroups labelled for the book', () => {
     renderWithProviders(
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
