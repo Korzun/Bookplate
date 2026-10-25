@@ -771,14 +771,14 @@ export const BookPage = () => {
           <div className={styles.detail}>
             {book.hasCover ? (
               <img
-                className={`${styles.coverImg} ${styles.cover}`}
+                className={styles.coverImg}
                 src={coverSrc}
                 alt={book.title}
                 width={160}
                 height={240}
               />
             ) : (
-              <div className={`${styles.coverPlaceholder} ${styles.cover}`} />
+              <div className={styles.coverPlaceholder} />
             )}
             <div className={styles.info}>
               <div className={styles.titleContainer}>
@@ -807,19 +807,19 @@ export const BookPage = () => {
                 </div>
               )}
             </div>
-            <div className={styles.rating}>
-              <BookRating
-                rating={book.rating}
-                bookTitle={book.title}
-                readOnly={isAdmin}
-                onRate={handleRate}
-              />
-            </div>
           </div>
           <div className={styles.metadata}>
             <MetadataList metadata={metadata} />
           </div>
         </div>
+      </Card>
+      <Card title="Ratings">
+        <BookRating
+          rating={book.rating}
+          bookTitle={book.title}
+          readOnly={isAdmin}
+          onRate={handleRate}
+        />
       </Card>
       <Card title="Description">
         <div className={styles.description}>{description}</div>
