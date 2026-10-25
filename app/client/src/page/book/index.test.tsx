@@ -1840,6 +1840,25 @@ describe('BookPage', () => {
       }
     });
 
+    // jsdom does no layout: this pins the DOM placement and the declared mobile
+    // rule. The rating sits beside the title block (a sibling in the detail grid,
+    // not inside it) so at phone width it can span the whole card.
+    it('places the rating block in the detail grid, spanning the card at phone width', async () => {
+      await renderPage([bookMock(), viewerBootstrapMock()], owner);
+      const heading = await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      const info = heading.parentElement!.parentElement!;
+      const wrapper = ratingGroup('Overall').parentElement!.parentElement!;
+      expect(info.contains(wrapper)).toBe(false);
+      expect(wrapper.parentElement).toBe(info.parentElement);
+      const css = Array.from(document.querySelectorAll('style'))
+        .map((el) => el.textContent ?? '')
+        .join('\n');
+      const mobile = new RegExp(
+        `@media \\(max-width: 640px\\)\\s*\\{\\s*\\.${wrapper.className}\\s*\\{[^}]*grid-column:\\s*1 / -1`
+      );
+      expect(css).toMatch(mobile);
+    });
+
     it('rating a sub-field sends only that field and updates from the payload with no refetch', async () => {
       bookDetailCounter.requests = 0;
       const { client } = await renderPage(

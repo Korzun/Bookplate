@@ -45,4 +45,22 @@ describe('BookRating', () => {
     expect(radios).toHaveLength(25);
     for (const radio of radios) expect(radio).toHaveAttribute('aria-disabled', 'true');
   });
+
+  // jsdom does no layout, so this checks the declared rule, not a measured width:
+  // the sub-rating grid fits as many columns as there is room for rather than a
+  // fixed two that overflowed narrow containers.
+  it('lays the sub-ratings out in an auto-fit grid', () => {
+    renderWithProviders(
+      <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+    );
+    const row = screen.getByRole('radiogroup', { name: 'Story rating for Dune' }).parentElement!;
+    const grid = row.parentElement!;
+    const css = Array.from(document.querySelectorAll('style'))
+      .map((el) => el.textContent ?? '')
+      .join('\n');
+    const rule = new RegExp(
+      `\\.${grid.className}\\s*\\{[^}]*grid-template-columns:\\s*repeat\\(auto-fit,`
+    );
+    expect(css).toMatch(rule);
+  });
 });
