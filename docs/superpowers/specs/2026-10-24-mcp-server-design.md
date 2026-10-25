@@ -279,13 +279,14 @@ the connection URL readers paste into their assistant. It reads a small
 
 `page/connect`: a `Page type="minimal"` with `BrandLockup` and a `Card`. Body,
 top to bottom: title "Connect <client name>?" and a one-line subtitle ("<client>
-is asking to access your Bookplate library."), a divider, a "Read only" `Switch`
-(no helper text), then one line per permission with a small grey icon: Search
-your library; Read book and series details; Edit book metadata; Run validation;
-Upload and replace books; Act on metadata recommendations; Request and delete
-books. Every line is always rendered so the card never changes height; with
-Read only on (or a read-only scope request) the write lines switch to a grey X
-and faint text. Deny (default) and Approve (primary) sit in the card footer.
+is asking to access your Bookplate library."), the inset section rule
+`page/book` uses between its cards, a "Read only" `Switch` (no helper text),
+then one line per permission with a small green check: Search your library;
+Read book and series details; Edit book metadata; Run validation; Upload and
+replace books; Act on metadata recommendations; Request books; Delete books.
+Every line is always rendered so the card never changes height; with Read only
+on (or a read-only scope request) the write lines switch to a grey X and faint
+text. Deny (default) and Approve (primary) sit in the card footer.
 Bad or missing query params render a card saying the link is invalid. An admin
 viewer sees "The admin account has no library to connect. Sign in as a reader."
 

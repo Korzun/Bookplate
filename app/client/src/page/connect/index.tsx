@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
-import { BrandLockup, Card, CardDivider, Page } from '~/component';
+import { BrandLockup, Card, Page } from '~/component';
 import { Button, Switch } from '~/control';
 import type { McpAuthorizeMutation } from '~/gql/graphql';
 import { McpAuthorizeDocument, McpClientDocument } from '~/graphql/mcp';
@@ -64,7 +64,8 @@ const PERMISSIONS: ReadonlyArray<{ text: string; write: boolean }> = [
   { text: 'Run validation', write: true },
   { text: 'Upload and replace books', write: true },
   { text: 'Act on metadata recommendations', write: true },
-  { text: 'Request and delete books', write: true },
+  { text: 'Request books', write: true },
+  { text: 'Delete books', write: true },
 ];
 
 const INVALID = 'This connection link is invalid.';
@@ -148,41 +149,47 @@ export const ConnectPage = () => {
   } else {
     body = (
       <div className={styles.form}>
-        <h2 className={styles.title}>Connect {client.clientName}?</h2>
-        <p className={styles.lead}>
-          {client.clientUri !== null ? (
-            <a href={client.clientUri} target="_blank" rel="noopener noreferrer">
-              {client.clientName}
-            </a>
-          ) : (
-            client.clientName
-          )}{' '}
-          is asking to access your Bookplate library.
-        </p>
-        <CardDivider />
-        <Switch
-          name="read-only"
-          label="Read only"
-          layout="horizontal"
-          checked={readOnly}
-          onChange={setReadOnly}
-        />
-        <ul className={styles.details}>
-          {PERMISSIONS.map(({ text, write }) => {
-            const granted = !write || showWrite;
-            const Icon = granted ? CheckIcon : XIcon;
-            return (
-              <li
-                key={text}
-                className={granted ? styles.detail : styles.detailDenied}
-                data-granted={granted}
-              >
-                <Icon width={14} height={14} className={styles.check} aria-hidden />
-                <span>{text}</span>
-              </li>
-            );
-          })}
-        </ul>
+        <div className={styles.section}>
+          <h2 className={styles.title}>Connect {client.clientName}?</h2>
+          <p className={styles.lead}>
+            {client.clientUri !== null ? (
+              <a href={client.clientUri} target="_blank" rel="noopener noreferrer">
+                {client.clientName}
+              </a>
+            ) : (
+              client.clientName
+            )}{' '}
+            is asking to access your Bookplate library.
+          </p>
+        </div>
+        <div className={styles.section}>
+          <Switch
+            name="read-only"
+            label="Read only"
+            layout="horizontal"
+            checked={readOnly}
+            onChange={setReadOnly}
+          />
+          <ul className={styles.details}>
+            {PERMISSIONS.map(({ text, write }) => {
+              const granted = !write || showWrite;
+              return (
+                <li
+                  key={text}
+                  className={granted ? styles.detail : styles.detailDenied}
+                  data-granted={granted}
+                >
+                  {granted ? (
+                    <CheckIcon width={14} height={14} className={styles.check} aria-hidden />
+                  ) : (
+                    <XIcon width={14} height={14} className={styles.cross} aria-hidden />
+                  )}
+                  <span>{text}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       </div>
     );
   }
