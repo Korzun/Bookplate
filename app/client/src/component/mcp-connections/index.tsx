@@ -82,7 +82,7 @@ export const McpConnections = ({ viewer: viewerRef }: McpConnectionsProps) => {
         title="AI assistants"
         headerAction={
           <Button type="link" onClick={() => setListOpen(true)}>
-            clients
+            Clients
           </Button>
         }
       >
