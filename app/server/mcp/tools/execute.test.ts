@@ -15,6 +15,7 @@ afterEach(async () => {
 });
 
 const depsFor = (): ToolDeps => ({
+  baseUrl: new URL('https://books.example'),
   context: harness.contextFor(harness.aliceViewer),
   viewer: { ...harness.aliceViewer, userId: harness.aliceOwner.userId },
   scopes: ['library:read', 'library:write'],
