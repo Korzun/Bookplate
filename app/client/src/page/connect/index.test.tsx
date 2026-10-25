@@ -80,16 +80,36 @@ describe('ConnectPage', () => {
     expect(await screen.findByText('This connection link is invalid.')).toBeInTheDocument();
   });
 
-  it('names the client and lists what it may do; read-only hides the write bullet', async () => {
+  it('names the client and lists each permission; read-only marks the write lines as not granted', async () => {
     const user = userEvent.setup();
     render([clientMock()]);
     expect(await screen.findByText('Connect Claude?')).toBeInTheDocument();
-    expect(screen.getByText(/Search your library/)).toBeInTheDocument();
-    expect(screen.getByText(/Edit metadata/)).toBeInTheDocument();
+    expect(screen.getByText(/is asking to access your Bookplate library/)).toBeInTheDocument();
+    const items = screen.getAllByRole('listitem');
+    expect(items.map((li) => li.textContent)).toEqual([
+      'Search your library',
+      'Read book and series details',
+      'Edit book metadata',
+      'Run validation',
+      'Upload and replace books',
+      'Act on metadata recommendations',
+      'Request and delete books',
+    ]);
+    expect(items.every((li) => li.dataset['granted'] === 'true')).toBe(true);
 
     await user.click(screen.getByRole('switch', { name: 'Read only' }));
-    expect(screen.queryByText(/Edit metadata/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Search your library/)).toBeInTheDocument();
+    // Same seven lines, same height; only the write ones flip to not granted.
+    const after = screen.getAllByRole('listitem');
+    expect(after).toHaveLength(7);
+    expect(after.map((li) => li.dataset['granted'])).toEqual([
+      'true',
+      'true',
+      'false',
+      'false',
+      'false',
+      'false',
+      'false',
+    ]);
   });
 
   it('approves and sends the browser to the redirect URL', async () => {

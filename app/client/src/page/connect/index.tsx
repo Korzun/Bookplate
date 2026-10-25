@@ -6,7 +6,7 @@ import { BrandLockup, Card, CardDivider, Page } from '~/component';
 import { Button, Switch } from '~/control';
 import type { McpAuthorizeMutation } from '~/gql/graphql';
 import { McpAuthorizeDocument, McpClientDocument } from '~/graphql/mcp';
-import { CheckIcon } from '~/icon';
+import { CheckIcon, XIcon } from '~/icon';
 import { unwrapResult } from '~/provider/apollo';
 import { useIsAdmin } from '~/provider/auth';
 import { useToast } from '~/provider/toast';
@@ -50,6 +50,22 @@ const readRequest = (params: URLSearchParams): ConsentRequest | null => {
 /** Whether the client asked for write access (or for nothing, which means everything). */
 const wantsWrite = (scope: string | null): boolean =>
   scope === null || scope.trim() === '' || scope.split(' ').includes('library:write');
+
+/**
+ * One line per capability, so the reader can see exactly what the assistant
+ * gets. Every line is ALWAYS rendered: with Read only on, the write lines
+ * stay in place but are marked as not granted, so the card never changes
+ * height as the switch flips.
+ */
+const PERMISSIONS: ReadonlyArray<{ text: string; write: boolean }> = [
+  { text: 'Search your library', write: false },
+  { text: 'Read book and series details', write: false },
+  { text: 'Edit book metadata', write: true },
+  { text: 'Run validation', write: true },
+  { text: 'Upload and replace books', write: true },
+  { text: 'Act on metadata recommendations', write: true },
+  { text: 'Request and delete books', write: true },
+];
 
 const INVALID = 'This connection link is invalid.';
 const ADMIN = 'The admin account has no library to connect. Sign in as a reader.';
@@ -141,7 +157,7 @@ export const ConnectPage = () => {
           ) : (
             client.clientName
           )}{' '}
-          is asking to use your Bookplate library.
+          is asking to access your Bookplate library.
         </p>
         <CardDivider />
         <Switch
@@ -151,20 +167,21 @@ export const ConnectPage = () => {
           checked={readOnly}
           onChange={setReadOnly}
         />
-        <CardDivider />
         <ul className={styles.details}>
-          <li className={styles.detail}>
-            <CheckIcon width={14} height={14} className={styles.check} aria-hidden />
-            <span>Search your library and read book and series details</span>
-          </li>
-          {showWrite && (
-            <li className={styles.detail}>
-              <CheckIcon width={14} height={14} className={styles.check} aria-hidden />
-              <span>
-                Edit metadata, run validation, upload and replace books, and act on recommendations
-              </span>
-            </li>
-          )}
+          {PERMISSIONS.map(({ text, write }) => {
+            const granted = !write || showWrite;
+            const Icon = granted ? CheckIcon : XIcon;
+            return (
+              <li
+                key={text}
+                className={granted ? styles.detail : styles.detailDenied}
+                data-granted={granted}
+              >
+                <Icon width={14} height={14} className={styles.check} aria-hidden />
+                <span>{text}</span>
+              </li>
+            );
+          })}
         </ul>
       </div>
     );
