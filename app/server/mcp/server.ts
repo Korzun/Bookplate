@@ -19,6 +19,7 @@ import { registerListLibraryFacets } from './tools/list-library-facets';
 import { registerListPendingFixes } from './tools/list-pending-fixes';
 import { registerListReadingProgress } from './tools/list-reading-progress';
 import { registerListSeries } from './tools/list-series';
+import { registerRateBook } from './tools/rate-book';
 import { registerRegenerateChapters } from './tools/regenerate-chapters';
 import { registerReplaceBookFile } from './tools/replace-book-file';
 import { registerRequestBook } from './tools/request-book';
@@ -53,6 +54,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
 
 export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
   registerUpdateBookMetadata(server, deps);
+  registerRateBook(server, deps);
   registerValidateBook(server, deps);
   registerResolveMetadataFixes(server, deps);
   registerRegenerateChapters(server, deps);
