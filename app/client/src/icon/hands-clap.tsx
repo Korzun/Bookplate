@@ -1,7 +1,7 @@
 import { IconProps, defaultStrokeIconProps } from './props';
 
-// Drawn for Bookplate in the Tabler outline idiom (finger and palm construction of https://tabler.io/icons?icon=hand-stop):
-// front hand tilted 20°, second hand behind it tilted the other way, only its knuckle scallop and outer edge showing. Part of the five-icon rating family.
+// Hugeicons "clapping-02" (@hugeicons/core-free-icons 4.3.5, MIT), stroke 2 instead of 1.5, ink box centred.
+// Front hand with four fingers and its thumb, second hand behind with its thumb and two fingers showing. Part of the five-icon rating family.
 export const HandsClapIcon = (props: IconProps) => {
   const {
     'aria-hidden': ariaHidden,
@@ -34,11 +34,16 @@ export const HandsClapIcon = (props: IconProps) => {
       width={width}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path d="M7.81 12.81l1.54 -4.23a1.5 1.5 0 0 1 2.82 1.03l-1.54 4.23" />
-      <path d="M10.8 13.37l1.88 -5.17a1.5 1.5 0 0 1 2.82 1.03l-1.88 5.17" />
-      <path d="M13.62 14.39l1.71 -4.7a1.5 1.5 0 0 1 2.82 1.03l-1.71 4.7" />
-      <path d="M16.27 15.89l1.2 -3.29a1.5 1.5 0 0 1 2.82 1.03l-1.2 3.29a6 6 0 0 1 -7.69 3.59l-1.88 -.68a4 4 0 0 1 -2.39 -5.13l.68 -1.88" />
-      <path d="M15.24 4.88l-.29 -.8a1.5 1.5 0 0 0 -2.82 1.03l-.34 -.94a1.5 1.5 0 0 0 -2.82 1.03a1.5 1.5 0 0 0 -2.82 1.03l.34 .94a1.5 1.5 0 0 0 -2.82 1.03l1.54 4.23" />
+      <path d="M20.29 16.6l-2.65 2.78c-1.23 1.29 -1.85 1.94 -2.53 2.26c-1.04 .49 -2.22 .49 -3.26 .01c-.68 -.32 -1.29 -.96 -2.52 -2.25c-.65 -.68 -.97 -1.01 -1.2 -1.4c-.36 -.59 -.57 -1.26 -.62 -1.95c-.03 -.46 .03 -.93 .16 -1.88l.58 -4.18c.09 -.64 .58 -1.14 1.2 -1.21c.8 -.09 1.51 .56 1.5 1.41l0 1.93l4.52 -4.74c.47 -.49 1.23 -.49 1.7 0c.47 .49 .47 1.29 0 1.79" />
+      <path d="M17.17 9.16l1.14 -1.19c.47 -.49 1.23 -.49 1.7 0c.47 .49 .47 1.29 0 1.79l-1.14 1.19" />
+      <path d="M17.17 9.16l-2.56 2.68" />
+      <path d="M18.88 10.94c.47 -.49 1.23 -.49 1.7 0c.47 .49 .47 1.29 0 1.79l-1.14 1.19" />
+      <path d="M18.88 10.94l-2.56 2.68" />
+      <path d="M19.73 17.19l1.42 -1.49c.47 -.49 .47 -1.29 0 -1.79c-.47 -.49 -1.23 -.49 -1.7 0" />
+      <path d="M19.44 13.92l-1.42 1.49" />
+      <path d="M12.27 4.19c.48 -.5 .48 -1.32 0 -1.82c-.48 -.5 -1.25 -.5 -1.72 0l-4.57 4.82l0 -1.97c0 -.86 -.71 -1.53 -1.52 -1.44c-.62 .07 -1.12 .58 -1.21 1.24l-.58 4.25c-.13 .97 -.2 1.45 -.17 1.91c.05 .71 .26 1.39 .62 1.99c.24 .39 .56 .74 1.21 1.42c.13 .14 .26 .27 .37 .39" />
+      <path d="M12.27 4.19l1.15 -1.21c.48 -.5 1.25 -.5 1.72 0c.48 .5 .48 1.32 0 1.82" />
+      <path d="M12.27 4.19l-1.76 1.86" />
     </svg>
   );
 };

@@ -1,7 +1,7 @@
 import { IconProps, defaultStrokeIconProps } from './props';
 
-// Drawn for Bookplate in the Tabler outline idiom (cf. https://tabler.io/icons?icon=thumb-up, https://tabler.io/icons?icon=hand-stop):
-// 3-unit finger tubes, round caps/joins, stroke 2; fist with four knuckle curls, tilted 20°. Part of the five-icon rating family.
+// Drawn for Bookplate in the Tabler outline idiom (3-unit finger tubes, r=1.5 tips, stroke 2): side view of a fist with four
+// knuckle curls, thumb tube 6 units long leaning 15° back, whole hand tilted 8°. Part of the five-icon rating family.
 export const ThumbUpIcon = (props: IconProps) => {
   const {
     'aria-hidden': ariaHidden,
@@ -34,10 +34,10 @@ export const ThumbUpIcon = (props: IconProps) => {
       width={width}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path d="M15.65 6.79l-7.05 2.57l-1.88 -5.17a1.5 1.5 0 0 0 -2.82 1.03l4.96 13.63a3 3 0 0 0 3.85 1.79l6.11 -2.22a1.5 1.5 0 0 0 -1.03 -2.82l-3.29 1.2" />
-      <path d="M15.65 6.79a1.5 1.5 0 0 1 1.03 2.82l-3.29 1.2" />
-      <path d="M14.33 10.47l3.29 -1.2a1.5 1.5 0 0 1 1.03 2.82l-3.29 1.2" />
-      <path d="M14.89 13.46l3.29 -1.2a1.5 1.5 0 0 1 1.03 2.82l-3.29 1.2" />
+      <path d="M16.79 8.42l-7.09 1.13l-2.54 -5.98a1.5 1.5 0 0 0 -2.76 1.17l2.54 5.98l-.27 1.14l.97 6.93a3 3 0 0 0 3.39 2.55l7.43 -1.04a1.5 1.5 0 0 0 -.42 -2.97l-3.47 .49" />
+      <path d="M16.79 8.42a1.5 1.5 0 0 1 .42 2.97l-3.47 .49" />
+      <path d="M17.21 11.39a1.5 1.5 0 0 1 .42 2.97l-3.47 .49" />
+      <path d="M17.63 14.36a1.5 1.5 0 0 1 .42 2.97l-3.47 .49" />
     </svg>
   );
 };

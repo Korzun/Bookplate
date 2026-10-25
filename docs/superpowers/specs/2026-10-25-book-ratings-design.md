@@ -390,21 +390,24 @@ the stroke-icon defaults:
 | File | Source |
 |------|--------|
 | `thumb-down.tsx` | Drawn for this project: the thumb-up rotated 180° (Tabler's own thumb-down relationship) |
-| `thumb-up.tsx` | Drawn for this project in Tabler's hand construction: side-on fist, four knuckle curls, thumb up, tilted 20° |
-| `hand-ok.tsx` | Drawn for this project: Tabler `hand-three-fingers` construction with index and thumb closed into a ring |
-| `hands-clap.tsx` | Drawn for this project: a `hand-stop`-construction front hand tilted 20° with a mirrored back hand clipped behind it |
-| `hand-horns.tsx` | Tabler `hand-love-you` (MIT), palm shortened 1 unit to match the others' ink box |
+| `thumb-up.tsx` | Drawn for this project in Tabler's tube construction: side-on fist with four knuckle curls, a 6-unit thumb leaning 15° back, the hand tilted 8° |
+| `hand-ok.tsx` | Hugeicons `ok-finger` (`@hugeicons/core-free-icons` 4.3.5, MIT) at stroke 2, its open wrist closed with a palm heel |
+| `hands-clap.tsx` | Hugeicons `clapping-02` (MIT) at stroke 2: front hand with four fingers and its thumb, back hand showing its thumb and two fingers |
+| `hand-horns.tsx` | Drawn for this project in Tabler's tube construction: index and little finger up, middle and ring folded to stubs, thumb folded across below them |
 
-The five are one family by construction, not by source: every finger is a
-3-unit tube with an r=1.5 round tip at a 3-unit pitch, palms close with an
-r=6 arc, there are no cuffs or wrists, no nails or wrinkles, and every
-stroke is the app's width of 2. Their stroked ink boxes are 18.0–18.8 wide
-by 19.6–20.0 tall, all centred on x=12 (measured by rasterising). Two
-earlier sets were rejected: Tabler thumbs plus hand-drawn OK and clap (the
-ring and clap were illegible, the thumbs off-centre), then five Hugeicons
-icons (legible, but mitten thumbs with cuffs beside fingered hands without).
-Each file carries the source comment line the other icons carry. Every icon
-must read correctly at 20px, the size the segments use.
+The five are one family by construction: every finger is a 3-unit tube
+(Hugeicons' 2.8) with a round tip, every thumb is a visible tube of its own
+(the OK ring is the thumb and index meeting tip to tip, not a circle), there
+are no cuffs or wrists, no nails or wrinkles, and every stroke is the app's
+width of 2. Stroked ink boxes are 14–17 wide by 20–21 tall for the single
+hands and 21 by 22 for the two-hand clap, all centred on (12, 12) by
+rasterised measurement. Three earlier sets were rejected: Tabler thumbs plus
+hand-drawn OK and clap (ring and clap illegible, thumbs off-centre), five
+Hugeicons icons (mitten thumbs with cuffs beside fingered hands), and a
+hand-drawn Tabler-construction family (thumbs twice the horns' thumb, no
+thumbs on the clap, a bare circle for the OK ring). Each file carries a
+source comment line. Every icon must read correctly at 20px, the size the
+segments use.
 
 **Control: `~/control/rating-picker`.** A segmented control of five icon
 buttons, in `control/segmented-control`'s visual language.
