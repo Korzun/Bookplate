@@ -443,6 +443,7 @@ describe('Library.entries — Book column selection', () => {
     size: 424242,
     pageCount: 250,
     chapterCount: 3,
+    rating: { overall: 4, story: null, characters: null, writing: null, ideas: 2 },
     subjects: ['Fantasy', 'Epic'],
     identifiers: [{ scheme: 'ISBN', value: '9780000000000' }],
     chapterSpineMap: [0, 3, 7],
@@ -573,6 +574,8 @@ describe('Library.entries — Book column selection', () => {
         mtime: 1_700_000_000_000,
         addedAt: 1_700_000_000_000,
         chapterCount: 3,
+        ratingOverall: 4,
+        ratingIdeas: 2,
         chapterSpineMap: '[0,3,7]',
         chapterNames: '["One","Two","Three"]',
         pageCount: 250,
@@ -584,6 +587,7 @@ describe('Library.entries — Book column selection', () => {
         edges { node { __typename ... on Book {
           documentId title titleSort author authorSort description publisher publishDate
           seriesIndex size pageCount chapterCount
+          rating { overall story characters writing ideas }
           subjects identifiers { scheme value } chapterSpineMap chapterNames
           mtime addedAt
           hasCover coverUrl downloadUrl thumbnailUrl(width: 150)

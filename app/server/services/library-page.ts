@@ -28,7 +28,7 @@ import { standaloneStatusWhere } from './book-catalog';
  * schema exposes to be either exercised against a row fetched through this
  * select or explicitly excluded with a written reason.
  *
- * That the two lists happen to share 19 of their 21 keys is a coincidence of
+ * That the two lists happen to share 19 of their 21 (catalog) keys is a coincidence of
  * two independent requirements, not a shared requirement — `coverData` is
  * absent from both for entirely unrelated reasons (the DTO does not carry it;
  * here it is a per-row blob on a page of up to 20). A shared base would have
@@ -36,7 +36,11 @@ import { standaloneStatusWhere } from './book-catalog';
  * make "add it to the base" the default for a new `Book` column when the only
  * answerable question is per-consumer.
  *
- * The four keys where they differ, each non-transferable:
+ * The keys where they differ, each non-transferable:
+ *
+ * - `ratingOverall`/`ratingStory`/`ratingCharacters`/`ratingWriting`/
+ *   `ratingIdeas` are HERE ONLY: `Book.rating` (`ratingOf`) reads all five off
+ *   the row; the catalog DTO does not carry them.
  *
  * - `userId` and `seriesId` are HERE ONLY. The DTO carries neither, but this
  *   read hands the row straight to Pothos. `userId` is read directly by
@@ -97,6 +101,11 @@ const BOOK_SELECT = {
   chapterSpineMap: true,
   chapterNames: true,
   pageCount: true,
+  ratingOverall: true,
+  ratingStory: true,
+  ratingCharacters: true,
+  ratingWriting: true,
+  ratingIdeas: true,
 } as const;
 
 /** The literal shape `prisma.book.findMany({ select: BOOK_SELECT, ... })` returns. */
