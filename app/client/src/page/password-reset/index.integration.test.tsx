@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UserChangePasswordDocument } from '~/graphql/user';
+import { TOKEN_KEY } from '~/lib/token';
 import { renderWithApollo } from '~/test-utils';
 
 import { PasswordResetPage } from './index';
@@ -51,10 +52,17 @@ describe('PasswordResetPage (real Apollo hook, no query mocks in scope)', () => 
   });
 
   it('completes a real password change with no other GraphQL mock in scope', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ accessToken: 'header.payload.signature' }),
+      })
+    );
     const user = userEvent.setup();
 
     renderWithApollo(<PasswordResetPage />, {
+      user: { username: 'alice', isAdmin: false, mustChangePassword: true },
       mocks: [
         {
           request: {
@@ -79,6 +87,9 @@ describe('PasswordResetPage (real Apollo hook, no query mocks in scope)', () => 
     await user.type(screen.getByPlaceholderText('Confirm New Password'), 'newpass');
     await user.click(screen.getByRole('button', { name: 'Change password' }));
 
-    await waitFor(() => expect(window.location.href).toBe('/login'));
+    // Success is a fresh session (the re-login's token stored), not a trip to
+    // `/login` — see `./index.tsx`'s doc comment on the re-login step.
+    await waitFor(() => expect(localStorage.getItem(TOKEN_KEY)).toBe('header.payload.signature'));
+    expect(window.location.href).toBe('');
   });
 });

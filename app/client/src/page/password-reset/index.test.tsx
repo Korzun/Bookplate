@@ -8,6 +8,7 @@ import type {
   UserChangePasswordMutationVariables,
 } from '~/gql/graphql';
 import { UserChangePasswordDocument } from '~/graphql/user';
+import { TOKEN_KEY } from '~/lib/token';
 import { renderWithApollo } from '~/test-utils';
 
 import { PasswordResetPage } from './index';
@@ -29,6 +30,18 @@ const successMock: MockedResponse<UserChangePasswordMutation, UserChangePassword
     },
   };
 
+const NEW_ACCESS_TOKEN = 'header.payload.signature';
+
+const submitChange = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.type(screen.getByPlaceholderText('Current Password'), 'old');
+  await user.type(screen.getByPlaceholderText('New Password'), 'newpass');
+  await user.type(screen.getByPlaceholderText('Confirm New Password'), 'newpass');
+  await user.click(screen.getByRole('button', { name: 'Change password' }));
+};
+
+const loginCalls = (fetchMock: ReturnType<typeof vi.fn>) =>
+  fetchMock.mock.calls.filter(([url]) => url === '/api/login');
+
 describe('PasswordResetPage', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'location', {
@@ -36,7 +49,6 @@ describe('PasswordResetPage', () => {
       writable: true,
       configurable: true,
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
   });
 
   afterEach(() => {
@@ -44,16 +56,57 @@ describe('PasswordResetPage', () => {
     localStorage.clear();
   });
 
-  it('submits the new password via the form', async () => {
+  // The mutation revokes every refresh token, so the only way to keep the
+  // caller signed in is to log in again with the credentials they just chose.
+  // The new access token carries `mustChangePassword: false`, which is what
+  // lifts the gate and lets `ProtectedRoute` send them home.
+  it('signs the viewer back in with the new password instead of logging out', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ accessToken: NEW_ACCESS_TOKEN }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
-    renderWithApollo(<PasswordResetPage />, { mocks: [successMock] });
+    renderWithApollo(<PasswordResetPage />, {
+      mocks: [successMock],
+      user: { username: 'alice', isAdmin: false, mustChangePassword: true },
+    });
 
-    await user.type(screen.getByPlaceholderText('Current Password'), 'old');
-    await user.type(screen.getByPlaceholderText('New Password'), 'newpass');
-    await user.type(screen.getByPlaceholderText('Confirm New Password'), 'newpass');
-    await user.click(screen.getByRole('button', { name: 'Change password' }));
+    await submitChange(user);
+
+    await waitFor(() => expect(localStorage.getItem(TOKEN_KEY)).toBe(NEW_ACCESS_TOKEN));
+    const [[, init]] = loginCalls(fetchMock);
+    expect(String((init as RequestInit).body)).toBe(
+      new URLSearchParams({ username: 'alice', password: 'newpass' }).toString()
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/auth/logout', expect.anything());
+    expect(window.location.href).toBe('');
+  });
+
+  // The password HAS changed by this point and the old session is already
+  // dead server-side, so a failed re-login must not leave the caller holding a
+  // stale `mustChangePassword: true` token for the rest of its TTL — the old
+  // "log out and send to /login" path is the fallback, not the default.
+  it('falls back to logging out when the re-login fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((url: string) =>
+        Promise.resolve(
+          url === '/api/login' ? { ok: false, status: 401, json: async () => ({}) } : { ok: true }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderWithApollo(<PasswordResetPage />, {
+      mocks: [successMock],
+      user: { username: 'alice', isAdmin: false, mustChangePassword: true },
+    });
+
+    await submitChange(user);
 
     await waitFor(() => expect(window.location.href).toBe('/login'));
+    expect(loginCalls(fetchMock)).toHaveLength(1);
+    expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
   });
 
   // The Change password button is a native <button> in submit mode, which
