@@ -81,9 +81,15 @@ import { graphql } from '~/gql';
  * list connection above `book` here, so nothing amplifies — cut FIELDS (or
  * split them out, as above), never page sizes, if breadth gets tight.
  *
- * Measured (`npm run test:cost -w app/server`): breadth 37 (37.0%),
- * complexity 37 (0.1%) of budget — down from breadth 50 (50.0%) /
- * complexity 164 (0.5%) before the split. The complexity fall is almost
+ * `rating { overall story characters writing ideas }` (2026-10-25, book
+ * ratings) stays eager too: the rating block renders in the header card on
+ * every visit, and it is a plain object of five scalars — no list, so it
+ * adds breadth only, one per selection.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 44 (44.0%),
+ * complexity 44 (0.1%) of budget — up from 37 (37.0%) / 37 (0.1%) before
+ * `rating`, and down from breadth 50 (50.0%) / complexity 164 (0.5%)
+ * before the 2026-08-26 split. That split's complexity fall is almost
  * all `lineage`: it is a LIST field, so every selection under it was
  * priced against that list's multiplier, while the scalars removed
  * alongside it cost 1 each.
@@ -123,6 +129,13 @@ export const BookDetailDocument = graphql(`
           validation {
             id
             valid
+          }
+          rating {
+            overall
+            story
+            characters
+            writing
+            ideas
           }
         }
       }

@@ -2,7 +2,16 @@ import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
-import { Card, Page, ProgressIndicator, Tag, MetadataList, type Metadata } from '~/component';
+import {
+  BookRating,
+  Card,
+  Page,
+  ProgressIndicator,
+  Tag,
+  MetadataList,
+  type Metadata,
+  type RatingFieldKey,
+} from '~/component';
 import {
   BookLineageModal,
   ConfirmModal,
@@ -10,6 +19,7 @@ import {
   UploadReplaceModal,
   ValidationDetailModal,
   type PageActionItem,
+  type RatingValue,
 } from '~/control';
 import { useFragment } from '~/gql';
 import type {
@@ -22,6 +32,7 @@ import type {
 import {
   BookClearEditionsDocument,
   BookDeleteDocument,
+  BookRateDocument,
   BookRegenChaptersDocument,
   BookValidateDocument,
   ValidationFragment,
@@ -291,6 +302,7 @@ export const BookPage = () => {
   const [runDelete] = useMutation(BookDeleteDocument);
   const [runClearEditions] = useMutation(BookClearEditionsDocument);
   const [runValidate] = useMutation(BookValidateDocument);
+  const [runRate] = useMutation(BookRateDocument);
   const [regenLoading, setRegenLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [clearingEditions, setClearingEditions] = useState(false);
@@ -581,6 +593,46 @@ export const BookPage = () => {
     }
   }, [runValidate, validating, book, showToast, executeValidationRead, libraryId, id]);
 
+  /**
+   * Sends ONLY the changed field — the server treats an omitted field as
+   * unchanged and an explicit `null` as a clear — while the optimistic
+   * response carries the full `BookRating` (the current values with the one
+   * field replaced), so the picker moves immediately and Apollo rolls the
+   * optimistic layer back on its own if the mutation fails. The real payload
+   * re-selects the whole `rating` and normalizes onto `Book:<id>`
+   * (`BookRateDocument`'s doc comment), so there is no `update` and no
+   * refetch. Both failure shapes toast: the union's `InvalidInputError` and a
+   * transport error (e.g. FORBIDDEN for a non-owner).
+   */
+  const handleRate = useCallback(
+    (field: RatingFieldKey, value: RatingValue | null) => {
+      if (book === undefined) return;
+      void runRate({
+        variables: { input: { id: book.id, [field]: value } },
+        optimisticResponse: {
+          __typename: 'Mutation',
+          bookRate: {
+            __typename: 'BookRatePayload',
+            book: {
+              __typename: 'Book',
+              id: book.id,
+              rating: { ...book.rating, __typename: 'BookRating', [field]: value },
+            },
+          },
+        },
+      })
+        .then((r) => {
+          if (r.data?.bookRate?.__typename === 'InvalidInputError') {
+            showToast(r.data.bookRate.message, 'error');
+          }
+        })
+        .catch((err: unknown) =>
+          showToast(err instanceof Error ? err.message : 'Failed to save rating', 'error')
+        );
+    },
+    [book, runRate, showToast]
+  );
+
   const handleEditMetadata = useCallback(
     () => navigate(path.bookEdit(book?.id ?? '')),
     [book, navigate]
@@ -754,6 +806,14 @@ export const BookPage = () => {
                   {book.author}
                 </div>
               )}
+              <div className={styles.rating}>
+                <BookRating
+                  rating={book.rating}
+                  bookTitle={book.title}
+                  readOnly={isAdmin}
+                  onRate={handleRate}
+                />
+              </div>
             </div>
           </div>
           <div className={styles.metadata}>

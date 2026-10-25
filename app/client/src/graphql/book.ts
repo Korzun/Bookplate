@@ -245,3 +245,42 @@ export const BookUnlinkDocumentDocument = graphql(`
     }
   }
 `);
+
+/**
+ * `BookRateResult` has exactly one error member today (schema-verified,
+ * `app/server/graphql/schema/book/mutation/rate.ts`): `InvalidInputError`,
+ * for an out-of-range value — `page/book`'s rate handler toasts its
+ * `message`. A non-owner (an admin viewing another user's library) gets a
+ * FORBIDDEN transport error instead, which the same handler also toasts.
+ *
+ * `book { id rating { … } }` re-selects the FULL `BookRating` object, so
+ * Apollo's own normalization writes it onto the existing `Book:<id>` entity
+ * `BookDetailDocument` (`page/book/query.ts`) reads — no hand-written
+ * `update`, no refetch. The input sends only the changed field (omitted
+ * means unchanged server-side), but the payload carries all five so the
+ * cache never holds a partially-known rating. Asserted in `page/book`'s own
+ * test ("rating a sub-field sends only that field and updates from the
+ * payload with no refetch"), which supplies exactly ONE `BookDetail` mock.
+ */
+export const BookRateDocument = graphql(`
+  mutation BookRate($input: BookRateInput!) {
+    bookRate(input: $input) {
+      __typename
+      ... on BookRatePayload {
+        book {
+          id
+          rating {
+            overall
+            story
+            characters
+            writing
+            ideas
+          }
+        }
+      }
+      ... on InvalidInputError {
+        message
+      }
+    }
+  }
+`);
