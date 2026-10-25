@@ -84,6 +84,14 @@ beforeEach(async () => {
   await seedEditableBook(harness, harness.aliceOwner, ALPHA_ID, 'Alpha Book');
   await seedEditableBook(harness, harness.aliceOwner, BETA_ID, 'Beta Book');
   await seedEditableBook(harness, harness.bobOwner, BOB_ID, 'Bob Secret');
+  await harness.prisma.book.update({
+    where: { userId_id: { userId: harness.aliceOwner.userId, id: ALPHA_ID } },
+    data: { ratingOverall: 5, ratingCharacters: 5, ratingWriting: 3, ratedAt: 2 },
+  });
+  await harness.prisma.book.update({
+    where: { userId_id: { userId: harness.aliceOwner.userId, id: BETA_ID } },
+    data: { ratingOverall: 4, ratedAt: 1 },
+  });
   await upsertPendingFix(harness.prisma, harness.aliceOwner, BETA_ID, 'beta.epub', 100, {
     autoFixes: [],
     appliedFixes: [],
@@ -127,6 +135,7 @@ const READ_TOOLS = [
   'list_reading_progress',
   'get_book_cover',
   'list_book_requests',
+  'get_taste_profile',
 ];
 
 describe('initialize', () => {
@@ -200,6 +209,74 @@ describe('read tools', () => {
       }),
     ]);
     expect(textOf(result)).toContain('Beta Book');
+  });
+
+  it('get_book carries the rating and describes it by name', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const result = await mcp.call('get_book', { bookId: await findId(mcp, 'Alpha Book') });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    expect((result.structuredContent as { rating: unknown }).rating).toEqual({
+      overall: 5,
+      story: null,
+      characters: 5,
+      writing: 3,
+      ideas: null,
+    });
+    expect(textOf(result)).toContain(
+      'Rating: Awesome (5) · Story: unrated · Characters: Awesome (5) · Writing: Nice (3) · Ideas: unrated'
+    );
+  });
+
+  it('search_library summaries carry overallRating', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const out = await search(mcp);
+    const byTitle = Object.fromEntries(
+      (out.entries as Array<Entry & { overallRating?: number | null }>).map((e) => [
+        e.title,
+        e.overallRating,
+      ])
+    );
+    expect(byTitle).toEqual({ 'Alpha Book': 5, 'Beta Book': 4 });
+  });
+
+  it('get_taste_profile reports counts, means and the favourites in ratedAt order', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const result = await mcp.call('get_taste_profile', {});
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const out = result.structuredContent as {
+      ratedCount: number;
+      fields: Array<{ field: string; count: number; mean: number; distribution: number[] }>;
+      favourites: Array<{ title: string }>;
+    };
+    expect(out.ratedCount).toBe(2);
+    expect(out.fields[0]).toEqual({
+      field: 'OVERALL',
+      count: 2,
+      mean: 4.5,
+      distribution: [0, 0, 0, 1, 1],
+    });
+    expect(out.favourites.map((b) => b.title)).toEqual(['Alpha Book']);
+    expect(textOf(result)).toMatch(/^Overall: 2 rated, mean 4\.5, 1\/2\/3\/4\/5 = 0\/0\/0\/1\/1\n/);
+    expect(textOf(result)).toContain('Favourites (overall ≥ 5):');
+
+    const wider = await mcp.call('get_taste_profile', { minOverall: 4 });
+    const titles = (wider.structuredContent as { favourites: Array<{ title: string }> }).favourites;
+    expect(titles.map((b) => b.title)).toEqual(['Alpha Book', 'Beta Book']);
+  });
+
+  it('get_taste_profile rejects first above 100 and minOverall of 0', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    expect((await mcp.call('get_taste_profile', { first: 101 })).isError).toBe(true);
+    expect((await mcp.call('get_taste_profile', { minOverall: 0 })).isError).toBe(true);
+  });
+
+  it('get_taste_profile works on a read-only connection', async () => {
+    mcp = await connectMcpClient(
+      app,
+      await mintToken(harness, harness.aliceOwner.userId, ['library:read'])
+    );
+    const result = await mcp.call('get_taste_profile', {});
+    expect(result.isError, textOf(result)).toBeFalsy();
   });
 
   it('get_book refuses another reader’s id and garbage with the same not-found message', async () => {

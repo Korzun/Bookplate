@@ -12,6 +12,7 @@ import type { ToolDeps } from './tools/deps';
 import { registerGetBook } from './tools/get-book';
 import { registerGetBookCover } from './tools/get-book-cover';
 import { registerGetSeries } from './tools/get-series';
+import { registerGetTasteProfile } from './tools/get-taste-profile';
 import { registerGetValidationReport } from './tools/get-validation-report';
 import { registerListBookRequests } from './tools/list-book-requests';
 import { registerListLibraryFacets } from './tools/list-library-facets';
@@ -47,6 +48,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
   registerListReadingProgress(server, deps);
   registerGetBookCover(server, deps);
   registerListBookRequests(server, deps);
+  registerGetTasteProfile(server, deps);
 }
 
 export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
