@@ -245,6 +245,8 @@ export const LibraryPage = () => {
     !!bookListFilter.author ||
     !!bookListFilter.seriesName ||
     !!bookListFilter.status ||
+    !!bookListFilter.minOverall ||
+    !!bookListFilter.unrated ||
     (bookListFilter.subjects?.length ?? 0) > 0;
 
   const renderEdge = (edge: LibraryEntryEdge) =>

@@ -64,6 +64,10 @@ export type BookListFilter = {
   status?: 'not-started' | 'in-progress' | 'completed';
   subjects?: string[];
   entryType?: 'series' | 'standalone';
+  /** Overall rating floor, 1-5. Sub-dimension minimums are wire-only. */
+  minOverall?: 1 | 2 | 3 | 4 | 5;
+  /** Only books with no rating at all. */
+  unrated?: true;
 };
 
 /**

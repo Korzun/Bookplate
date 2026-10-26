@@ -18,6 +18,8 @@ describe('toLibraryFilter', () => {
       subjects: ['sci-fi', 'classic'],
       status: undefined,
       entryType: undefined,
+      minRating: undefined,
+      unrated: undefined,
     });
   });
 
@@ -40,5 +42,15 @@ describe('toLibraryFilter', () => {
     const result = toLibraryFilter({ query: 'dune' });
     expect(result.status).toBeUndefined();
     expect(result.entryType).toBeUndefined();
+  });
+
+  it('maps minOverall onto minRating.overall', () => {
+    expect(toLibraryFilter({ minOverall: 4 }).minRating).toEqual({ overall: 4 });
+  });
+
+  it('passes unrated through and leaves minRating undefined', () => {
+    const result = toLibraryFilter({ unrated: true });
+    expect(result.unrated).toBe(true);
+    expect(result.minRating).toBeUndefined();
   });
 });

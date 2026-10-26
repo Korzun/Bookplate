@@ -39,5 +39,7 @@ export function toLibraryFilter(filter: BookListFilter): LibraryFilter {
     subjects: filter.subjects,
     status: filter.status ? STATUS_MAP[filter.status] : undefined,
     entryType: filter.entryType ? ENTRY_TYPE_MAP[filter.entryType] : undefined,
+    minRating: filter.minOverall ? { overall: filter.minOverall } : undefined,
+    unrated: filter.unrated,
   };
 }
