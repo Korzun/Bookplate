@@ -384,30 +384,29 @@ is testable without GraphQL.
 
 ### Client
 
-**Icons: five new files in `~/icon`**, each following `icon/props.ts` and
-the stroke-icon defaults:
+**Icons: five new files in `~/icon`**, each following `icon/props.ts`;
+the OK sign uses the stroke defaults, the other four the filled defaults:
 
 | File | Source |
 |------|--------|
-| `thumb-down.tsx` | Drawn for this project: the thumb-up rotated 180° (Tabler's own thumb-down relationship) |
-| `thumb-up.tsx` | Drawn for this project in Tabler's tube construction: side-on fist with four knuckle curls tapering one unit per row toward the little finger, a 3.5-unit thumb bent 15° toward the knuckles, the hand tilted 5° |
-| `hand-ok.tsx` | Hugeicons `ok-finger` (`@hugeicons/core-free-icons` 4.3.5, MIT) at stroke 2, its open wrist closed with a palm heel |
-| `hands-clap.tsx` | Hugeicons `clapping-02` (MIT) at stroke 2: front hand with four fingers and its thumb, back hand showing its thumb and two fingers |
-| `hand-love-you.tsx` | Drawn for this project in Tabler's tube construction: ASL "I love you", index and little finger up, middle and ring folded to stubs, thumb at 40° to the fingers joining the palm edge two units below the index base, its outer edge running into the palm edge, the same junction as the clap's front thumb |
+| `thumb-down.tsx` | Drawn by Simon Korzun in Sketch (20-unit art board scaled to 24): filled outline of a fist, four folded fingers facing left, thumb down |
+| `thumb-up.tsx` | The thumb-down rotated 180° (Tabler's own thumb-up/thumb-down relationship) |
+| `hand-ok.tsx` | Hugeicons `ok-finger` (`@hugeicons/core-free-icons` 4.3.5, MIT) at stroke 2, its open wrist closed with a palm heel, reworked in Sketch so the index finger's inner edge runs unbroken into the thumb's root |
+| `hands-clap.tsx` | Two copies of Simon Korzun's palm-forward hand at 85%, each 30° off vertical and mirrored about the other, the back hand 6 units left and 2.5 up; an SVG mask (per-instance id from `useId`) grows the front silhouette by 0.9 units and cuts the back hand with it |
+| `hand-love-you.tsx` | Drawn by Simon Korzun in Sketch: ASL "I love you", index and little finger up, middle and ring folded, thumb out to the right (the source's horizontal flip is kept) |
 
-The five are one family by construction: every finger is a 3-unit tube
-(Hugeicons' 2.8) with a round tip, every thumb is a visible tube of its own
-(the OK ring is the thumb and index meeting tip to tip, not a circle), there
-are no cuffs or wrists, no nails or wrinkles, and every stroke is the app's
-width of 2. Stroked ink boxes are 14–17 wide by 20–21 tall for the single
-hands and 21 by 22 for the two-hand clap, all centred on (12, 12) by
-rasterised measurement. Three earlier sets were rejected: Tabler thumbs plus
-hand-drawn OK and clap (ring and clap illegible, thumbs off-centre), five
-Hugeicons icons (mitten thumbs with cuffs beside fingered hands), and a
-hand-drawn Tabler-construction family (thumbs twice the horns' thumb, no
-thumbs on the clap, a bare circle for the OK ring). Each file carries a
-source comment line. Every icon must read correctly at 20px, the size the
-segments use.
+The four filled icons are Sketch outlines baked to paths: a 1.8-unit outline
+with 0.9-unit finger lines, nonzero fill with the inner contour wound the
+other way (the clap's hands are at 85%, so 1.53 and 0.77). The OK sign stays
+a stroke-2 drawing. Ink boxes are 13.8 by 18.6 for the thumbs, 17 by 21 for
+the OK sign, 20.6 by 18.6 for the clap and 18.6 by 18 for "I love you", all
+centred on (12, 12) by rasterised measurement. Four earlier sets were
+rejected: Tabler thumbs plus hand-drawn OK and clap (ring and clap illegible,
+thumbs off-centre), five Hugeicons icons (mitten thumbs with cuffs beside
+fingered hands), a hand-drawn Tabler-construction family (thumbs twice the
+horns' thumb, no thumbs on the clap, a bare circle for the OK ring) and its
+five rounds of stroke-2 revisions. Each file carries a source comment line.
+Every icon must read correctly at 20px, the size the segments use.
 
 **Control: `~/control/rating-picker`.** A segmented control of five icon
 buttons, in `control/segmented-control`'s visual language.
