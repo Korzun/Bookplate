@@ -18,6 +18,9 @@ type ButtonProps = React.PropsWithChildren<
      * different row.
      */
     ariaLabel?: string;
+    /** For a disclosure button: the state of what it controls, and its id. */
+    ariaExpanded?: boolean;
+    ariaControls?: string;
     className?: string;
     disabled?: boolean;
     form?: string;
@@ -36,6 +39,8 @@ type ButtonProps = React.PropsWithChildren<
 >;
 export const Button = ({
   ariaLabel,
+  ariaExpanded,
+  ariaControls,
   children,
   className: classNameProp,
   danger = false,
@@ -102,6 +107,8 @@ export const Button = ({
       <button
         type="submit"
         aria-label={ariaLabel}
+        aria-expanded={ariaExpanded}
+        aria-controls={ariaControls}
         form={form}
         className={className}
         disabled={disabled || busy}
@@ -122,6 +129,8 @@ export const Button = ({
     <div
       role="button"
       aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
+      aria-controls={ariaControls}
       aria-disabled={nonInteractive || undefined}
       tabIndex={nonInteractive ? -1 : tabIndex}
       className={className}
