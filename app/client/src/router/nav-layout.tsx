@@ -2,6 +2,7 @@ import { Outlet } from 'react-router';
 
 import { LibrarySwitcher } from '~/component/library-switcher';
 import { Nav } from '~/component/nav';
+import { PullToRefresh } from '~/component/pull-to-refresh';
 import { TopFade } from '~/component/top-fade';
 import { isStandalone } from '~/lib/is-standalone';
 import { useScrollOffsetProperty } from '~/lib/use-scroll-offset-property';
@@ -62,9 +63,15 @@ export const NavLayout = () => {
         </div>
       )}
       <Nav />
-      {/* The top status-bar fade is only relevant when installed (standalone); in a
-          browser tab the OS status bar isn't drawn over the page. */}
-      {isStandalone() && <TopFade />}
+      {/* Both only relevant when installed (standalone): in a browser tab the OS
+          status bar isn't drawn over the page, and the browser supplies its own
+          pull-to-refresh — which an iOS home-screen app does not have. */}
+      {isStandalone() && (
+        <>
+          <TopFade />
+          <PullToRefresh />
+        </>
+      )}
       <Outlet />
     </>
   );

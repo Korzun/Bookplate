@@ -31,6 +31,7 @@ export { MyProgressRow } from './my-progress-row';
 export { NotificationSettings } from './notification-settings';
 export { Page } from './page';
 export { ProgressIndicator } from './progress-indicator';
+export { PullToRefresh } from './pull-to-refresh';
 export { SeriesRow } from './series-row';
 export { SyncPassword } from './sync-password';
 export { Tag } from './tag';
