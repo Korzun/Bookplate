@@ -22,6 +22,18 @@ describe('BookRow (presentational)', () => {
     expect(queryByText('Completed')).toBeNull();
   });
 
+  it('appends the Overall glyph and name to the meta line when rated', () => {
+    const { getByText, container } = renderWithApollo(<BookRow {...baseProps} overallRating={4} />);
+    expect(getByText('Great')).toBeInTheDocument();
+    expect(container.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('renders no rating when overallRating is absent', () => {
+    const { queryByText, container } = renderWithApollo(<BookRow {...baseProps} />);
+    expect(queryByText(/^(Great|Love|Nice|Okay|Bad)$/)).toBeNull();
+    expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
+  });
+
   it('joins author, series index and in-progress percentage into the meta line', () => {
     const { getByText } = renderWithApollo(
       <BookRow {...baseProps} seriesIndex={3} progressPercentage={0.42} />

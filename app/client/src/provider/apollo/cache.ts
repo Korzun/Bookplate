@@ -59,6 +59,10 @@ export const cacheConfig: InMemoryCacheConfig = {
         book: { keyArgs: ['id'] },
       },
     },
+    // `BookRating` has no `id`; the book page selects all five dimensions while
+    // the library grid selects only `overall`. Merge so the narrower write does
+    // not replace the object (and warn about field loss) on the wider one.
+    BookRating: { merge: true },
     Series: { fields: { books: relayStylePagination() } },
     Validation: { fields: { messages: relayStylePagination() } },
     // `User.bookRequests` is a `t.prismaConnection`, same shape as

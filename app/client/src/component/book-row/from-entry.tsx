@@ -34,8 +34,18 @@ export const BookRowFragment = graphql(`
       id
       percentage
     }
+    rating {
+      overall
+    }
   }
 `);
+
+/** Narrow the wire `Int` to the picker's 1..5; anything else reads as unrated. */
+function toRatingValue(overall: number | null | undefined): 1 | 2 | 3 | 4 | 5 | undefined {
+  return overall === 1 || overall === 2 || overall === 3 || overall === 4 || overall === 5
+    ? overall
+    : undefined;
+}
 
 interface BookRowFromEntryProps {
   asCard?: boolean;
@@ -91,6 +101,7 @@ export function BookRowFromEntry({ asCard, showAuthor, book }: BookRowFromEntryP
       hasCover={unmasked.hasCover}
       coverSrc={coverSrc}
       progressPercentage={unmasked.progress?.percentage}
+      overallRating={toRatingValue(unmasked.rating.overall)}
       onClick={handleNavigate}
     />
   );

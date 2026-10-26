@@ -15,7 +15,7 @@ import { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-node/
  */
 type Documents = {
     "\n  fragment BookEditFormFragment on Book {\n    id\n    title\n    titleSort\n    author\n    authorSort\n    description\n    publisher\n    publishDate\n    seriesIndex\n    subjects\n    series {\n      id\n      name\n    }\n    identifiers {\n      scheme\n      value\n    }\n  }\n": typeof types.BookEditFormFragmentFragmentDoc,
-    "\n  fragment BookRowFragment on Book {\n    id\n    title\n    author\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n  }\n": typeof types.BookRowFragmentFragmentDoc,
+    "\n  fragment BookRowFragment on Book {\n    id\n    title\n    author\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n    rating {\n      overall\n    }\n  }\n": typeof types.BookRowFragmentFragmentDoc,
     "\n  fragment SeriesBookRowFragment on Book {\n    id\n    title\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n  }\n": typeof types.SeriesBookRowFragmentFragmentDoc,
     "\n  fragment ConnectionUrlsFragment on Device {\n    id\n    name\n    slug\n  }\n": typeof types.ConnectionUrlsFragmentFragmentDoc,
     "\n  fragment DeviceRowFragment on Device {\n    id\n    name\n    slug\n    coverWidth\n    coverHeight\n    coverFit\n    bwCover\n    simplify\n  }\n": typeof types.DeviceRowFragmentFragmentDoc,
@@ -98,7 +98,7 @@ type Documents = {
 };
 const documents: Documents = {
     "\n  fragment BookEditFormFragment on Book {\n    id\n    title\n    titleSort\n    author\n    authorSort\n    description\n    publisher\n    publishDate\n    seriesIndex\n    subjects\n    series {\n      id\n      name\n    }\n    identifiers {\n      scheme\n      value\n    }\n  }\n": types.BookEditFormFragmentFragmentDoc,
-    "\n  fragment BookRowFragment on Book {\n    id\n    title\n    author\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n  }\n": types.BookRowFragmentFragmentDoc,
+    "\n  fragment BookRowFragment on Book {\n    id\n    title\n    author\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n    rating {\n      overall\n    }\n  }\n": types.BookRowFragmentFragmentDoc,
     "\n  fragment SeriesBookRowFragment on Book {\n    id\n    title\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n  }\n": types.SeriesBookRowFragmentFragmentDoc,
     "\n  fragment ConnectionUrlsFragment on Device {\n    id\n    name\n    slug\n  }\n": types.ConnectionUrlsFragmentFragmentDoc,
     "\n  fragment DeviceRowFragment on Device {\n    id\n    name\n    slug\n    coverWidth\n    coverHeight\n    coverFit\n    bwCover\n    simplify\n  }\n": types.DeviceRowFragmentFragmentDoc,
@@ -201,7 +201,7 @@ export function graphql(source: "\n  fragment BookEditFormFragment on Book {\n  
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  fragment BookRowFragment on Book {\n    id\n    title\n    author\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n  }\n"): (typeof documents)["\n  fragment BookRowFragment on Book {\n    id\n    title\n    author\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n  }\n"];
+export function graphql(source: "\n  fragment BookRowFragment on Book {\n    id\n    title\n    author\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n    rating {\n      overall\n    }\n  }\n"): (typeof documents)["\n  fragment BookRowFragment on Book {\n    id\n    title\n    author\n    seriesIndex\n    hasCover\n    thumbnailUrl(width: 88)\n    progress {\n      id\n      percentage\n    }\n    rating {\n      overall\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

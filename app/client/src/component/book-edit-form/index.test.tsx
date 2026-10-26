@@ -272,6 +272,7 @@ const bookRowNode = (id: string) => ({
   hasCover: false,
   thumbnailUrl: '',
   progress: null,
+  rating: { __typename: 'BookRating' as const, overall: null },
 });
 
 const seedLibraryEntries = (client: Client, id: string) =>

@@ -58,6 +58,10 @@ const writeProgress = (cache: InMemoryCache, libraryId: string, progressId: stri
   });
 
 describe('cacheConfig', () => {
+  it('merges BookRating so a one-field selection does not clobber the five-field one', () => {
+    expect(cacheConfig.typePolicies?.BookRating).toEqual({ merge: true });
+  });
+
   it('normalizes Viewer as a root singleton', () => {
     const cache = new InMemoryCache(cacheConfig);
     cache.writeQuery({

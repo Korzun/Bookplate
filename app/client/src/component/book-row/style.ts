@@ -43,6 +43,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  ratingGlyph: {
+    verticalAlign: '-2px',
+    marginRight: theme.space.xxs,
+  },
   navigate: {
     cursor: 'pointer',
     '&:hover': {

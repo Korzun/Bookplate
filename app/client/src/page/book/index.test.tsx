@@ -511,6 +511,7 @@ const standaloneRow = (id: string) => ({
   hasCover: false,
   thumbnailUrl: '',
   progress: null,
+  rating: { __typename: 'BookRating' as const, overall: null },
 });
 
 // The server deletes a series when its LAST book goes with it, but
