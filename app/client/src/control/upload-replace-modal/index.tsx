@@ -164,7 +164,7 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
                 onDismissFix={onDismissFix}
                 onDismissAll={onDismissAll}
                 disabled={committing}
-                showEditLink={false}
+                showEdit={false}
               />
               {commitFailed && <p className={styles.error}>{commitError || 'Replace failed.'}</p>}
             </>

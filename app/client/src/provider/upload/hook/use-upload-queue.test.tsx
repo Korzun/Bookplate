@@ -836,6 +836,35 @@ describe('useUploadQueueEngine', () => {
     await expect(result.current!.applyFix(itemId, fix)).resolves.toBe(true);
   });
 
+  it('maps editFix to an EDIT resolution carrying the fix triple and the typed value', async () => {
+    const editMock: ResolveMock = {
+      request: {
+        query: BookResolvePendingFixDocument,
+        variables: {
+          id: BOOK_GID,
+          action: 'EDIT',
+          fixes: [{ field: 'title', kind: 'replace', from: 'Old' }],
+          value: 'A Real Title',
+        },
+      },
+      result: resolveMock('EDIT', undefined, []).result,
+    };
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      editMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    const itemId = result.current!.items[0]!.id;
+    const fix = result.current!.items[0]!.proposals![0]!;
+
+    await expect(result.current!.editFix(itemId, fix, 'A Real Title')).resolves.toEqual({
+      ok: true,
+    });
+  });
+
   it('maps applyAllProposals to a fixes-less acceptFixes call', async () => {
     const { result } = renderEngine([
       viewerBootstrapMock,
@@ -1049,6 +1078,79 @@ describe('useUploadQueueEngine', () => {
     const itemId = result.current!.items[0]!.id;
     await act(async () => {
       await expect(result.current!.applyAllProposals(itemId)).resolves.toBe(true);
+    });
+
+    expect(readEntries(client)).toBeNull();
+  });
+
+  it('editFix hands back the server’s own reason when the write is refused', async () => {
+    const editRefusedMock: ResolveMock = {
+      request: {
+        query: BookResolvePendingFixDocument,
+        variables: {
+          id: BOOK_GID,
+          action: 'EDIT',
+          fixes: [{ field: 'title', kind: 'replace', from: 'Old' }],
+          value: 'A Real Title',
+        },
+      },
+      result: {
+        data: {
+          __typename: 'Mutation',
+          bookResolvePendingFix: {
+            __typename: 'EpubValidationError',
+            message: 'EPUB failed validation (threshold ERROR): 1 error',
+          },
+        },
+      },
+    };
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      editRefusedMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    const itemId = result.current!.items[0]!.id;
+    const fix = result.current!.items[0]!.proposals![0]!;
+
+    await expect(result.current!.editFix(itemId, fix, 'A Real Title')).resolves.toEqual({
+      ok: false,
+      error: 'EPUB failed validation (threshold ERROR): 1 error',
+    });
+  });
+
+  it('evicts the LibraryEntries connection on EDIT (it rewrites the EPUB like ACCEPT)', async () => {
+    const editMock: ResolveMock = {
+      request: {
+        query: BookResolvePendingFixDocument,
+        variables: {
+          id: BOOK_GID,
+          action: 'EDIT',
+          fixes: [{ field: 'title', kind: 'replace', from: 'Old' }],
+          value: 'A Real Title',
+        },
+      },
+      result: resolveMock('EDIT', undefined, []).result,
+    };
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      editMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedLibraryEntries(client));
+    expect(readEntries(client)).not.toBeNull();
+
+    const itemId = result.current!.items[0]!.id;
+    const fix = result.current!.items[0]!.proposals![0]!;
+    await act(async () => {
+      await expect(result.current!.editFix(itemId, fix, 'A Real Title')).resolves.toEqual({
+        ok: true,
+      });
     });
 
     expect(readEntries(client)).toBeNull();

@@ -69,10 +69,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.md,
     flexShrink: 0,
   },
-  editLink: {
-    fontSize: theme.fontSize.sm,
-    color: theme.color.brand.default,
-  },
   chipLine: {
     display: 'inline-flex',
     flexWrap: 'wrap',

@@ -17,6 +17,9 @@ interface Props {
   onDismissAll: () => void | Promise<void>;
   onUndo: () => void | Promise<void>;
   onDismissFix: (fix: MetadataFix) => void;
+  /** Saves a typed value for a "needs review" proposal — see `FixReview`'s
+   * prop of the same name. */
+  onEditFix?: (fix: MetadataFix, value: string) => Promise<boolean>;
   onDismissCompleted?: () => void;
   /** When true, every accept/reject affordance on this card is disabled —
    * used while a page-level "Accept all" is applying across the whole queue,
@@ -38,13 +41,13 @@ export const UploadItem = ({
   onDismissAll,
   onUndo,
   onDismissFix,
+  onEditFix,
   onDismissCompleted,
   actionsDisabled,
 }: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const { fileName, fileSize, status, bytesUploaded, errorMessage, validation, bookGlobalId } =
-    item;
+  const { fileName, fileSize, status, bytesUploaded, errorMessage, validation } = item;
   const autoFixes = item.autoFixes ?? [];
   const appliedFixes = item.appliedFixes ?? [];
   const proposals = item.proposals ?? [];
@@ -142,8 +145,7 @@ export const UploadItem = ({
               onUndo={onUndo}
               undo={item.undo}
               disabled={actionsDisabled}
-              bookGlobalId={bookGlobalId}
-              showEditLink
+              onEditFix={onEditFix}
             />
           )}
         </div>
