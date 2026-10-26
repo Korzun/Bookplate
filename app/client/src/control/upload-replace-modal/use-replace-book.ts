@@ -10,7 +10,7 @@ import {
 } from '~/graphql/upload';
 import type { MetadataFix, ReplaceAnalysis } from '~/lib/book-types';
 import { stageUpload } from '~/lib/staged-upload';
-import { unwrapResult } from '~/provider/apollo';
+import { invalidateBookChange, unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
@@ -190,16 +190,12 @@ export const useReplaceBook = (): UseReplaceBook => {
             if (outcome.status !== 'ok') return;
 
             // See this hook's doc comment for why both evictions are here.
-            if (libraryId !== undefined) {
-              cache.evict({
-                id: cache.identify({ __typename: 'Library', id: libraryId }),
-                fieldName: 'entries',
-              });
-            }
-            if (outcome.payload.book.id !== id) {
-              cache.evict({ id: cache.identify({ __typename: 'Book', id }) });
-            }
-            cache.gc();
+            // No series in the payload: every cached series is invalidated.
+            invalidateBookChange(cache, {
+              libraryId,
+              previousId: id,
+              currentId: outcome.payload.book.id,
+            });
           },
         });
         const result = unwrapResult<BookReplacePayload>(data?.bookReplace, 'BookReplacePayload');

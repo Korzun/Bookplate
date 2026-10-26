@@ -13,6 +13,7 @@ import type {
 } from '~/gql/graphql';
 import { BookAnalyzeReplaceDocument, BookReplaceDocument } from '~/graphql/upload';
 import type { ReplaceAnalysis } from '~/lib/book-types';
+import { readSeriesDetail, seedSeriesDetail } from '~/lib/test-cache-seeds';
 import { BookEditDocument } from '~/page/book-edit';
 import { LibraryEntriesDocument } from '~/page/library';
 import { renderHookWithApollo } from '~/test-utils';
@@ -489,5 +490,32 @@ describe('useReplaceBook', () => {
     const bookRoutes = fetchSpy.mock.calls.filter(([u]) => String(u).includes('/api/books/'));
     expect(bookRoutes.map(([u]) => String(u))).toEqual([]); // staging is mocked above
     fetchSpy.mockRestore();
+  });
+});
+
+describe('series coherence after a replace', () => {
+  it('invalidates the cached series book list after a successful replace', async () => {
+    mockStage.mockResolvedValue(STAGED_ID);
+    const { result, client } = renderHookWithApollo(() => useReplaceBook(), [
+      analyzeMock,
+      replaceMock,
+    ] as MockedResponse[]);
+    await seedSeriesDetail(client.cache, {
+      libraryId: LIBRARY_ID,
+      seriesId: 'U2VyaWVzOjE=',
+      name: 'Dune',
+      bookId: BOOK_GID,
+    });
+
+    await act(async () => {
+      await result.current?.analyzeReplacement(BOOK_GID, file);
+    });
+    await act(async () => {
+      await result.current?.commitReplacement(BOOK_GID, ['title:replace:Old']);
+    });
+
+    expect(
+      await readSeriesDetail(client.cache, { libraryId: LIBRARY_ID, name: 'Dune' })
+    ).toBeNull();
   });
 });
