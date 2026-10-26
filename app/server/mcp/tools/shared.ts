@@ -117,14 +117,12 @@ export const describeBook = (b: BookSummary): string => {
   if (b.series !== null) parts.push(`(${b.series} #${b.seriesIndex})`);
   if (b.valid === false) parts.push('[invalid EPUB]');
   if (b.hasPendingFixes) parts.push('[has recommendations]');
-  if (b.overallRating !== null) {
-    parts.push(`rated ${RATING_NAMES[b.overallRating as RatingValue] ?? b.overallRating}`);
-  }
+  if (b.overallRating !== null) parts.push(describeOverall(b.overallRating));
   parts.push(`id=${b.id}`);
   return parts.join(' ');
 };
 
-export const SERIES_SUMMARY_FIELDS = `id name author bookCount totalPages progressPercentage`;
+export const SERIES_SUMMARY_FIELDS = `id name author bookCount totalPages progressPercentage overallRating`;
 
 export type SeriesSummaryGql = {
   id: string;
@@ -133,7 +131,16 @@ export type SeriesSummaryGql = {
   bookCount: number;
   totalPages: number;
   progressPercentage: number | null;
+  overallRating: number | null;
 };
+
+/** `Series.overallRating`'s wording, shared by every tool that returns a series. */
+export const seriesOverallRatingSchema = z
+  .number()
+  .nullable()
+  .describe(
+    'The mean Overall rating of the rated member books, rounded down to 1-5; null while no member is rated'
+  );
 
 export const seriesSummarySchema = z.object({
   kind: z.literal('series'),
@@ -143,6 +150,7 @@ export const seriesSummarySchema = z.object({
   bookCount: z.number(),
   totalPages: z.number(),
   progressPercentage: z.number().nullable(),
+  overallRating: seriesOverallRatingSchema,
 });
 export type SeriesSummary = z.infer<typeof seriesSummarySchema>;
 
@@ -154,10 +162,21 @@ export const summarizeSeries = (s: SeriesSummaryGql): SeriesSummary => ({
   bookCount: s.bookCount,
   totalPages: s.totalPages,
   progressPercentage: s.progressPercentage,
+  overallRating: s.overallRating,
 });
 
-export const describeSeries = (s: SeriesSummary): string =>
-  `Series "${s.name}" by ${s.author || 'unknown'} — ${s.bookCount} book(s) id=${s.id}`;
+/** "rated Great" for a 1-5 Overall value, the words `describeBook` and
+ * `describeSeries` share. (`describeRating` above is the five-field detail
+ * line `get_book`/`rate_book` print.) */
+export const describeOverall = (overallRating: number): string =>
+  `rated ${RATING_NAMES[overallRating as RatingValue] ?? overallRating}`;
+
+export const describeSeries = (s: SeriesSummary): string => {
+  const parts = [`Series "${s.name}" by ${s.author || 'unknown'} — ${s.bookCount} book(s)`];
+  if (s.overallRating !== null) parts.push(describeOverall(s.overallRating));
+  parts.push(`id=${s.id}`);
+  return parts.join(' ');
+};
 
 export const FIX_FIELDS = `field kind from to reason`;
 
