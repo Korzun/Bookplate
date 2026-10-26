@@ -41,4 +41,45 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       marginTop: theme.space.xs,
     },
   },
+  details: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.md,
+  },
+  /**
+   * The disclosure for the detail rows: a text button in the label's grey,
+   * inset to the label column, chevron turning down when open, the same
+   * turn the collapsible `Card` header makes.
+   */
+  toggle: {
+    ...theme.recipe.label,
+    ...theme.recipe.focusRing,
+    display: 'inline-flex',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: theme.space.xs,
+    margin: 0,
+    marginLeft: theme.space.sm,
+    padding: `${theme.space.xxs} ${theme.space.xs}`,
+    border: 'none',
+    background: 'transparent',
+    borderRadius: theme.radius.sm,
+    cursor: 'pointer',
+    transitionProperty: 'color, background-color, outline-color',
+    transitionDuration: '0.1s',
+    transitionTimingFunction: 'ease-in',
+    '&:hover': {
+      color: theme.color.text.primary,
+      backgroundColor: theme.color.bg.hover,
+    },
+    '&:focus-visible': { outlineColor: theme.color.brand.outline },
+    [theme.breakpoint.mobile]: { marginLeft: theme.space.xs },
+  },
+  chevron: {
+    display: 'block',
+    transition: `transform ${theme.transition.medium}`,
+  },
+  chevronOpen: {
+    transform: 'rotate(90deg)',
+  },
 }));

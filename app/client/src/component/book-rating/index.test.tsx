@@ -13,17 +13,23 @@ const empty: BookRatingValues = {
   writing: null,
   ideas: null,
 };
+const withDetail: BookRatingValues = { ...empty, story: 5 };
+
+const detailsToggle = () => screen.getByRole('button', { name: 'Details' });
 
 describe('BookRating', () => {
-  it('renders one row per field, Overall first, each a label then its radiogroup', () => {
+  it('renders the Overall row, the Details toggle, then one row per detail field, each a label then its radiogroup', () => {
     renderWithProviders(
-      <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+      <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
-    const firstRow = screen.getByRole('radiogroup', {
+    const overallRow = screen.getByRole('radiogroup', {
       name: 'Overall rating for Dune',
     }).parentElement!;
-    const rows = Array.from(firstRow.parentElement!.children);
-    expect(rows).toHaveLength(5);
+    const [first, toggle, details] = Array.from(overallRow.parentElement!.children);
+    expect(first).toBe(overallRow);
+    expect(toggle).toBe(detailsToggle());
+    expect(toggle).toHaveAttribute('aria-controls', details.id);
+    const rows = [overallRow, ...Array.from(details.children)];
     expect(rows.map((row) => row.firstElementChild!.textContent)).toEqual([
       'Overall',
       'Story',
@@ -35,6 +41,54 @@ describe('BookRating', () => {
       expect(row.children).toHaveLength(2);
       expect(row.lastElementChild).toHaveAttribute('role', 'radiogroup');
     }
+  });
+
+  it('keeps the detail rows closed while none has a value, and opens them on the toggle', async () => {
+    renderWithProviders(
+      <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+    );
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+    expect(detailsToggle()).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(detailsToggle());
+    expect(detailsToggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
+    await userEvent.click(detailsToggle());
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+  });
+
+  it('opens the detail rows by itself when any detail has a value, and still closes on the toggle', async () => {
+    renderWithProviders(
+      <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+    );
+    expect(detailsToggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
+    await userEvent.click(detailsToggle());
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+  });
+
+  it('opens the detail rows when a detail value arrives later, unless the reader has already toggled', async () => {
+    const props = { bookTitle: 'Dune', readOnly: false, onRate: vi.fn() };
+    const { rerender } = renderWithProviders(<BookRating rating={empty} {...props} />);
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+    rerender(<BookRating rating={withDetail} {...props} />);
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
+    await userEvent.click(detailsToggle());
+    rerender(<BookRating rating={{ ...withDetail, ideas: 2 }} {...props} />);
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+  });
+
+  it('shows no toggle in a read-only view with no details, and an open one when there are details', () => {
+    const { unmount } = renderWithProviders(
+      <BookRating rating={empty} bookTitle="Dune" readOnly onRate={vi.fn()} />
+    );
+    expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+    unmount();
+    renderWithProviders(
+      <BookRating rating={withDetail} bookTitle="Dune" readOnly onRate={vi.fn()} />
+    );
+    expect(detailsToggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
   });
 
   it('names the segments on the Overall row only', () => {
@@ -51,7 +105,7 @@ describe('BookRating', () => {
 
   it('renders five radiogroups labelled for the book', () => {
     renderWithProviders(
-      <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+      <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
     const names = screen.getAllByRole('radiogroup').map((g) => g.getAttribute('aria-label'));
     expect(names).toEqual([
@@ -68,13 +122,16 @@ describe('BookRating', () => {
     renderWithProviders(
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={onRate} />
     );
+    await userEvent.click(detailsToggle());
     const group = screen.getByRole('radiogroup', { name: 'Story rating for Dune' });
     await userEvent.click(within(group).getByRole('radio', { name: 'Love' }));
     expect(onRate).toHaveBeenCalledWith('story', 5);
   });
 
   it('passes readOnly through to every picker', () => {
-    renderWithProviders(<BookRating rating={empty} bookTitle="Dune" readOnly onRate={vi.fn()} />);
+    renderWithProviders(
+      <BookRating rating={withDetail} bookTitle="Dune" readOnly onRate={vi.fn()} />
+    );
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(25);
     for (const radio of radios) expect(radio).toHaveAttribute('aria-disabled', 'true');
@@ -86,7 +143,7 @@ describe('BookRating', () => {
   // width.
   it('each row is a shaded panel that stacks at phone width; the picker paints no track', () => {
     renderWithProviders(
-      <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+      <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
     const group = screen.getByRole('radiogroup', { name: 'Story rating for Dune' });
     const row = group.parentElement!;
