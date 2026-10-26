@@ -20,7 +20,7 @@ import { builder } from '../builder';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry/model';
 import { model as libraryRatingProfile } from '../library-rating-profile/model';
 import { isOwnerOrAdmin, parseCompoundId } from '../node-scope';
-import { CONNECTION_LIMITS, rejectOversizePage } from '../pagination';
+import { CONNECTION_LIMITS, rejectOversizePage, rejectRatingOutOfRange } from '../pagination';
 import { model as pendingFix } from '../pending-fix';
 // `../progress/model`, not `../progress` — see book/model.ts's note on the
 // same import for why an entity index must not be pulled in from a model file.
@@ -352,6 +352,7 @@ builder.node(model, {
         // Reject before the clamp below ever runs — see `CONNECTION_LIMITS`'s
         // doc comment (pagination.ts) for where `100`/`20` come from.
         rejectOversizePage('Library.entries', args, CONNECTION_LIMITS.libraryEntries.maxSize);
+        rejectRatingOutOfRange('Library.entries', args.filter?.minRating);
         const cursor = decodeCursor(args.after);
         // Same default/floor REST applies to `take` (routes/ui.ts): default
         // 20, floor 1. The upper `Math.min` bound below is no longer the
@@ -371,6 +372,12 @@ builder.node(model, {
               status: args.filter.status ?? undefined,
               subjects: args.filter.subjects ?? undefined,
               entryType: args.filter.entryType ?? undefined,
+              minRating: args.filter.minRating
+                ? Object.fromEntries(
+                    Object.entries(args.filter.minRating).filter(([, n]) => n != null)
+                  )
+                : undefined,
+              unrated: args.filter.unrated ?? undefined,
             }
           : undefined;
 
