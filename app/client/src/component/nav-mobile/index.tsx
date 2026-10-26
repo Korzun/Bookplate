@@ -199,24 +199,20 @@ const Pill = ({
         />
         {items.map(({ to, label, Icon, active, badge }) => (
           <Link key={to} className={styles.item} aria-current={active ? 'page' : undefined} to={to}>
-            {/* Same wrapper as `nav-desktop`: the badge belongs on the icon's
-                corner. This used to be anchored to the item at a fixed
-                `top`/`right`, which tracks the item's geometry rather than the
-                icon's. */}
-            <span className={styles.iconWrap}>
-              <Icon height={14} width={14} />
-              {typeof badge === 'number' && badge > 0 && (
-                <span className={styles.badge}>{badge}</span>
-              )}
-              {badge === 'dot' && <span className={styles.badgeDot} data-testid="nav-badge-dot" />}
-            </span>
+            <BadgedIcon Icon={Icon} badge={badge} size={14} styles={styles} />
             {label}
           </Link>
         ))}
+        {/* The badge is repeated in BOTH visible rows, not just on the real
+            tab. The real tab is transparent and these rows paint above it, so a
+            badge left only there sat under each row's copy of the icon, whose
+            strokes showed through it. Here it paints over the icon, as on
+            desktop, and the two copies are pixel-aligned like everything else
+            in these rows. */}
         <div className={styles.grayLayer} aria-hidden="true">
-          {items.map(({ to, label, Icon }) => (
+          {items.map(({ to, label, Icon, badge }) => (
             <span key={to} className={styles.layerItem}>
-              <Icon height={14} width={14} />
+              <BadgedIcon Icon={Icon} badge={badge} size={14} styles={styles} />
               {label}
             </span>
           ))}
@@ -226,9 +222,9 @@ const Pill = ({
           style={revealStyle}
           aria-hidden="true"
         >
-          {items.map(({ to, label, Icon }) => (
+          {items.map(({ to, label, Icon, badge }) => (
             <span key={to} className={styles.layerItem}>
-              <Icon height={14} width={14} />
+              <BadgedIcon Icon={Icon} badge={badge} size={14} styles={styles} />
               {label}
             </span>
           ))}
@@ -255,16 +251,38 @@ const Pill = ({
             side is expanded (it is what the pill morphs back to), and a badge
             left in the document there would double-count the one already
             showing on the tab it stands for. */}
-        <span className={styles.iconWrap}>
-          <CollapsedIcon height={18} width={18} />
-          {!expanded && typeof collapsed.badge === 'number' && collapsed.badge > 0 && (
-            <span className={styles.badge}>{collapsed.badge}</span>
-          )}
-          {!expanded && collapsed.badge === 'dot' && (
-            <span className={styles.badgeDot} data-testid="nav-badge-dot" />
-          )}
-        </span>
+        <BadgedIcon
+          Icon={CollapsedIcon}
+          badge={expanded ? undefined : collapsed.badge}
+          size={18}
+          styles={styles}
+        />
       </Link>
     </div>
   );
 };
+
+/**
+ * An icon with its badge on the upper-right corner, the way an app badge sits.
+ *
+ * Same wrapper as `nav-desktop`: the badge is positioned against the ICON, not
+ * the whole tab. Anchoring to the tab at a fixed `top`/`right` tracked the
+ * tab's geometry rather than the icon's.
+ */
+const BadgedIcon = ({
+  Icon,
+  badge,
+  size,
+  styles,
+}: {
+  Icon: NavItem['Icon'];
+  badge: NavItem['badge'];
+  size: number;
+  styles: ReturnType<typeof useStyle>;
+}) => (
+  <span className={styles.iconWrap}>
+    <Icon height={size} width={size} />
+    {typeof badge === 'number' && badge > 0 && <span className={styles.badge}>{badge}</span>}
+    {badge === 'dot' && <span className={styles.badgeDot} data-testid="nav-badge-dot" />}
+  </span>
+);

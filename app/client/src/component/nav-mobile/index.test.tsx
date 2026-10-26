@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { BookIcon, SettingsIcon, UploadIcon } from '~/icon';
@@ -144,13 +144,17 @@ const badgeItems = (badge: NavItem['badge']): NavItem[] => [
  * the icon as the item's own geometry changes.
  */
 describe('NavMobile badge placement', () => {
+  // The link's accessible name runs the count into the label ("4Upload"), so
+  // match on the label alone.
+  const uploadLink = () => screen.getByRole('link', { name: /Upload/ });
+
   it('renders the count as a readable number, not a dot-sized box', () => {
     renderBar(badgeItems(4));
 
     // Mobile used to render the count through the DOT's style — an 8x8 box with
     // no padding — so a number was squeezed into it. The count now gets the
     // same pill the desktop nav uses.
-    const badge = screen.getByText('4');
+    const badge = within(uploadLink()).getByText('4');
     expect(badge).toBeInTheDocument();
     expect(badge).not.toHaveAttribute('data-testid', 'nav-badge-dot');
   });
@@ -158,7 +162,7 @@ describe('NavMobile badge placement', () => {
   it('puts the count in a wrapper holding the icon and nothing else', () => {
     renderBar(badgeItems(4));
 
-    const wrapper = screen.getByText('4').parentElement;
+    const wrapper = within(uploadLink()).getByText('4').parentElement;
     expect(wrapper?.querySelector('svg')).toBeTruthy();
     expect(wrapper?.textContent).not.toContain('Add');
   });
@@ -166,8 +170,40 @@ describe('NavMobile badge placement', () => {
   it('puts the dot in a wrapper holding the icon and nothing else', () => {
     renderBar(badgeItems('dot'));
 
-    const wrapper = screen.getByTestId('nav-badge-dot').parentElement;
+    const wrapper = within(uploadLink()).getByTestId('nav-badge-dot').parentElement;
     expect(wrapper?.querySelector('svg')).toBeTruthy();
     expect(wrapper?.textContent).not.toContain('Add');
+  });
+
+  /**
+   * The real tab is transparent; what the eye sees is the gray row and the
+   * blue reveal row stacked ABOVE it. A badge rendered only inside the real
+   * tab therefore sat underneath the overlay's copy of the icon, which painted
+   * its strokes across the badge. Each visible row has to carry the badge too,
+   * so it paints over its own icon the way the desktop nav's does.
+   */
+  it('repeats the count in both visible overlay rows, on the icon', () => {
+    renderBar(badgeItems(4));
+
+    const overlayCopies = screen
+      .getAllByText('4')
+      .filter((copy) => copy.closest('[aria-hidden="true"]') !== null);
+    expect(overlayCopies).toHaveLength(2);
+    for (const copy of overlayCopies) {
+      expect(copy.parentElement?.querySelector('svg')).toBeTruthy();
+      expect(copy.parentElement?.textContent).not.toContain('Upload');
+    }
+  });
+
+  it('repeats the dot in both visible overlay rows, on the icon', () => {
+    renderBar(badgeItems('dot'));
+
+    const overlayCopies = screen
+      .getAllByTestId('nav-badge-dot')
+      .filter((copy) => copy.closest('[aria-hidden="true"]') !== null);
+    expect(overlayCopies).toHaveLength(2);
+    for (const copy of overlayCopies) {
+      expect(copy.parentElement?.querySelector('svg')).toBeTruthy();
+    }
   });
 });
