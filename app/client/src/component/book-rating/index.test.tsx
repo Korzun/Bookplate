@@ -49,6 +49,24 @@ describe('BookRating', () => {
     }
   });
 
+  it('hides the Overall label while the details are closed, and shows it once they open', async () => {
+    renderWithProviders(
+      <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
+    );
+    const overall = screen.getByRole('radiogroup', { name: 'Overall rating for Dune' });
+    // Collapsed: the picker is the whole row — nothing to line up with.
+    expect(screen.queryByText('Overall')).toBeNull();
+    expect(overall.parentElement!.children).toHaveLength(1);
+
+    await userEvent.click(moreButton());
+    // Open: the label returns so Overall lines up with the labelled rows below.
+    expect(screen.getByText('Overall')).toBeInTheDocument();
+    expect(overall.parentElement!.firstElementChild).toHaveTextContent('Overall');
+
+    await userEvent.click(lessButton());
+    expect(screen.queryByText('Overall')).toBeNull();
+  });
+
   it('keeps the detail rows closed while none has a value, and opens them on More', async () => {
     renderWithProviders(
       <BookRating rating={empty} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
