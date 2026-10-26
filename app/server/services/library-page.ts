@@ -2,6 +2,7 @@ import { PrismaClient, Prisma, Book as BookRow, Series as SeriesRow } from '@pri
 
 import { Owner, PageCursor, BookListFilters } from '../types';
 import { standaloneStatusWhere } from './book-catalog';
+import { RATING_COLUMNS, RATING_FIELDS } from './rating';
 
 /**
  * Every `Book` column a GraphQL `Book` field resolver reads, directly or
@@ -139,6 +140,37 @@ export type LibraryPage = {
   nextCursor: string | null;
 };
 
+/** True when the filters set a rating minimum or ask for unrated books. */
+export function ratingFilterActive(filters: BookListFilters | undefined): boolean {
+  return (
+    filters?.unrated === true ||
+    RATING_FIELDS.some((field) => typeof filters?.minRating?.[field] === 'number')
+  );
+}
+
+/** One Prisma clause per set minimum (dimension order), plus `ratingOverall: null` for unrated. */
+export function ratingClauses(filters: BookListFilters | undefined): Prisma.BookWhereInput[] {
+  const clauses: Prisma.BookWhereInput[] = [];
+  for (const field of RATING_FIELDS) {
+    const min = filters?.minRating?.[field];
+    if (typeof min === 'number') clauses.push({ [RATING_COLUMNS[field]]: { gte: min } });
+  }
+  if (filters?.unrated === true) clauses.push({ ratingOverall: null });
+  return clauses;
+}
+
+/** Appends clauses to `where.AND` without clobbering whatever is already there (e.g. the cursor predicate). */
+function withAnd(
+  where: Prisma.BookWhereInput,
+  clauses: Prisma.BookWhereInput[]
+): Prisma.BookWhereInput {
+  const existing = where.AND;
+  return {
+    ...where,
+    AND: [...(Array.isArray(existing) ? existing : existing ? [existing] : []), ...clauses],
+  };
+}
+
 /**
  * Moved from `BookStore.listBooksPage` (task 8's mechanical-move commit),
  * then changed here to fix the double read that move was staged to make
@@ -199,27 +231,29 @@ export async function listBooksPage(
     ? { userId: owner.userId, sortKey: { gt: cursor.k } }
     : { userId: owner.userId };
 
-  // When a title query is active without a specific series filter, include series
-  // member books so that e.g. searching "gate" also returns "Abaddon's Gate" as a
-  // book row alongside the "The Expanse" series row.
-  const queryExpandsToSeriesBooks =
-    !!filters?.query && filters?.seriesName === undefined && filters?.entryType !== 'standalone';
+  // When a title query or a rating filter is active without a specific series
+  // filter, include series member books so that e.g. searching "gate" also
+  // returns "Abaddon's Gate" as a book row alongside the "The Expanse" series row.
+  const expandsToSeriesBooks =
+    (!!filters?.query || ratingFilterActive(filters)) &&
+    filters?.seriesName === undefined &&
+    filters?.entryType !== 'standalone';
 
   let bookWhere: Prisma.BookWhereInput;
   if (!cursor) {
-    bookWhere = queryExpandsToSeriesBooks
+    bookWhere = expandsToSeriesBooks
       ? { userId: owner.userId }
       : { userId: owner.userId, seriesId: null };
   } else if (cursor.t === 's') {
     // Last item was a series at K; standalones at K come next
-    bookWhere = queryExpandsToSeriesBooks
+    bookWhere = expandsToSeriesBooks
       ? { userId: owner.userId, title: { gte: cursor.k } }
       : { userId: owner.userId, seriesId: null, title: { gte: cursor.k } };
   } else {
     // Last item was a standalone at (K, id); resume with compound filter
     bookWhere = {
       userId: owner.userId,
-      ...(queryExpandsToSeriesBooks ? {} : { seriesId: null }),
+      ...(expandsToSeriesBooks ? {} : { seriesId: null }),
       OR: [{ title: { gt: cursor.k } }, { title: { equals: cursor.k }, id: { gt: cursor.id } }],
     };
   }
@@ -248,14 +282,7 @@ export async function listBooksPage(
   // (title: { gte: cursor.k }) that may already be set on bookWhere.
   if (filters?.query) {
     if (includeStandalones) {
-      const existingAnd = bookWhere.AND;
-      bookWhere = {
-        ...bookWhere,
-        AND: [
-          ...(Array.isArray(existingAnd) ? existingAnd : existingAnd ? [existingAnd] : []),
-          { title: { contains: filters.query } },
-        ],
-      };
+      bookWhere = withAnd(bookWhere, [{ title: { contains: filters.query } }]);
     }
     seriesWhere = {
       ...seriesWhere,
@@ -264,6 +291,18 @@ export async function listBooksPage(
         { books: { some: { title: { contains: filters.query } } } },
       ],
     };
+  }
+
+  // Rating filter: minimums AND together, `unrated` matches a null overall.
+  // Appended to AND so the cursor predicate survives. A series qualifies when
+  // at least one member does; the members themselves come back as rows via
+  // `expandsToSeriesBooks`.
+  if (ratingFilterActive(filters)) {
+    const clauses = ratingClauses(filters);
+    if (includeStandalones) {
+      bookWhere = withAnd(bookWhere, clauses);
+    }
+    seriesWhere = { ...seriesWhere, books: { some: { AND: clauses } } };
   }
 
   // author: case-insensitive contains on book author; series has own author field

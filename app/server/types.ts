@@ -1,5 +1,7 @@
 import type { ValidationThreshold } from '@korzun/epubcheck-ts';
 
+import type { RatingFieldName } from './services/rating';
+
 export interface Book {
   id: string; // 32-char partial MD5 (KoReader binary algorithm) — matches KOSync progress.document
   /**
@@ -79,12 +81,21 @@ export type BookListFilters = {
   status?: 'not-started' | 'in-progress' | 'completed';
   subjects?: string[];
   entryType?: 'series' | 'standalone';
+  /** Per-dimension inclusive minimums; every set dimension must be met (AND). */
+  minRating?: Partial<Record<RatingFieldName, number>>;
+  /** Only books with no overall rating. */
+  unrated?: boolean;
 };
 
 export type SearchSuggestionsResponse = {
   groups: Array<{
     type: 'author' | 'series' | 'book' | 'subject';
-    items: Array<{ label: string; value: string; matchStart: number; matchLength: number }>;
+    items: Array<{
+      label: string;
+      value: string;
+      matchStart: number;
+      matchLength: number;
+    }>;
   }>;
 };
 

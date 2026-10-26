@@ -99,7 +99,9 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
-  await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
+  await prisma.user.create({
+    data: { id: OWNER.userId, username: OWNER.username },
+  });
   // Still used to seed rows via `addBook` — `listBooksPage` itself is called
   // directly below, not through `BookStore`, matching how
   // `graphql/schema/library/model.ts` calls it (task 8).
@@ -306,7 +308,11 @@ describe('listBooksPage() cursor compatibility with entries-cursor.ts', () => {
     expect(page1.nextCursor).not.toBeNull();
     const last = page1.items[page1.items.length - 1];
     if (last.type !== 'standalone') throw new Error('expected a standalone item');
-    const independentlyMinted = encodeCursor({ k: last.row.title, t: 'b', id: last.row.id });
+    const independentlyMinted = encodeCursor({
+      k: last.row.title,
+      t: 'b',
+      id: last.row.id,
+    });
     expect(page1.nextCursor).toBe(independentlyMinted);
   });
 
@@ -339,7 +345,11 @@ describe('listBooksPage() cursor compatibility with entries-cursor.ts', () => {
     // …and using an independently minted, byte-identical cursor for the same row.
     const item = page1.items[0];
     if (item.type !== 'series') throw new Error('expected a series item');
-    const independentCursor = encodeCursor({ k: item.row.sortKey, t: 's', id: item.row.id });
+    const independentCursor = encodeCursor({
+      k: item.row.sortKey,
+      t: 's',
+      id: item.row.id,
+    });
     const viaEncodeCursor = await listBooksPage(prisma, OWNER, decodeCursor(independentCursor), 1);
 
     expect(itemsShape(viaEncodeCursor.items)).toEqual(itemsShape(viaOwnCursor.items));
@@ -414,7 +424,9 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 0,
     });
     await insertProgress('b1', 0.5);
-    const result = await listBooksPage(prisma, OWNER, null, 20, { status: 'not-started' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      status: 'not-started',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b2' }]);
   });
 
@@ -439,7 +451,9 @@ describe('listBooksPage with filters', () => {
     });
     await insertProgress('b1', 0.5);
     await insertProgress('b2', 1.0);
-    const result = await listBooksPage(prisma, OWNER, null, 20, { status: 'in-progress' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      status: 'in-progress',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
@@ -457,7 +471,9 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 0,
     });
     await insertProgress('b1', 1.0);
-    const result = await listBooksPage(prisma, OWNER, null, 20, { status: 'completed' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      status: 'completed',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
@@ -475,7 +491,9 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 1,
     });
     await insertProgress('s1b1', 0.5);
-    const result = await listBooksPage(prisma, OWNER, null, 20, { status: 'not-started' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      status: 'not-started',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'series', seriesName: 'Foundation' }]);
   });
 
@@ -501,7 +519,9 @@ describe('listBooksPage with filters', () => {
     await insertProgress('s1b1', 1.0);
     await insertProgress('s1b2', 1.0);
     await insertProgress('s2b1', 0.5);
-    const result = await listBooksPage(prisma, OWNER, null, 20, { status: 'completed' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      status: 'completed',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 
@@ -527,7 +547,9 @@ describe('listBooksPage with filters', () => {
     await insertProgress('s1b1', 1.0);
     await insertProgress('s1b2', 0.4);
     // s1b3 has no progress
-    const result = await listBooksPage(prisma, OWNER, null, 20, { status: 'in-progress' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      status: 'in-progress',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 
@@ -546,7 +568,9 @@ describe('listBooksPage with filters', () => {
     });
     await insertProgress('s1b1', 1.0);
     // s1b2 has no progress — finished book 1 but haven't started book 2
-    const result = await listBooksPage(prisma, OWNER, null, 20, { status: 'in-progress' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      status: 'in-progress',
+    });
     expect(result.items).toEqual([]);
   });
 
@@ -599,7 +623,9 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 0,
       subjects: ['Science Fiction'],
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { subjects: ['Fantasy'] });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      subjects: ['Fantasy'],
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
@@ -618,7 +644,9 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 0,
       subjects: ['Science Fiction'],
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { subjects: ['Science'] });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      subjects: ['Science'],
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
@@ -637,7 +665,9 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 0,
       subjects: ['Fantasy'],
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { subjects: ['He said "Hi"'] });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      subjects: ['He said "Hi"'],
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
@@ -675,7 +705,9 @@ describe('listBooksPage with filters', () => {
       series: 'Dune',
       seriesIndex: 1,
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { entryType: 'series' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      entryType: 'series',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 
@@ -692,7 +724,9 @@ describe('listBooksPage with filters', () => {
       series: 'Dune',
       seriesIndex: 1,
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { entryType: 'standalone' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      entryType: 'standalone',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
@@ -732,7 +766,9 @@ describe('listBooksPage() — search filters', () => {
       title: 'A Memory Called Empire',
       series: '',
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { query: 'fifth' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      query: 'fifth',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
@@ -747,7 +783,9 @@ describe('listBooksPage() — search filters', () => {
       title: 'Foundation 1',
       series: 'Foundation',
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { query: 'dune' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      query: 'dune',
+    });
     // "Dune 1" sorts after the "Dune" series sortKey alphabetically ("dune" < "dune 1")
     expect(itemsShape(result.items)).toEqual([
       { type: 'series', seriesName: 'Dune' },
@@ -761,7 +799,9 @@ describe('listBooksPage() — search filters', () => {
       title: 'The Fifth Season',
       series: 'Broken Earth',
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { query: 'Fifth Season' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      query: 'Fifth Season',
+    });
     // Series sorts before book ("broken earth" < "the fifth season")
     expect(itemsShape(result.items)).toEqual([
       { type: 'series', seriesName: 'Broken Earth' },
@@ -780,7 +820,9 @@ describe('listBooksPage() — search filters', () => {
       title: 'Leviathan Wakes',
       series: 'The Expanse',
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { query: 'gate' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      query: 'gate',
+    });
     // "Abaddon's Gate" sorts before "The Expanse" series ("abaddon" < "the expanse")
     // "Leviathan Wakes" does not match "gate" so it is absent
     expect(itemsShape(result.items)).toEqual([
@@ -802,7 +844,9 @@ describe('listBooksPage() — search filters', () => {
       author: 'Arkady Martine',
       series: '',
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { author: 'jemisin' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      author: 'jemisin',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
@@ -819,7 +863,9 @@ describe('listBooksPage() — search filters', () => {
       series: 'Foundation',
       author: 'Isaac Asimov',
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { author: 'Herbert' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      author: 'Herbert',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 
@@ -834,7 +880,9 @@ describe('listBooksPage() — search filters', () => {
       title: 'Standalone',
       series: '',
     });
-    const result = await listBooksPage(prisma, OWNER, null, 20, { seriesName: 'Dune' });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      seriesName: 'Dune',
+    });
     expect(itemsShape(result.items)).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 
@@ -862,5 +910,180 @@ describe('listBooksPage() — search filters', () => {
       subjects: ['Fantasy', 'Fiction'],
     });
     expect(itemsShape(result.items)).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+});
+
+describe('listBooksPage() — rating filters', () => {
+  type Ratings = Partial<{
+    ratingOverall: number | null;
+    ratingStory: number | null;
+    ratingCharacters: number | null;
+    ratingWriting: number | null;
+    ratingIdeas: number | null;
+  }>;
+
+  async function seedRated(
+    id: string,
+    title: string,
+    series: string,
+    ratings: Ratings
+  ): Promise<void> {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, id, stage(id), {
+      ...FAKE_META,
+      title,
+      series,
+    });
+    await prisma.book.update({
+      where: { userId_id: { userId: OWNER.userId, id } },
+      data: ratings,
+    });
+  }
+
+  async function seedExpanse(): Promise<void> {
+    await seedRated('s1', "Abaddon's Gate", 'The Expanse', {
+      ratingOverall: 5,
+    });
+    await seedRated('s2', 'Leviathan Wakes', 'The Expanse', {
+      ratingOverall: 3,
+    });
+  }
+
+  const standalone = (bookId: string): ItemShape => ({
+    type: 'standalone',
+    bookId,
+  });
+  const series = (seriesName: string): ItemShape => ({
+    type: 'series',
+    seriesName,
+  });
+
+  it('minRating.overall keeps standalones at or above it and drops unrated', async () => {
+    await seedRated('a', 'A', '', { ratingOverall: 5 });
+    await seedRated('b', 'B', '', { ratingOverall: 4 });
+    await seedRated('c', 'C', '', { ratingOverall: null });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      minRating: { overall: 4 },
+    });
+    expect(itemsShape(result.items)).toEqual([standalone('a'), standalone('b')]);
+  });
+
+  it('two minimums AND together', async () => {
+    await seedRated('a', 'A', '', { ratingOverall: 5, ratingIdeas: 4 });
+    await seedRated('b', 'B', '', { ratingOverall: 5, ratingIdeas: 2 });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      minRating: { overall: 5, ideas: 4 },
+    });
+    expect(itemsShape(result.items)).toEqual([standalone('a')]);
+  });
+
+  it('a minimum on one dimension ignores nulls in the others', async () => {
+    await seedRated('a', 'A', '', { ratingIdeas: 4, ratingOverall: null });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      minRating: { ideas: 4 },
+    });
+    expect(itemsShape(result.items)).toEqual([standalone('a')]);
+  });
+
+  it('unrated keeps standalones with null overall regardless of sub-ratings', async () => {
+    await seedRated('a', 'A', '', { ratingOverall: null, ratingStory: 3 });
+    await seedRated('b', 'B', '', { ratingOverall: 2 });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      unrated: true,
+    });
+    expect(itemsShape(result.items)).toEqual([standalone('a')]);
+  });
+
+  it('an empty minRating object is no filter and does not expand series members', async () => {
+    await seedRated('m1', 'Member', 'Some Series', { ratingOverall: 5 });
+    await seedRated('x', 'Tome', '', { ratingOverall: null });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      minRating: {},
+    });
+    expect(itemsShape(result.items)).toEqual([series('Some Series'), standalone('x')]);
+  });
+
+  it('keeps a series when one member qualifies and expands that member as a row', async () => {
+    await seedExpanse();
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      minRating: { overall: 5 },
+    });
+    expect(itemsShape(result.items)).toEqual([standalone('s1'), series('The Expanse')]);
+  });
+
+  it('drops a series when no member qualifies', async () => {
+    await seedExpanse();
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      minRating: { overall: 5, story: 4 },
+    });
+    expect(itemsShape(result.items)).toEqual([]);
+  });
+
+  it('unrated keeps a series with an unrated member and expands only that member', async () => {
+    await seedRated('s1', "Abaddon's Gate", 'The Expanse', {
+      ratingOverall: 5,
+    });
+    await seedRated('s2', 'Leviathan Wakes', 'The Expanse', {
+      ratingOverall: null,
+    });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      unrated: true,
+    });
+    expect(itemsShape(result.items)).toEqual([series('The Expanse'), standalone('s2')]);
+  });
+
+  it('entryType=series with a rating filter returns series rows only', async () => {
+    await seedExpanse();
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      minRating: { overall: 5 },
+      entryType: 'series',
+    });
+    expect(itemsShape(result.items)).toEqual([series('The Expanse')]);
+  });
+
+  it('seriesName with a rating filter returns only the named series, no member rows', async () => {
+    await seedExpanse();
+    await seedRated('o1', 'Other Book', 'Other', { ratingOverall: 5 });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      minRating: { overall: 5 },
+      seriesName: 'The Expanse',
+    });
+    expect(itemsShape(result.items)).toEqual([series('The Expanse')]);
+  });
+
+  it('rating filter composes with a text query as the intersection', async () => {
+    await seedRated('s1', "Abaddon's Gate", 'The Expanse', {
+      ratingOverall: 5,
+    });
+    await seedRated('s2', "Caliban's War", 'The Expanse', { ratingOverall: 5 });
+    await seedRated('g', 'Gateway', '', { ratingOverall: 2 });
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      query: 'gate',
+      minRating: { overall: 5 },
+    });
+    expect(itemsShape(result.items)).toEqual([standalone('s1'), series('The Expanse')]);
+  });
+
+  it('rating filter survives a cursor that ended on a series (page two)', async () => {
+    await seedRated('z', 'Zed', 'Alpha Series', { ratingOverall: 5 });
+    await seedRated('b', 'Beta', '', { ratingOverall: 5 });
+    await seedRated('g', 'Gamma', '', { ratingOverall: 5 });
+    const filters = { minRating: { overall: 5 } };
+    const first = await listBooksPage(prisma, OWNER, null, 1, filters);
+    expect(itemsShape(first.items)).toEqual([series('Alpha Series')]);
+    const cursor = decodeCursor(first.nextCursor!);
+    const second = await listBooksPage(prisma, OWNER, cursor, 10, filters);
+    expect(itemsShape(second.items)).toEqual([standalone('b'), standalone('g'), standalone('z')]);
+  });
+
+  it('rating filter survives a cursor that ended on a book (page two)', async () => {
+    await seedRated('a', 'Alpha', '', { ratingOverall: 5 });
+    await seedRated('b', 'Beta', '', { ratingOverall: 5 });
+    await seedRated('d', 'Delta', 'Zeta Series', { ratingOverall: 5 });
+    await seedRated('u', 'Unrated', '', { ratingOverall: null });
+    const filters = { minRating: { overall: 5 } };
+    const first = await listBooksPage(prisma, OWNER, null, 2, filters);
+    expect(itemsShape(first.items)).toEqual([standalone('a'), standalone('b')]);
+    const second = await listBooksPage(prisma, OWNER, decodeCursor(first.nextCursor!), 10, filters);
+    expect(itemsShape(second.items)).toEqual([standalone('d'), series('Zeta Series')]);
   });
 });
