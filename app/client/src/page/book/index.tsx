@@ -813,14 +813,12 @@ export const BookPage = () => {
           </div>
         </div>
       </Card>
-      <Card title="Rating">
-        <BookRating
-          rating={book.rating}
-          bookTitle={book.title}
-          readOnly={isAdmin}
-          onRate={handleRate}
-        />
-      </Card>
+      <BookRating
+        rating={book.rating}
+        bookTitle={book.title}
+        readOnly={isAdmin}
+        onRate={handleRate}
+      />
       <Card title="Description">
         <div className={styles.description}>{description}</div>
       </Card>

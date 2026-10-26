@@ -455,15 +455,17 @@ buttons, in `control/segmented-control`'s visual language.
 **Component: `~/component/book-rating`.** The block the book page renders.
 
 - Props: the five values, `bookTitle`, `readOnly`, and `onRate(field, value)`.
-- Layout: five rows, one per field, Overall first and always on screen, the
-  four detail rows (Story, Characters, Writing, Ideas) behind a "Details"
-  disclosure between them — a text button in the label's grey with a chevron
-  that turns down when open, `aria-expanded` and `aria-controls` on it. It
-  opens by itself when any detail has a value and follows the reader's own
-  toggle from then on (a `null`-until-toggled choice over the data-derived
-  default, no effect). A read-only view with no details shows no toggle. Most
-  ratings are an Overall alone, and four empty rows pushed the description
-  down on every unrated book. Each row is the shaded
+- Layout: the component renders the "Rating" `Card` itself. Five rows, one
+  per field, Overall first and always on screen, the four detail rows
+  (Story, Characters, Writing, Ideas) behind a "More" link button in the
+  card header (`headerAction`, `Button type="link"`, the same slot and style
+  as "Change" on the email setting) that reads "Less" while they show, with
+  `aria-expanded` and `aria-controls` on it (new optional `Button` props).
+  The details open by themselves when any of them has a value and follow the
+  reader's own toggle from then on (a `null`-until-toggled choice over the
+  data-derived default, no effect). A read-only view with no details shows
+  no button. Most ratings are an Overall alone, and four empty rows pushed
+  the description down on every unrated book. Each row is the shaded
   input row every labelled control in the app uses (`TextInput`'s
   `horizontal` layout: `bg.cardHeader`, `radius.md`, the label in
   `recipe.label` inset `space.sm` with a 6rem minimum width), with the
@@ -482,7 +484,8 @@ buttons, in `control/segmented-control`'s visual language.
   and friends use) shows the message.
 
 **Book page (`page/book/index.tsx`).** The block is its own `Card` titled
-"Rating", placed between the title card and the Description card, so the
+"Rating" (rendered by the component, so the header button and the rows share
+one state), placed between the title card and the Description card, so the
 rows have the card's full width at every size. `readOnly` is `isAdmin`.
 `BookDetailDocument` selects `rating { overall story characters writing ideas }`.
 A new `BookRateDocument` mutation selects `book { id rating { … } }` and
