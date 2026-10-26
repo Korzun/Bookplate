@@ -161,11 +161,7 @@ export const BookLineageModal = ({
   const entries = useFragment(LineageEntryFragment, lineage);
   const modalRef = useModalDialog(isOpen, onClose);
 
-  const handleClickBackground = (e: React.MouseEvent<HTMLDialogElement>) => {
-    e.stopPropagation();
-    onClose();
-  };
-  const handleClickDialog = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleClickDialog = (e: React.MouseEvent) => {
     e.stopPropagation();
   };
 
@@ -194,7 +190,7 @@ export const BookLineageModal = ({
     );
 
   return (
-    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickDialog}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>Book lineage</div>
         <p className={styles.intro}>

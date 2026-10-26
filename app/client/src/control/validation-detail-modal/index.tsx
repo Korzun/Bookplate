@@ -43,16 +43,12 @@ export function ValidationDetailModal({
   const hasNonBlocking = blockingMessages.length < messages.length;
   const visible = showAll ? messages : blockingMessages;
 
-  const handleClickBackground = useCallback(() => {
-    onClose();
-  }, [onClose]);
-
-  const handleClickDialog = useCallback((event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+  const handleClickDialog = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
   }, []);
 
   return (
-    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickDialog}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>{filename}</div>
         <div className={styles.body}>

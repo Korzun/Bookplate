@@ -69,14 +69,7 @@ export function EditFixModal({ isOpen, fix, onSave, onKeep, onClose }: EditFixMo
   }, [unchanged, handleKeep, handleSave]);
 
   const modalRef = useModalDialog(isOpen, handleCancel, !busy);
-  const handleClickBackground = useCallback(
-    (event: React.MouseEvent<HTMLDialogElement, MouseEvent>) => {
-      event.stopPropagation();
-      handleCancel();
-    },
-    [handleCancel]
-  );
-  const handleClickDialog = useCallback((event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+  const handleClickDialog = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
   }, []);
   const handleKeyDown = useCallback(
@@ -90,7 +83,7 @@ export function EditFixModal({ isOpen, fix, onSave, onKeep, onClose }: EditFixMo
   );
 
   return (
-    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickDialog}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>Fix {label}</div>
         <div className={styles.body}>
