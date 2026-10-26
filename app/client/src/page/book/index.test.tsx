@@ -1862,6 +1862,26 @@ describe('BookPage', () => {
       expect(card.nextElementSibling).toContainElement(screen.getByText('Description'));
     });
 
+    it('renders no Description or Subjects card when the book has neither', async () => {
+      await renderPage([bookMock({ description: '', subjects: [] }), viewerBootstrapMock()], owner);
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      expect(screen.queryByText('Description')).toBeNull();
+      expect(screen.queryByText('Subjects')).toBeNull();
+    });
+
+    it('treats a description that is only markup and whitespace as empty', async () => {
+      await renderPage(
+        [
+          bookMock({ description: '<p> </p>\n<br/>', subjects: ['Fantasy'] }),
+          viewerBootstrapMock(),
+        ],
+        owner
+      );
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      expect(screen.queryByText('Description')).toBeNull();
+      expect(screen.getByText('Subjects')).toBeInTheDocument();
+    });
+
     it('rating a sub-field sends only that field and updates from the payload with no refetch', async () => {
       bookDetailCounter.requests = 0;
       const { client } = await renderPage(

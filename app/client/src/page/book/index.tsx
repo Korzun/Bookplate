@@ -826,11 +826,16 @@ export const BookPage = () => {
         readOnly={isAdmin}
         onRate={handleRate}
       />
-      <Card title="Description">
-        <div className={styles.description}>{description}</div>
-      </Card>
-      <Card title="Subjects">
-        {book.subjects.length > 0 && (
+      {/* Neither card has an empty state worth a header: `description` is
+          already the non-blank paragraphs (markup stripped), so an empty list
+          means there is nothing to say. */}
+      {description.length > 0 && (
+        <Card title="Description">
+          <div className={styles.description}>{description}</div>
+        </Card>
+      )}
+      {book.subjects.length > 0 && (
+        <Card title="Subjects">
           <div className={styles.subjects}>
             {book.subjects.map((subject, index) => (
               <Tag key={subject + index} onClick={() => handleSubjectNavigate(subject)}>
@@ -838,8 +843,8 @@ export const BookPage = () => {
               </Tag>
             ))}
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
       {progressModalOpen && (
         <SetProgressModal
           isOpen
