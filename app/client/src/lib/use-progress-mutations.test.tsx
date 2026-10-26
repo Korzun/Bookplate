@@ -24,6 +24,7 @@ import {
   ProgressSetDocument,
 } from '~/graphql/progress';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
+import { readSeriesDetail, seedSeriesDetail } from '~/lib/test-cache-seeds';
 import { renderHookWithApollo } from '~/test-utils';
 
 import { useDeleteProgress, useSetMyProgress } from './use-progress-mutations';
@@ -786,5 +787,47 @@ describe('useDeleteProgress', () => {
     });
 
     expect(result.current?.error).toBeDefined();
+  });
+});
+
+describe('series progress coherence', () => {
+  const seed = { libraryId: LIBRARY_ID, seriesId: 'series-1', name: 'Dune', bookId: 'book-1' };
+  const read = { libraryId: LIBRARY_ID, name: 'Dune' };
+
+  it('evicts Series.progressPercentage after a set so the series re-reads its aggregate', async () => {
+    const NEW_DOCUMENT = 'new-doc-hash-00000000000000000';
+    const { result, client } = renderHookWithApollo(() => useSetMyProgress(NEW_DOCUMENT), [
+      viewerBootstrapMock(VIEWER_USER_ID),
+      progressSetSuccessMock({
+        document: NEW_DOCUMENT,
+        progressId: 'progress-new',
+        currentChapter: 3,
+        percentage: 0.5,
+      }),
+    ] as MockedResponse[]);
+    await waitForViewerBootstrap(client);
+    await seedSeriesDetail(client.cache, seed);
+
+    await act(async () => {
+      await result.current?.setProgress({ currentChapter: 3, percentage: 0.5 });
+    });
+
+    expect(result.current?.error).toBeUndefined();
+    expect(await readSeriesDetail(client.cache, read)).toBeNull();
+  });
+
+  it('evicts Series.progressPercentage after a delete', async () => {
+    const { result, client } = renderHookWithApollo(
+      () => useDeleteProgress(),
+      [progressDeleteSuccessMock('progress-1')]
+    );
+    await seedSeriesDetail(client.cache, seed);
+
+    await act(async () => {
+      await result.current?.deleteProgress('progress-1');
+    });
+
+    expect(result.current?.error).toBeUndefined();
+    expect(await readSeriesDetail(client.cache, read)).toBeNull();
   });
 });

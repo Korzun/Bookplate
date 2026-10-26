@@ -25,7 +25,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { ProgressDeleteMutation, ProgressSetMutation } from '~/gql/graphql';
 import { ProgressDeleteDocument, ProgressSetDocument } from '~/graphql/progress';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
-import { unwrapResult } from '~/provider/apollo';
+import { invalidateSeriesProgress, unwrapResult } from '~/provider/apollo';
 
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
 // the call, so it is named explicitly here, extracted from the generated
@@ -252,6 +252,10 @@ export const useSetMyProgress = (documentId: string): UseSetMyProgress => {
                 },
               });
             }
+            // `Series.progressPercentage` is a server aggregate over the
+            // book's series; the payload carries no series, so every cached
+            // one re-reads it (`provider/apollo/invalidate.ts`).
+            invalidateSeriesProgress(cache);
           },
         });
 
@@ -378,7 +382,7 @@ export const useDeleteProgress = (): UseDeleteProgress => {
             }
 
             cache.evict({ id: progressKey });
-            cache.gc();
+            invalidateSeriesProgress(cache); // also runs `cache.gc()`
           },
         });
 
