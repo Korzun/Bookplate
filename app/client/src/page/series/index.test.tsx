@@ -278,7 +278,7 @@ describe('SeriesPage', () => {
     const { findByText, queryByText } = await renderPage([seriesMock({ progressPercentage: 0.5 })]);
 
     await findByText('Earthsea');
-    expect(queryByText('progress:')).not.toBeInTheDocument();
+    expect(queryByText('progress')).not.toBeInTheDocument();
   });
 
   it('renders no progress badge when progressPercentage is null', async () => {

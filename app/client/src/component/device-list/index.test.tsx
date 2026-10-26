@@ -54,7 +54,7 @@ describe('DeviceList', () => {
         error={undefined}
       />
     );
-    expect(screen.getByText('Slug:')).toBeInTheDocument();
+    expect(screen.getByText('Slug')).toBeInTheDocument();
     expect(screen.getByText('kindle')).toBeInTheDocument();
   });
 
