@@ -42,7 +42,7 @@ import type { Severity, ValidationMessage } from '~/lib/severity';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useDownloadBook } from '~/lib/use-download-book';
 import { usePrefetchOnIntent } from '~/lib/use-prefetch-on-intent';
-import { unwrapResult } from '~/provider/apollo';
+import { invalidateBookChange, unwrapResult } from '~/provider/apollo';
 import { useIsAdmin } from '~/provider/auth';
 import { useCurrentLibraryId } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
@@ -327,7 +327,13 @@ export const BookPage = () => {
    *
    * `BookRegenChaptersDocument` selects only `book { id chapterCount
    * chapterNames chapterSpineMap }`, so the payload carries NONE of those
-   * rewritten fields. Hence two evictions, both UNCONDITIONAL on success:
+   * rewritten fields. Hence two evictions, both UNCONDITIONAL on success —
+   * plus, since the id-rotation audit, the book's `Series` derived fields
+   * (`books`, aggregates), which `invalidateBookChange`
+   * (`provider/apollo/invalidate.ts`) evicts for every rewriting path. That
+   * helper also performs eviction 1 below; eviction 2 stays a local
+   * statement because the helper deliberately keeps a `Book` whose id did
+   * not change, and regen is the one path that must not.
    *
    *   1. **`Library.entries`** (every filter variant, no `args`), because
    *      the new position in a sorted, filtered, paginated connection is the
@@ -394,14 +400,10 @@ export const BookPage = () => {
             );
             if (outcome.status !== 'ok') return;
 
-            if (libraryId !== undefined) {
-              cache.evict({
-                id: cache.identify({ __typename: 'Library', id: libraryId }),
-                fieldName: 'entries',
-              });
-            }
+            // Evicted by name, UNCONDITIONALLY — see point 2 above. The helper
+            // would keep the entity when the id holds, which regen must not.
             cache.evict({ id: cache.identify({ __typename: 'Book', id: targetId }) });
-            cache.gc();
+            invalidateBookChange(cache, { libraryId, seriesIds: [book?.series?.id] });
           },
         });
         const result = unwrapResult<BookRegenChaptersPayload>(
@@ -425,7 +427,7 @@ export const BookPage = () => {
         setRegenLoading(false);
       }
     },
-    [runRegen, regenLoading, showToast, libraryId, navigate]
+    [runRegen, regenLoading, showToast, libraryId, navigate, book]
   );
 
   /**
@@ -448,13 +450,20 @@ export const BookPage = () => {
    *   2. Evicts the OWNING `Library`'s ENTIRE `entries` field (every filter
    *      variant, no `args`). Required because deleting the LAST book in a
    *      series makes the SERVER also delete the `Series` row, while
-   *      `BookDeletePayload` carries no `deletedSeriesId` — the client has no
-   *      id to evict a `Series` entity with, and the SERIES-typed edge that
-   *      references the deleted book still lingers with a now-wrong
-   *      `bookCount`. Evicting the field makes the next `LibraryEntries` read
-   *      a genuine cache miss. `cache.identify` needs the Library's own
-   *      global id, which is why the document selects `library { id }`
-   *      alongside `deletedId`.
+   *      `BookDeletePayload` carries no `deletedSeriesId` — so the
+   *      SERIES-typed edge that references the deleted book would linger
+   *      with a now-wrong `bookCount`. Evicting the field makes the next
+   *      `LibraryEntries` read a genuine cache miss. `cache.identify` needs
+   *      the Library's own global id, which is why the document selects
+   *      `library { id }` alongside `deletedId`.
+   *
+   *      Both evictions go through `invalidateBookChange`
+   *      (`provider/apollo/invalidate.ts`), which also drops the derived
+   *      fields of the book's own series — read off the page's `BookDetail`
+   *      data, since the payload has no series. Without that, a cached series
+   *      page reads back COMPLETE minus the deleted book (relay pagination's
+   *      `read` filters the dangling edge) with stale `bookCount`/`totalPages`,
+   *      and never refetches.
    *
    *      **Not free**: `entries` is `relayStylePagination(['filter'])`, so
    *      this discards every page `fetchMore` had accumulated — a user deep
@@ -475,14 +484,12 @@ export const BookPage = () => {
           );
           if (outcome.status !== 'ok') return;
 
-          cache.evict({
-            id: cache.identify({ __typename: 'Book', id: outcome.payload.deletedId }),
+          invalidateBookChange(cache, {
+            libraryId: outcome.payload.library.id,
+            previousId: outcome.payload.deletedId,
+            currentId: null,
+            seriesIds: [book?.series?.id],
           });
-          cache.evict({
-            id: cache.identify({ __typename: 'Library', id: outcome.payload.library.id }),
-            fieldName: 'entries',
-          });
-          cache.gc();
         },
       });
       const result = unwrapResult<BookDeletePayload>(deleteData?.bookDelete, 'BookDeletePayload');
