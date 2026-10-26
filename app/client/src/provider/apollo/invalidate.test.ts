@@ -1,4 +1,4 @@
-import { InMemoryCache, type NormalizedCacheObject } from '@apollo/client';
+import { gql, InMemoryCache, type NormalizedCacheObject } from '@apollo/client';
 import { describe, expect, it } from 'vitest';
 
 import { SeriesBookRowFragment } from '~/component/book-row/from-series-book';
@@ -15,6 +15,7 @@ import {
   invalidateBookChange,
   invalidateRequestQueues,
   invalidateSeriesProgress,
+  invalidateSeriesRating,
   invalidateUserProgressCounts,
 } from './invalidate';
 
@@ -150,6 +151,19 @@ const entityKeys = (cache: InMemoryCache) => Object.keys(cache.extract() as Norm
 const seriesEntity = (cache: InMemoryCache, id: string) =>
   (cache.extract() as NormalizedCacheObject)[`Series:${id}`] as Record<string, unknown>;
 
+/** The grid row's aggregate, as a visit to the library would have cached it. */
+const seedSeriesRating = (cache: InMemoryCache, id: string, overallRating: number) =>
+  cache.writeFragment({
+    id: cache.identify({ __typename: 'Series', id }),
+    fragment: gql`
+      fragment SeriesRatingSeed on Series {
+        id
+        overallRating
+      }
+    `,
+    data: { __typename: 'Series', id, overallRating },
+  });
+
 describe('invalidateBookChange', () => {
   it('evicts every library field derived from book metadata', () => {
     const cache = new InMemoryCache(cacheConfig);
@@ -226,6 +240,42 @@ describe('invalidateBookChange', () => {
     invalidateBookChange(cache, { libraryId: LIBRARY_ID, previousId: BOOK_ID, currentId: BOOK_ID });
 
     expect(entityKeys(cache)).toContain(`Book:${BOOK_ID}`);
+  });
+});
+
+describe('invalidateBookChange — series rating', () => {
+  it('evicts overallRating on the changed series, since a rewrite can move a book between series', () => {
+    const cache = new InMemoryCache(cacheConfig);
+    seedSeriesRating(cache, SERIES_A, 4);
+    seedSeriesRating(cache, SERIES_B, 2);
+
+    invalidateBookChange(cache, { libraryId: LIBRARY_ID, seriesIds: [SERIES_A] });
+
+    expect(seriesEntity(cache, SERIES_A)).not.toHaveProperty('overallRating');
+    expect(seriesEntity(cache, SERIES_B)).toHaveProperty('overallRating', 2);
+  });
+});
+
+describe('invalidateSeriesRating', () => {
+  it('evicts overallRating on the named series only', () => {
+    const cache = new InMemoryCache(cacheConfig);
+    seedSeriesRating(cache, SERIES_A, 4);
+    seedSeriesRating(cache, SERIES_B, 2);
+
+    invalidateSeriesRating(cache, SERIES_A);
+
+    expect(seriesEntity(cache, SERIES_A)).not.toHaveProperty('overallRating');
+    expect(seriesEntity(cache, SERIES_B)).toHaveProperty('overallRating', 2);
+  });
+
+  it('is a no-op for a series the cache has never seen', () => {
+    const cache = new InMemoryCache(cacheConfig);
+    seedSeriesRating(cache, SERIES_A, 4);
+
+    invalidateSeriesRating(cache, 'SERIES-UNKNOWN');
+
+    expect(seriesEntity(cache, SERIES_A)).toHaveProperty('overallRating', 4);
+    expect(entityKeys(cache)).not.toContain('Series:SERIES-UNKNOWN');
   });
 });
 

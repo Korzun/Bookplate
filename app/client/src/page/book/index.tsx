@@ -42,7 +42,7 @@ import type { Severity, ValidationMessage } from '~/lib/severity';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useDownloadBook } from '~/lib/use-download-book';
 import { usePrefetchOnIntent } from '~/lib/use-prefetch-on-intent';
-import { invalidateBookChange, unwrapResult } from '~/provider/apollo';
+import { invalidateBookChange, invalidateSeriesRating, unwrapResult } from '~/provider/apollo';
 import { useIsAdmin } from '~/provider/auth';
 import { useCurrentLibraryId } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
@@ -607,15 +607,25 @@ export const BookPage = () => {
    * field replaced), so the picker moves immediately and Apollo rolls the
    * optimistic layer back on its own if the mutation fails. The real payload
    * re-selects the whole `rating` and normalizes onto `Book:<id>`
-   * (`BookRateDocument`'s doc comment), so there is no `update` and no
-   * refetch. Both failure shapes toast: the union's `InvalidInputError` and a
-   * transport error (e.g. FORBIDDEN for a non-owner).
+   * (`BookRateDocument`'s doc comment), so the book itself needs no `update`
+   * and no refetch. The one `update` there is evicts the series' cached
+   * `overallRating` — the grid row's aggregate over the members' Overall,
+   * which this book just moved — so the next library visit re-reads it. It
+   * runs for the optimistic write too, which is harmless. Both failure shapes
+   * toast: the union's `InvalidInputError` and a transport error (e.g.
+   * FORBIDDEN for a non-owner).
    */
   const handleRate = useCallback(
     (field: RatingFieldKey, value: RatingValue | null) => {
       if (book === undefined) return;
+      const seriesId = book.series?.id;
       void runRate({
         variables: { input: { id: book.id, [field]: value } },
+        update: (cache, { data: rated }) => {
+          if (seriesId === undefined) return;
+          if (rated?.bookRate?.__typename !== 'BookRatePayload') return;
+          invalidateSeriesRating(cache, seriesId);
+        },
         optimisticResponse: {
           __typename: 'Mutation',
           bookRate: {
