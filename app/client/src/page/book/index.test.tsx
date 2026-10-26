@@ -69,6 +69,7 @@ import {
 import { ProgressDeleteDocument, ProgressSetDocument } from '~/graphql/progress';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { apiFetch } from '~/lib/api-fetch';
+import { readSeriesDetail, seedSeriesDetail } from '~/lib/test-cache-seeds';
 import { renderWithApollo } from '~/test-utils';
 
 import {
@@ -1974,5 +1975,31 @@ describe('BookPage', () => {
         'true'
       );
     });
+  });
+});
+
+describe('series coherence', () => {
+  const EARTHSEA_ID = 'U2VyaWVzOjE=';
+  const seed = { libraryId: LIBRARY_ID, seriesId: EARTHSEA_ID, name: 'Earthsea', bookId: BOOK_ID };
+  const read = { libraryId: LIBRARY_ID, name: 'Earthsea' };
+
+  it('invalidates the cached series book list when a regen rotates the id', async () => {
+    const { client } = await renderPage([bookMock(), regenMock(NEW_BOOK_ID)]);
+    await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+    await seedSeriesDetail(client.cache, seed);
+    expect(await readSeriesDetail(client.cache, read)).not.toBeNull();
+
+    await selectMenuItem(/^regen chapters$/i);
+
+    await waitFor(async () => expect(await readSeriesDetail(client.cache, read)).toBeNull());
+  });
+
+  it("invalidates the deleted book's series so its list and aggregates are re-read", async () => {
+    const { client } = await openBookAnd([bookMock(), deleteSuccessMock()], /^delete$/i);
+    await seedSeriesDetail(client.cache, seed);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete', hidden: true }));
+
+    await waitFor(async () => expect(await readSeriesDetail(client.cache, read)).toBeNull());
   });
 });
