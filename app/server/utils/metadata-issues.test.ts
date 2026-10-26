@@ -1,4 +1,4 @@
-import { detectMetadataIssues, MetadataIssue } from './metadata-issues';
+import { detectMetadataIssues, followSortField, MetadataIssue } from './metadata-issues';
 
 const base = {
   title: 'Blindsight',
@@ -282,5 +282,88 @@ describe('detectMetadataIssues', () => {
     // not produce a decode proposal with a non-null `to`.
     const entityIssue = find(issues, 'html-entity');
     if (entityIssue) expect(entityIssue.to).toBeNull();
+  });
+});
+
+describe('followSortField', () => {
+  describe('title', () => {
+    it('rotates a leading article into the new title sort when the old sort was empty (auto)', () => {
+      const issue = followSortField('title', 'book', 'The Real Title', '')!;
+      expect(issue).toMatchObject({
+        field: 'titleSort',
+        kind: 'title-sort-missing',
+        from: '',
+        to: 'Real Title, The',
+        autoEligible: true,
+        changes: { titleSort: 'Real Title, The' },
+      });
+    });
+
+    it('treats a sort that merely copied the old title as unset', () => {
+      const issue = followSortField('title', 'book', 'The Real Title', 'book')!;
+      expect(issue.to).toBe('Real Title, The');
+      expect(issue.from).toBe('book');
+    });
+
+    it('treats a sort that was the old title’s own rotation as unset', () => {
+      const issue = followSortField('title', 'The Hobbit', 'The Lord of the Rings', 'Hobbit, The')!;
+      expect(issue.to).toBe('Lord of the Rings, The');
+    });
+
+    it('copies a title with no leading article into the sort', () => {
+      const issue = followSortField('title', 'book', 'Dune', 'book')!;
+      expect(issue.to).toBe('Dune');
+    });
+
+    it('leaves a sort alone that was not derived from the old title', () => {
+      expect(followSortField('title', 'book', 'The Real Title', 'Custom Sort')).toBeNull();
+    });
+
+    it('is null when the derived sort already matches', () => {
+      expect(followSortField('title', 'book', 'Dune', 'Dune')).toBeNull();
+    });
+  });
+
+  describe('author', () => {
+    it('derives "Last, First" for a plain two-token name when the old sort was empty (auto)', () => {
+      const issue = followSortField('author', 'Seed Author', 'Frank Herbert', '')!;
+      expect(issue).toMatchObject({
+        field: 'authorSort',
+        kind: 'author-sort-missing',
+        from: '',
+        to: 'Herbert, Frank',
+        autoEligible: true,
+        changes: { authorSort: 'Herbert, Frank' },
+      });
+    });
+
+    it('treats a sort that was the old author’s own derivation as unset', () => {
+      const issue = followSortField('author', 'Seed Author', 'Frank Herbert', 'Author, Seed')!;
+      expect(issue.to).toBe('Herbert, Frank');
+    });
+
+    it('proposes rather than auto-applies for a particle name', () => {
+      const issue = followSortField('author', 'Seed Author', 'Ursula K. Le Guin', '')!;
+      expect(issue.to).toBe('Guin, Ursula K. Le');
+      expect(issue.autoEligible).toBe(false);
+    });
+
+    it('proposes rather than auto-applies for a multi-author string', () => {
+      const issue = followSortField(
+        'author',
+        'Seed Author',
+        'Terry Pratchett and Neil Gaiman',
+        ''
+      )!;
+      expect(issue.autoEligible).toBe(false);
+    });
+
+    it('is null for an inverted "Last, First" author (the inversion check owns that case)', () => {
+      expect(followSortField('author', 'Seed Author', 'Herbert, Frank', '')).toBeNull();
+    });
+
+    it('leaves a sort alone that was not derived from the old author', () => {
+      expect(followSortField('author', 'Seed Author', 'Frank Herbert', 'Custom, Sort')).toBeNull();
+    });
   });
 });

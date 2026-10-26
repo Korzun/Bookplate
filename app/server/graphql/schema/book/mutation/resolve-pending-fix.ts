@@ -9,11 +9,12 @@ import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
 import { reimportBook } from '../../../../services/book-lifecycle';
 import { clearEditLineage } from '../../../../services/book-lineage';
-import { applySplit } from '../../../../services/epub-import-pipeline';
+import { applySplit, toFix } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';
 import { upsertPendingFix } from '../../../../services/pending-fix';
 import type { Book, MetadataFix, Owner } from '../../../../types';
+import { followSortField } from '../../../../utils/metadata-issues';
 import { parsePendingFixState } from '../../../derive';
 import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import {
@@ -67,8 +68,24 @@ const input = builder.inputType('BookResolvePendingFixInput', {
         'silently ignored rather than erroring, since a no-longer-present fix is a benign ' +
         'race (someone else resolved it first).',
     }),
+    value: t.string({
+      required: false,
+      description:
+        'The replacement value EDIT writes to the addressed proposal’s field. Required by ' +
+        'EDIT (a request error without it); ignored by every other action.',
+    }),
   }),
 });
+
+/**
+ * The fields EDIT may write. An advisory proposal only ever targets `title`
+ * or `author` (`metadata-issues.ts`'s `html-entity` and `title-is-filename`
+ * checks), but EDIT is accepted for any scalar field a proposal can name so
+ * a typed value can also override an actionable suggestion's `to`.
+ * `subjects` is excluded: it is a list, and `EpubChanges.subjects` takes
+ * `string[]`, which a single `value` cannot express.
+ */
+const EDITABLE_FIELDS = new Set(['title', 'titleSort', 'author', 'authorSort']);
 
 type BookResolvePendingFixPayloadShape = {
   readonly __typename: 'BookResolvePendingFixPayload';
@@ -603,6 +620,112 @@ builder.mutationField('bookResolvePendingFix', (t) =>
           __typename: 'BookResolvePendingFixPayload' as const,
           owner,
           bookId: revertedId,
+        };
+      }
+
+      if (args.input.action === 'edit') {
+        // Exactly one proposal: the first key in `fixes` that matches a live
+        // proposal. A key matching nothing is the same benign race ACCEPT and
+        // DISMISS treat as a no-op.
+        const target = selectProposals(state.proposals, args.input.fixes)[0];
+        if (target === undefined) {
+          return {
+            __typename: 'BookResolvePendingFixPayload' as const,
+            owner,
+            bookId: targetBook.id,
+          };
+        }
+        // A missing `value` is a contract violation, not a race — surface it
+        // as a request error rather than silently writing nothing.
+        const value = args.input.value;
+        if (value === null || value === undefined) {
+          throw new Error('EDIT requires `value`');
+        }
+        if (!EDITABLE_FIELDS.has(target.field)) {
+          throw new Error(`EDIT cannot write field "${target.field}"`);
+        }
+
+        if (targetBook.valid !== true) {
+          return bookNotValidatedError(owner, targetBook.id);
+        }
+
+        // A title or author edit drags its sort field along (`followSortField`'s
+        // doc comment has the staleness rule). An auto-eligible derivation
+        // rides in the SAME write — one rewrite, one id rotation — and is
+        // recorded beside the edit in `appliedFixes` (not `autoFixes`, which
+        // UNDO never restores) so undoing the edit undoes the sort with it.
+        // One the detector would not auto-apply (a particle or multi-author
+        // name) is left on the row as a fresh proposal to accept or reject.
+        const changes: EpubChanges = { [target.field]: value };
+        const followUp =
+          target.field === 'title'
+            ? followSortField('title', targetBook.title, value, targetBook.titleSort)
+            : target.field === 'author'
+              ? followSortField('author', targetBook.author, value, targetBook.authorSort)
+              : null;
+        const followApplied: MetadataFix[] = [];
+        const followProposed: MetadataFix[] = [];
+        if (followUp !== null) {
+          if (followUp.autoEligible) {
+            Object.assign(changes, followUp.changes);
+            followApplied.push(toFix(followUp));
+          } else {
+            followProposed.push(toFix(followUp));
+          }
+        }
+
+        const outcome = await toResult<Book, BookHashCollisionError | EpubValidationError>(
+          () => applyEpubChanges(deps, owner, targetBook, changes),
+          [BookHashCollisionError, EpubValidationError]
+        );
+        if ('err' in outcome) {
+          if (outcome.err instanceof BookHashCollisionError) {
+            return bookHashCollisionError(outcome.err, owner);
+          }
+          if (outcome.err instanceof EpubValidationError) {
+            return epubValidationError(outcome.err);
+          }
+          return assertUnreachableDomainError(outcome.err);
+        }
+
+        // Every OTHER proposal on the edited field is retired too, not just
+        // the addressed one: each was computed from the pre-edit value (its
+        // `from` is now stale), and accepting one later would overwrite the
+        // user's typed value with a suggestion about text that no longer
+        // exists. They stay in the undo snapshot's `proposals`, so UNDO
+        // restores them alongside the original value.
+        const targetKey = keyOf(target);
+        await upsertPendingFix(context.prisma, owner, outcome.ok.id, row.fileName, row.fileSize, {
+          autoFixes: state.autoFixes,
+          appliedFixes: [
+            ...state.appliedFixes,
+            { ...target, to: value, changes: { [target.field]: value } },
+            ...followApplied,
+          ],
+          proposals: [
+            ...state.proposals.filter(
+              (fix) => fix.field !== target.field && keyOf(fix) !== targetKey
+            ),
+            ...followProposed,
+          ],
+          undo: {
+            kind: 'apply',
+            proposals: state.proposals,
+            appliedFixes: state.appliedFixes,
+            originalMetadata: {
+              title: targetBook.title,
+              titleSort: targetBook.titleSort,
+              author: targetBook.author,
+              authorSort: targetBook.authorSort,
+              subjects: targetBook.subjects,
+            },
+          },
+        });
+
+        return {
+          __typename: 'BookResolvePendingFixPayload' as const,
+          owner,
+          bookId: outcome.ok.id,
         };
       }
 
