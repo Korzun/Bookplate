@@ -23,6 +23,7 @@ import {
 import { LinkPickerBooksDocument } from '~/graphql/progress';
 import { UserListDocument } from '~/graphql/user';
 import type { MetadataFix } from '~/lib/book-types';
+import { readRequestQueue, seedRequestQueue } from '~/lib/test-cache-seeds';
 import { UploadContext } from '~/provider/upload/context';
 import type {
   UploadItem,
@@ -606,5 +607,37 @@ describe('BookRequestRow — how long it has been waiting', () => {
     renderRow({ status: 'DECLINED', createdAt: THREE_DAYS_AGO }, { canResolve: false });
 
     expect(screen.queryByText('3d ago')).not.toBeInTheDocument();
+  });
+});
+
+describe('admin queue coherence', () => {
+  const queue = { userId: 'VXNlcjoxMjM=', libraryId: 'TGliOmJvYg==' };
+
+  it('drops the pending queue after a decline so it is re-read without the row', async () => {
+    const { user, client, declineCalls } = renderRow(
+      { id: 'QmVxOjE=', status: 'PENDING' },
+      { canResolve: true }
+    );
+    seedRequestQueue(client.cache, queue);
+
+    await user.click(screen.getByRole('button', { name: /decline/i }));
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+    await waitFor(() => expect(declineCalls()).toHaveLength(1));
+
+    await waitFor(() => expect(readRequestQueue(client.cache, queue)).toBeNull());
+  });
+
+  it('drops the pending queue after fulfilling from the picker', async () => {
+    const { user, client, fulfillCalls } = renderRow(
+      { id: 'QmVxOjE=', status: 'PENDING' },
+      { canResolve: true, libraryId: 'TGliOmJvYg==' }
+    );
+    seedRequestQueue(client.cache, queue);
+
+    await user.click(screen.getByRole('button', { name: /link existing/i }));
+    await user.click(await screen.findByRole('button', { name: /Dune/ }));
+    await waitFor(() => expect(fulfillCalls()).toHaveLength(1));
+
+    await waitFor(() => expect(readRequestQueue(client.cache, queue)).toBeNull());
   });
 });

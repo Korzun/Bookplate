@@ -26,8 +26,10 @@ import {
 import { UserListDocument } from '~/graphql/user';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import {
+  readRequestQueue,
   readSeriesDetail,
   readSeriesNames,
+  seedRequestQueue,
   seedSeriesDetail,
   seedSeriesNames,
 } from '~/lib/test-cache-seeds';
@@ -1515,4 +1517,26 @@ describe('series and queue coherence', () => {
     );
   });
 
+  it('drops the admin request queue once the bound request is fulfilled', async () => {
+    const calls: BookRequestFulfillMutationVariables[] = [];
+    const queue = { userId: 'VXNlcjoy', libraryId: LIBRARY_ID };
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+      fulfillMock(calls),
+    ]);
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+    seedRequestQueue(client.cache, queue);
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')), {
+        fulfillsRequestId: REQUEST_GID,
+      });
+    });
+    await completeTheUploadWith(BOOK_GID);
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    await waitFor(() => expect(readRequestQueue(client.cache, queue)).toBeNull());
+  });
 });

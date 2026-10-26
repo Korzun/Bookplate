@@ -15,7 +15,7 @@ import {
   BookRequestRowFragment,
 } from '~/graphql/book-request';
 import { UserListDocument } from '~/graphql/user';
-import { unwrapResult } from '~/provider/apollo';
+import { invalidateRequestQueues, unwrapResult } from '~/provider/apollo';
 import { useUploadQueue } from '~/provider/upload';
 import { path } from '~/router';
 import { relativeTime } from '~/utils';
@@ -226,7 +226,14 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
       setPickerOpen(false);
       setFulfillError(undefined);
       try {
-        const { data } = await runFulfill({ variables: { id: row.id, bookId: bookGlobalId } });
+        const { data } = await runFulfill({
+          variables: { id: row.id, bookId: bookGlobalId },
+          update: (cache, { data: mutationData }) => {
+            if (mutationData?.bookRequestFulfill?.__typename === 'BookRequestFulfillPayload') {
+              invalidateRequestQueues(cache);
+            }
+          },
+        });
         const outcome = unwrapResult<BookRequestFulfillPayload>(
           data?.bookRequestFulfill,
           'BookRequestFulfillPayload'
@@ -264,6 +271,11 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
       const trimmed = declineReason.trim();
       const { data } = await runDecline({
         variables: { id: row.id, reason: trimmed === '' ? undefined : trimmed },
+        update: (cache, { data: mutationData }) => {
+          if (mutationData?.bookRequestDecline?.__typename === 'BookRequestDeclinePayload') {
+            invalidateRequestQueues(cache);
+          }
+        },
       });
       const outcome = unwrapResult<BookRequestDeclinePayload>(
         data?.bookRequestDecline,
