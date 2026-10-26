@@ -23,8 +23,11 @@ describe('BookRow (presentational)', () => {
   });
 
   it('appends the Overall glyph and name to the meta line when rated', () => {
-    const { getByText, container } = renderWithApollo(<BookRow {...baseProps} overallRating={4} />);
+    const { getByText, getByLabelText, container } = renderWithApollo(
+      <BookRow {...baseProps} overallRating={4} />
+    );
     expect(getByText('Great')).toBeInTheDocument();
+    expect(getByLabelText('Rated Great')).toBeInTheDocument();
     expect(container.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
 

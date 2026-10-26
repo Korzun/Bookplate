@@ -62,7 +62,7 @@ export function BookRow({
   if (overallRating !== undefined) {
     const { Icon, name } = RATING_OPTIONS[overallRating - 1];
     meta.push(
-      <span key="rating">
+      <span key="rating" aria-label={`Rated ${name}`}>
         <Icon aria-hidden width={14} height={14} className={styles.ratingGlyph} />
         <span>{name}</span>
       </span>

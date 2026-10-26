@@ -174,7 +174,7 @@ export function useSearchSuggestions(
   const query = inputValue.trim();
 
   // When input is empty, return static quick-pick groups (Type, Status
-  // and/or Rating) so the dropdown shows useful options on focus. Both are omitted
+  // and/or Rating) so the dropdown shows useful options on focus. Each is omitted
   // when the corresponding filter is already active.
   if (!query) {
     const emptyGroups: SuggestionGroup[] = [];

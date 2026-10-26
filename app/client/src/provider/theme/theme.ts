@@ -384,7 +384,7 @@ function buildTheme(mode: ThemeMode): Theme {
         border: 'rgba(192, 65, 94, 0.32)',
       },
       user: { text: '#E7A6DA', bg: 'rgba(162,58,149,0.16)', border: 'rgba(162,58,149,0.30)' },
-      rating: { text: '#F2A07B', bg: 'rgba(242,160,123,0.16)', border: 'rgba(242,160,123,0.30)' },
+      rating: { text: '#F2A07B', bg: 'rgba(181,69,27,0.18)', border: 'rgba(181,69,27,0.32)' },
     },
   };
 

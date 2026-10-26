@@ -1086,4 +1086,18 @@ describe('listBooksPage() — rating filters', () => {
     const second = await listBooksPage(prisma, OWNER, decodeCursor(first.nextCursor!), 10, filters);
     expect(itemsShape(second.items)).toEqual([standalone('d'), series('Zeta Series')]);
   });
+
+  it('status filter applies to expanded member books', async () => {
+    await seedRated('m1', 'Zed One', 'Alpha Saga', { ratingOverall: 5 });
+    await seedRated('m2', 'Zed Two', 'Alpha Saga', { ratingOverall: 5 });
+    await insertProgress('m1', 1);
+    const result = await listBooksPage(prisma, OWNER, null, 20, {
+      status: 'completed',
+      minRating: { overall: 5 },
+    });
+    // The series row is excluded: series status "completed" requires ALL
+    // members complete (seriesIdsForStatus) and m2 is unread. Only the
+    // completed member survives, as a standalone row.
+    expect(itemsShape(result.items)).toEqual([standalone('m1')]);
+  });
 });

@@ -6,7 +6,9 @@ import { GraphQLError } from 'graphql';
  * object that could silently diverge.
  */
 const pageSizeExceededError = (message: string): GraphQLError =>
-  new GraphQLError(message, { extensions: { code: 'PAGE_SIZE_EXCEEDED', http: { status: 400 } } });
+  new GraphQLError(message, {
+    extensions: { code: 'PAGE_SIZE_EXCEEDED', http: { status: 400 } },
+  });
 
 /**
  * Rejects over-max page sizes. Reject, never clamp: a silently clamped page
@@ -56,8 +58,10 @@ export const rejectOversizePage = (
  * Rejects a rating minimum outside 1–5. Same reject-not-clamp ruling as
  * `rejectOversizePage` (a clamped minimum would silently return a different
  * set than the client asked for); see `2026-10-26-rating-filter-design.md`,
- * "GraphQL". Non-integers never reach here: GraphQL `Int` coercion rejects
- * them first. Reports the first offending dimension in input order.
+ * "GraphQL". GraphQL `Int` coercion already rejects non-integers; the integer guard
+ * is defence in depth for direct callers. Reports the first offending dimension in schema field order (overall,
+ * story, characters, writing, ideas), since graphql-js coerces input objects
+ * in field-definition order.
  */
 export const rejectRatingOutOfRange = (
   fieldName: string,
@@ -65,7 +69,7 @@ export const rejectRatingOutOfRange = (
 ): void => {
   if (!minimums) return;
   for (const [dim, n] of Object.entries(minimums)) {
-    if (n != null && (n < 1 || n > 5)) {
+    if (n != null && (!Number.isInteger(n) || n < 1 || n > 5)) {
       throw new GraphQLError(
         `${fieldName}.minRating.${dim} must be an integer from 1 to 5 (got ${n}).`,
         { extensions: { code: 'RATING_OUT_OF_RANGE', http: { status: 400 } } }
