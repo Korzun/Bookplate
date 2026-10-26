@@ -1,13 +1,13 @@
 import { Fragment, useCallback, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
-import { RATING_OPTIONS } from '~/control';
 import { graphql, useFragment, type FragmentType } from '~/gql';
 import { path } from '~/router';
 
 import { toRatingValue } from '../book-row/to-rating-value';
 import { Card } from '../card';
 import { CoverStack } from '../cover-stack';
+import { RatingLabel } from '../rating-label';
 import { useStyle } from './style';
 
 /**
@@ -128,13 +128,7 @@ export function SeriesRow({ series }: SeriesRowProps) {
   }
   const overallRating = toRatingValue(unmasked.overallRating);
   if (overallRating !== undefined) {
-    const { Icon, name } = RATING_OPTIONS[overallRating - 1];
-    meta.push(
-      <span key="rating">
-        <Icon aria-hidden width={14} height={14} className={styles.ratingGlyph} />
-        <span>{name}</span>
-      </span>
-    );
+    meta.push(<RatingLabel key="rating" value={overallRating} />);
   }
 
   return (

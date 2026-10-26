@@ -9,9 +9,11 @@ import {
   ProgressIndicator,
   MetadataList,
   Metadata,
+  RatingLabel,
   Tag,
 } from '~/component';
 import { SeriesBookRowFragment } from '~/component/book-row/from-series-book';
+import { toRatingValue } from '~/component/book-row/to-rating-value';
 import { graphql, useFragment } from '~/gql';
 import { useIsAdmin } from '~/provider/auth';
 import { useCurrentLibraryId } from '~/provider/library-target';
@@ -40,12 +42,14 @@ const COVER_STACK_LAYER_WIDTH = 80;
  * the server field added in step 5 whose semantics were verified to match it
  * exactly (parent spec §15).
  *
- * Measured (`test:cost -w app/server`): breadth 36 (36.0%), complexity 1917
- * (5.8%) of budget — comfortably under the 70% gate on both axes. The step
- * from the previous 33 (33.0%) / 1617 (4.9%) is `rating { overall }` on
- * `SeriesBookRowFragment` (+3 breadth, +300 complexity), scaled by
- * `books(first: 100)`' literal ×100 — the same step `LibraryEntries` paid
- * for the same field on `BookRowFragment`. Ruling E's "+1 breadth per
+ * Measured (`test:cost -w app/server`): breadth 37 (37.0%), complexity 1918
+ * (5.8%) of budget — comfortably under the 70% gate on both axes. The two
+ * most recent steps: 33 (33.0%) / 1617 (4.9%) → 36 / 1917 was
+ * `rating { overall }` on `SeriesBookRowFragment` (+3 breadth, +300
+ * complexity, scaled by `books(first: 100)`' literal ×100 — the same step
+ * `LibraryEntries` paid for the same field on `BookRowFragment`);
+ * 36 / 1917 → 37 / 1918 was `overallRating` on the series itself (+1 / +1,
+ * a single object, no multiplier). Ruling E's "+1 breadth per
  * fragment spread site" applies only when a document moves from an INLINE
  * selection to a named-fragment spread; this document already spread
  * `...SeriesBookRowFragment` before the colocation work, so the spread
@@ -66,6 +70,7 @@ export const SeriesDetailDocument = graphql(`
           totalSize
           subjects
           progressPercentage
+          overallRating
           books(first: 100) {
             edges {
               node {
@@ -185,6 +190,12 @@ export const SeriesPage = () => {
         />
       ),
     });
+  }
+  // Shown to every viewer, unlike progress: an admin reading a user's library
+  // sees that user's ratings read-only on the book page too.
+  const overallRating = toRatingValue(series.overallRating);
+  if (overallRating !== undefined) {
+    metadata.push({ title: 'rating', value: <RatingLabel value={overallRating} /> });
   }
   if (series.totalPages > 0) {
     metadata.push({ title: 'pages', value: series.totalPages });

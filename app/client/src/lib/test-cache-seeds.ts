@@ -40,6 +40,7 @@ export const seedSeriesDetail = async (
           totalSize: 10,
           subjects: [],
           progressPercentage: 0.5,
+          overallRating: null,
           books: {
             __typename: 'SeriesBooksConnection',
             edges: [

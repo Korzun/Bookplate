@@ -1,9 +1,8 @@
 import cx from 'classnames';
 import { Fragment, type ReactNode } from 'react';
 
-import { RATING_OPTIONS } from '~/control';
-
 import { Card } from '../card';
+import { RatingLabel } from '../rating-label';
 import { useStyle } from './style';
 
 /**
@@ -60,13 +59,7 @@ export function BookRow({
     }
   }
   if (overallRating !== undefined) {
-    const { Icon, name } = RATING_OPTIONS[overallRating - 1];
-    meta.push(
-      <span key="rating" aria-label={`Rated ${name}`}>
-        <Icon aria-hidden width={14} height={14} className={styles.ratingGlyph} />
-        <span>{name}</span>
-      </span>
-    );
+    meta.push(<RatingLabel key="rating" value={overallRating} />);
   }
 
   const content = (
