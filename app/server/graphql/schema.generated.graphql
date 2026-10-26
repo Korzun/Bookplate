@@ -540,10 +540,16 @@ enum LibraryEntryType {
 input LibraryFilter {
   author: String
   entryType: LibraryEntryType
+
+  """Keep books (and series with a book) meeting every minimum given."""
+  minRating: RatingMinimums
   query: String
   seriesName: String
   status: LibraryEntryStatus
   subjects: [String!]
+
+  """Keep books (and series with a book) that have no overall rating."""
+  unrated: Boolean
 }
 
 type LibraryProgressConnection {
@@ -989,6 +995,17 @@ type RatingFieldSummary {
 
   """Mean over rated books, null when count is 0."""
   mean: Float
+}
+
+"""
+Minimum rating per dimension, 1–5. Dimensions left null are not filtered.
+"""
+input RatingMinimums {
+  characters: Int
+  ideas: Int
+  overall: Int
+  story: Int
+  writing: Int
 }
 
 input SearchSuggestionsFilter {

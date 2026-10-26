@@ -90,7 +90,7 @@ per the maintainer's review of the first version.
 - Rating a series.
 - Library browsing by rating (rows, sort, filter) and a `search_library`
   rating filter. Listed as an **open question** below; not in this project
-  unless the requester says so.
+  unless the requester says so. Answered by `2026-10-26-rating-filter-design.md`.
 - Exposing ratings over OPDS or any REST route.
 
 ## Anti-goals (would make this a failure even if it worked)

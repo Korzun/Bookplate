@@ -53,6 +53,28 @@ export const rejectOversizePage = (
 };
 
 /**
+ * Rejects a rating minimum outside 1–5. Same reject-not-clamp ruling as
+ * `rejectOversizePage` (a clamped minimum would silently return a different
+ * set than the client asked for); see `2026-10-26-rating-filter-design.md`,
+ * "GraphQL". Non-integers never reach here: GraphQL `Int` coercion rejects
+ * them first. Reports the first offending dimension in input order.
+ */
+export const rejectRatingOutOfRange = (
+  fieldName: string,
+  minimums: Partial<Record<string, number | null | undefined>> | null | undefined
+): void => {
+  if (!minimums) return;
+  for (const [dim, n] of Object.entries(minimums)) {
+    if (n != null && (n < 1 || n > 5)) {
+      throw new GraphQLError(
+        `${fieldName}.minRating.${dim} must be an integer from 1 to 5 (got ${n}).`,
+        { extensions: { code: 'RATING_OUT_OF_RANGE', http: { status: 400 } } }
+      );
+    }
+  }
+};
+
+/**
  * `rejectOversizePage`'s counterpart for `Query.nodes(ids:)`: the same
  * reject-not-clamp ruling and error shape, applied to an id-list length
  * instead of a `first` argument (Relay's `nodes` field has no `first`/page

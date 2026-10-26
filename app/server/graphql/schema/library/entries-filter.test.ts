@@ -85,6 +85,16 @@ beforeEach(async () => {
       timestamp: 1_700_000_000,
     },
   });
+  // Ratings: Leviathan Wakes 5 (ideas 4), Dune 4, Neuromancer unrated.
+  const userId = harness.aliceOwner.userId;
+  await harness.prisma.book.update({
+    where: { userId_id: { userId, id: IN_SERIES } },
+    data: { ratingOverall: 5, ratingIdeas: 4 },
+  });
+  await harness.prisma.book.update({
+    where: { userId_id: { userId, id: DUNE } },
+    data: { ratingOverall: 4 },
+  });
 });
 
 afterEach(async () => {
@@ -178,5 +188,48 @@ describe('LibraryFilter', () => {
     expect(await labels({ entryType: 'STANDALONE', author: 'William Gibson' })).toEqual([
       'Neuromancer',
     ]);
+  });
+
+  it('minRating.overall selects rated entries and expands the qualifying series member', async () => {
+    expect(await labels({ minRating: { overall: 5 } })).toEqual(['Expanse', 'Leviathan Wakes']);
+    expect(await labels({ minRating: { overall: 4 } })).toEqual([
+      'Dune',
+      'Expanse',
+      'Leviathan Wakes',
+    ]);
+  });
+
+  it('minRating ANDs dimensions', async () => {
+    expect(await labels({ minRating: { overall: 4, ideas: 4 } })).toEqual([
+      'Expanse',
+      'Leviathan Wakes',
+    ]);
+  });
+
+  it('unrated selects entries with no overall rating', async () => {
+    expect(await labels({ unrated: true })).toEqual(['Neuromancer']);
+  });
+
+  it('an all-null minRating is no filter', async () => {
+    expect(await labels({ minRating: {} })).toEqual(UNFILTERED);
+    expect(await labels({ minRating: { overall: null } })).toEqual(UNFILTERED);
+  });
+
+  it.each([0, 6])('rejects minRating.overall %i with RATING_OUT_OF_RANGE', async (n) => {
+    const result = await harness.execute(QUERY, {
+      viewer: harness.aliceViewer,
+      variables: { filter: { minRating: { overall: n } } },
+    });
+    expect(result.errors?.[0]?.extensions?.code).toBe('RATING_OUT_OF_RANGE');
+    expect(result.errors?.[0]?.message).toContain('minRating.overall');
+  });
+
+  it('rejects a non-integer minimum at coercion', async () => {
+    const result = await harness.execute(QUERY, {
+      viewer: harness.aliceViewer,
+      variables: { filter: { minRating: { ideas: 2.5 } } },
+    });
+    expect(result.errors).toBeDefined();
+    expect(result.data ?? null).toBeNull();
   });
 });
