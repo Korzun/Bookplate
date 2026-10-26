@@ -6,6 +6,7 @@ import AdmZip from 'adm-zip';
 import { XMLParser } from 'fast-xml-parser';
 
 import { EpubMeta } from '../types';
+import { isOpfListElement, unprefixOpf } from './opf-namespace';
 
 const PARTIAL_MD5_OFFSETS = [
   0, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456, 1073741824,
@@ -314,8 +315,7 @@ export function parseEpub(filePath: string): EpubMeta {
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
     parseTagValue: false,
-    isArray: (name) =>
-      ['item', 'meta', 'dc:title', 'dc:creator', 'dc:identifier', 'dc:subject'].includes(name),
+    isArray: (name) => isOpfListElement(name),
   });
 
   // Step 1: container.xml → OPF path
@@ -330,7 +330,9 @@ export function parseEpub(filePath: string): EpubMeta {
   // Step 2: read OPF
   const opfEntry = zip.getEntry(opfRelPath);
   if (!opfEntry) throw new Error(`Cannot find OPF file: ${opfRelPath}`);
-  const opf = parser.parse(opfEntry.getData().toString('utf8'));
+  // Prefixed packages (`<opf:package>`) are normalised to the default-namespace
+  // shape first — see `opf-namespace.ts`.
+  const opf = unprefixOpf(parser.parse(opfEntry.getData().toString('utf8')));
   const pkg = opf?.package ?? opf;
   const metadata = pkg?.metadata ?? {};
   const manifest: Array<{

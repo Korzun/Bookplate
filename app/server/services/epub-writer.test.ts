@@ -230,6 +230,56 @@ it('buildUpdatedEpub returns a Buffer with the applied changes, without writing 
   expect(parseEpub(roundTrip).title).toBe('After');
 });
 
+// A package whose OPF elements carry a namespace PREFIX instead of a default
+// namespace — `<opf:package>`, `<opf:metadata>`, `<opf:item>` — as some
+// Calibre exports do. Modelled on a real library file (2026-10-26): note the
+// `<meta>` elements inside it are UNprefixed and declare the namespace
+// themselves, so a document can mix both spellings.
+function makePrefixedEpub(opts: { title: string; author: string; titleSort?: string }): Buffer {
+  const zip = new AdmZip();
+  zip.addFile(
+    'META-INF/container.xml',
+    Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`)
+  );
+  const titleSortMeta = opts.titleSort
+    ? `<meta xmlns="http://www.idpf.org/2007/opf" name="calibre:title_sort" content="${opts.titleSort}"/>`
+    : '';
+  zip.addFile(
+    'content.opf',
+    Buffer.from(`<?xml version="1.0"  encoding="UTF-8"?>
+<opf:package xmlns:opf="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0" unique-identifier="dcid">
+  <opf:metadata>
+    <dc:title>${opts.title}</dc:title>
+    <dc:creator opf:role="aut" opf:file-as="Wolfe, Gene">${opts.author}</dc:creator>
+    <dc:identifier id="dcid" opf:scheme="UUID">urn:uuid:3bb29391-0400-4c37-ab78-3aa12be79562</dc:identifier>
+    <dc:language>en</dc:language>
+    <meta property="dcterms:modified">2026-07-07T11:00:00Z</meta>
+    ${titleSortMeta}
+    <meta xmlns="http://www.idpf.org/2007/opf" name="cover" content="cover"/>
+  </opf:metadata>
+  <opf:manifest>
+    <opf:item id="cover" href="OEBPS/cover.jpg" media-type="image/jpeg"/>
+    <opf:item id="part1" href="part1.xhtml" media-type="application/xhtml+xml"/>
+    <opf:item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+  </opf:manifest>
+  <opf:spine toc="ncx">
+    <opf:itemref idref="part1"/>
+  </opf:spine>
+</opf:package>`)
+  );
+  zip.addFile('OEBPS/cover.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  zip.addFile(
+    'part1.xhtml',
+    Buffer.from('<html xmlns="http://www.w3.org/1999/xhtml"><body><p>x</p></body></html>')
+  );
+  return zip.toBuffer();
+}
+
 describe('buildUpdatedEpub', () => {
   it('updates title', () => {
     const f = toFile(makeEpub({ title: 'Old Title' }));
@@ -383,6 +433,59 @@ describe('buildUpdatedEpub', () => {
   // adm-zip's rewrite compressed and reordered it, so every edited EPUB failed
   // epubcheck (PKG-005 "must not be compressed" + PKG-006 "not the first file"),
   // which the metadata route rejected with 422 — breaking all editing.
+  describe('a package whose OPF elements carry a namespace prefix', () => {
+    it('rewrites the title in place — one root, no stray top-level metadata', () => {
+      const f = toFile(
+        makePrefixedEpub({
+          title: 'Wolfe, Gene - Solar Cycle 01 - The Shadow of the Torturer',
+          author: 'Wolfe, Gene',
+          titleSort: 'Wolfe, Gene - Solar Cycle 01 - The Shadow of the Torturer',
+        })
+      );
+      const out = buildUpdatedEpub(f, {
+        title: 'The Shadow of the Torturer',
+        titleSort: 'Shadow of the Torturer, The',
+      });
+      fs.writeFileSync(f, out);
+
+      const opfXml = new AdmZip(out).getEntry('content.opf')!.getData().toString('utf8');
+      // The shipped bug: the writer did not recognise `<opf:package>`, so it
+      // appended a second `<metadata>` and `<manifest>` AFTER the closing root
+      // tag — epubcheck RSC-005 "documents may contain only one root".
+      const afterRoot = opfXml.slice(opfXml.lastIndexOf('package>') + 'package>'.length);
+      expect(afterRoot.trim()).toBe('');
+      expect(opfXml.match(/<[a-z:]*package\b/g)).toHaveLength(1);
+      // The source's unprefixed `<meta property="dcterms:modified">` sat in NO
+      // namespace (the root declares only the `opf:` prefix), which is why
+      // epubcheck accepted it in a 2.0 package. Normalising the OPF elements
+      // onto a default namespace must not drag it in — the writer's second
+      // real-file failure (RSC-005 "attribute property not allowed here").
+      expect(opfXml).toMatch(/<meta[^>]*property="dcterms:modified"[^>]*xmlns=""/);
+
+      const meta = parseEpub(f);
+      expect(meta.title).toBe('The Shadow of the Torturer');
+      expect(meta.titleSort).toBe('Shadow of the Torturer, The');
+      expect(meta.author).toBe('Wolfe, Gene');
+    });
+
+    it('keeps the manifest and spine intact when adding a cover', () => {
+      const f = toFile(makePrefixedEpub({ title: 'T', author: 'A' }));
+      const out = buildUpdatedEpub(f, {
+        coverData: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+        coverMime: 'image/jpeg',
+      });
+      fs.writeFileSync(f, out);
+
+      const opfXml = new AdmZip(out).getEntry('content.opf')!.getData().toString('utf8');
+      expect(opfXml.match(/<[a-z:]*manifest\b/g)).toHaveLength(1);
+      expect(opfXml.match(/<[a-z:]*spine\b/g)).toHaveLength(1);
+      // The pre-existing manifest items survived alongside the new cover item.
+      expect(opfXml).toContain('href="part1.xhtml"');
+      expect(opfXml).toContain('cover-edit.jpeg');
+      expect(parseEpub(f).coverData).not.toBeNull();
+    });
+  });
+
   describe('OCF mimetype compliance', () => {
     it('writes mimetype as the first entry, stored (uncompressed)', () => {
       const f = toFile(makeEpub({ title: 'Original' }));
