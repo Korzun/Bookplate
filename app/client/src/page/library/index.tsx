@@ -50,11 +50,13 @@ import { toLibraryFilter } from './to-library-filter';
  * needs its own `id` for Apollo's normalized cache to key the result
  * (`src/provider/apollo/selection-ids.test.ts` guards this).
  *
- * Measured (`test:cost -w app/server`): breadth 50 (50.0%), complexity 6307
- * (19.1%) of budget — comfortably under the 70% gate on both axes. The step
- * from the previous 47 (47.0%) / 6007 (18.2%) is `rating { overall }` on
- * `BookRowFragment` (+3 breadth, +300 complexity), scaled by `entries`' own
- * ×100. Ruling E's "+1 breadth per fragment spread site" applies when a
+ * Measured (`test:cost -w app/server`): breadth 51 (51.0%), complexity 6407
+ * (19.4%) of budget — comfortably under the 70% gate on both axes. The two
+ * most recent steps: 47 (47.0%) / 6007 (18.2%) → 50 / 6307 was
+ * `rating { overall }` on `BookRowFragment` (+3 breadth, +300 complexity);
+ * 50 / 6307 → 51 / 6407 was `overallRating` on `SeriesRowFragment` (+1 / +100),
+ * each scaled by `entries`' own ×100. Ruling E's "+1 breadth per fragment
+ * spread site" applies when a
  * document moves from an INLINE selection to a named-fragment spread — this
  * document already spread `...BookRowFragment`/`...SeriesRowFragment` before
  * the colocation work, so the spread itself adds nothing.

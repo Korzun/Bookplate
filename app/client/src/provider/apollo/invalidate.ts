@@ -44,6 +44,7 @@ const SERIES_DERIVED_FIELDS = [
   'totalPages',
   'totalSize',
   'progressPercentage',
+  'overallRating',
   'subjects',
   'author',
   'publisher',
@@ -126,6 +127,20 @@ export const invalidateSeriesProgress = (cache: ApolloCache): void => {
       fieldName: 'progressPercentage',
     });
   }
+  cache.gc();
+};
+
+/**
+ * After a book is rated: `Series.overallRating` is a server aggregate over the
+ * series' RATED books (`loaders/series-rating.ts`), read by the grid's series
+ * row. Unlike progress, the rating payload's book knows its series, so only
+ * that one series is touched; a series the cache has never seen is a no-op.
+ */
+export const invalidateSeriesRating = (cache: ApolloCache, seriesId: string): void => {
+  cache.evict({
+    id: cache.identify({ __typename: 'Series', id: seriesId }),
+    fieldName: 'overallRating',
+  });
   cache.gc();
 };
 

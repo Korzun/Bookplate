@@ -182,6 +182,7 @@ const seriesEdge = (cursor: string, overrides: Partial<SeriesRowFragmentFragment
         author: 'Frank Herbert',
         bookCount: 6,
         progressPercentage: null,
+        overallRating: null,
         books: {
           __typename: 'SeriesBooksConnection' as const,
           edges: [],

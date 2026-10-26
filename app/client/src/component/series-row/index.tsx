@@ -1,9 +1,11 @@
-import { useCallback } from 'react';
+import { Fragment, useCallback, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
+import { RATING_OPTIONS } from '~/control';
 import { graphql, useFragment, type FragmentType } from '~/gql';
 import { path } from '~/router';
 
+import { toRatingValue } from '../book-row/to-rating-value';
 import { Card } from '../card';
 import { CoverStack } from '../cover-stack';
 import { useStyle } from './style';
@@ -14,6 +16,11 @@ import { useStyle } from './style';
  * inside `... on Series { ...SeriesRowFragment }` — codegen resolves that
  * against this `graphql(...)` definition without a JS import between the
  * two files).
+ *
+ * `overallRating` is the server's aggregate of the members' Overall
+ * (`Series.overallRating`: the rounded mean of the RATED members, null while
+ * none is rated — `loaders/series-rating.ts`), shown with the same glyph and
+ * name a book row shows for its own Overall.
  *
  * `Series.progressPercentage` — not the bare `progress` this field's server
  * counterpart carried in an earlier revision. That name would have needed
@@ -44,6 +51,7 @@ export const SeriesRowFragment = graphql(`
     author
     bookCount
     progressPercentage
+    overallRating
     books(first: 3) {
       edges {
         node {
@@ -106,7 +114,7 @@ export function SeriesRow({ series }: SeriesRowProps) {
     src: node.hasCover ? node.thumbnailUrl : null,
   }));
 
-  const meta: string[] = [];
+  const meta: ReactNode[] = [];
   if (unmasked.author) {
     meta.push(unmasked.author);
   }
@@ -118,6 +126,16 @@ export function SeriesRow({ series }: SeriesRowProps) {
         : 'Completed'
     );
   }
+  const overallRating = toRatingValue(unmasked.overallRating);
+  if (overallRating !== undefined) {
+    const { Icon, name } = RATING_OPTIONS[overallRating - 1];
+    meta.push(
+      <span key="rating">
+        <Icon aria-hidden width={14} height={14} className={styles.ratingGlyph} />
+        <span>{name}</span>
+      </span>
+    );
+  }
 
   return (
     <Card size="small" onClick={handleNavigate}>
@@ -125,7 +143,14 @@ export function SeriesRow({ series }: SeriesRowProps) {
         <CoverStack books={coverBooks} layerWidth={44} layerHeight={66} />
         <div className={styles.info}>
           <div className={styles.name}>{unmasked.name}</div>
-          <div className={styles.meta}>{meta.join(' · ')}</div>
+          <div className={styles.meta}>
+            {meta.map((item, i) => (
+              <Fragment key={i}>
+                {i > 0 ? ' · ' : null}
+                {item}
+              </Fragment>
+            ))}
+          </div>
         </div>
       </div>
     </Card>

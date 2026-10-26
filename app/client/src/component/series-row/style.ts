@@ -15,6 +15,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  ratingGlyph: {
+    verticalAlign: '-2px',
+    marginRight: theme.space.xxs,
+  },
   meta: {
     fontSize: theme.fontSize.sm,
     color: theme.color.text.muted,

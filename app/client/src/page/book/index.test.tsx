@@ -1,3 +1,4 @@
+import { gql } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -527,6 +528,7 @@ const soloSeriesRow = () => ({
   author: 'A',
   bookCount: 1,
   progressPercentage: 0,
+  overallRating: null,
   books: {
     __typename: 'BookConnection' as const,
     edges: [
@@ -1927,6 +1929,40 @@ describe('BookPage', () => {
         'true'
       );
       expect(bookDetailCounter.requests).toBe(1);
+    });
+
+    it("rating a book evicts its series' cached overallRating, which the grid row reads", async () => {
+      const { client } = await renderPage(
+        [
+          bookMock(),
+          viewerBootstrapMock(),
+          bookRateMock(
+            { id: BOOK_ID, story: 5 },
+            { overall: 4, story: 5, characters: 5, writing: null, ideas: null }
+          ),
+        ],
+        owner
+      );
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      // The series row's aggregate, as a prior grid visit would have cached it.
+      client.cache.writeFragment({
+        id: client.cache.identify({ __typename: 'Series', id: 'U2VyaWVzOjE=' }),
+        fragment: gql`
+          fragment SeriesRatingSeed on Series {
+            id
+            overallRating
+          }
+        `,
+        data: { __typename: 'Series', id: 'U2VyaWVzOjE=', overallRating: 3 },
+      });
+      const seriesEntity = () =>
+        (client.cache.extract() as Record<string, Record<string, unknown>>)['Series:U2VyaWVzOjE='];
+      expect(seriesEntity()).toHaveProperty('overallRating', 3);
+      await openDetails();
+
+      await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' }));
+
+      await waitFor(() => expect(seriesEntity()).not.toHaveProperty('overallRating'));
     });
 
     it('clicking the checked overall clears it', async () => {

@@ -7,6 +7,7 @@ export {
   invalidateBookChange,
   invalidateRequestQueues,
   invalidateSeriesProgress,
+  invalidateSeriesRating,
   invalidateUserProgressCounts,
 } from './invalidate';
 export type { BookChange } from './invalidate';

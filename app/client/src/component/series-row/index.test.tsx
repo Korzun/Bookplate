@@ -41,6 +41,7 @@ const makeSeriesRowData = (
   author: 'Frank Herbert',
   bookCount: 6,
   progressPercentage: null,
+  overallRating: null,
   books: {
     __typename: 'SeriesBooksConnection',
     edges: [{ __typename: 'SeriesBooksConnectionEdge', node: makeCoverNode() }],
@@ -194,6 +195,39 @@ describe('SeriesRow', () => {
     const { getByText } = renderWithApollo(<SeriesRow series={series} />);
 
     expect(getByText('Frank Herbert · 6 book series · 0%')).toBeInTheDocument();
+  });
+
+  it('shows the series Overall rating glyph and name after the progress segment', () => {
+    const series = makeFragmentData(
+      makeSeriesRowData({ progressPercentage: 0.42, overallRating: 5 }),
+      SeriesRowFragment
+    );
+
+    const { getByText, container } = renderWithApollo(<SeriesRow series={series} />);
+
+    expect(getByText('Love')).toBeInTheDocument();
+    expect(container.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    // The rating is the LAST segment: the separators and the earlier
+    // segments are the meta line's own text nodes, the rating sits in a span.
+    expect(getByText('Frank Herbert · 6 book series · 42% ·')).toBeInTheDocument();
+  });
+
+  it('omits the rating segment while no member book is rated', () => {
+    const series = makeFragmentData(makeSeriesRowData({ overallRating: null }), SeriesRowFragment);
+
+    const { getByText, container } = renderWithApollo(<SeriesRow series={series} />);
+
+    expect(getByText('Frank Herbert · 6 book series')).toBeInTheDocument();
+    expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('treats an out-of-range overall as unrated', () => {
+    const series = makeFragmentData(makeSeriesRowData({ overallRating: 9 }), SeriesRowFragment);
+
+    const { getByText, container } = renderWithApollo(<SeriesRow series={series} />);
+
+    expect(getByText('Frank Herbert · 6 book series')).toBeInTheDocument();
+    expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
   });
 
   it('navigates to the series page on click', async () => {
