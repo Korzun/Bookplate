@@ -26,7 +26,7 @@ import {
 } from '~/graphql/library';
 import { stageUpload } from '~/lib/staged-upload';
 import { usePrefetchOnIntent } from '~/lib/use-prefetch-on-intent';
-import { unwrapResult } from '~/provider/apollo';
+import { invalidateBookChange, unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
 import { path } from '~/router';
@@ -377,8 +377,11 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
    * time and goes red the moment `loading: isPending` is dropped from the Save
    * action below.
    *
-   * `update` does THREE things — the first and third carried over verbatim
-   * from the `useUpdateBookMetadata` hook this replaces:
+   * `update` is one call to `invalidateBookChange`
+   * (`provider/apollo/invalidate.ts`), the helper every EPUB-rewriting path
+   * shares since the id-rotation audit. What it does here, and why — the
+   * first and third points carried over from the `useUpdateBookMetadata`
+   * hook this replaces:
    *
    *   1. Evicts the current library's ENTIRE `Library.entries` field —
    *      UNCONDITIONALLY, every successful save, not gated on the id
@@ -460,26 +463,12 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
             );
             if (outcome.status !== 'ok') return;
 
-            if (libraryId !== undefined) {
-              cache.evict({
-                id: cache.identify({ __typename: 'Library', id: libraryId }),
-                fieldName: 'entries',
-              });
-            }
-
-            for (const seriesId of new Set([originalSeriesId, outcome.payload.book.series?.id])) {
-              if (seriesId === undefined) continue;
-              cache.evict({
-                id: cache.identify({ __typename: 'Series', id: seriesId }),
-                fieldName: 'books',
-              });
-            }
-
-            if (outcome.payload.book.id !== bookId) {
-              cache.evict({ id: cache.identify({ __typename: 'Book', id: bookId }) });
-            }
-
-            cache.gc();
+            invalidateBookChange(cache, {
+              libraryId,
+              previousId: bookId,
+              currentId: outcome.payload.book.id,
+              seriesIds: [originalSeriesId, outcome.payload.book.series?.id],
+            });
           },
         });
 

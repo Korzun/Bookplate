@@ -19,6 +19,7 @@ import {
   SeriesNamesDocument,
   SeriesNextIndexDocument,
 } from '~/graphql/library';
+import { readSeriesNames, seedSeriesNames } from '~/lib/test-cache-seeds';
 import { BookEditDocument } from '~/page/book-edit';
 import { LibraryEntriesDocument } from '~/page/library';
 import { SeriesDetailDocument } from '~/page/series';
@@ -1153,5 +1154,24 @@ describe('series order auto-fill', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(seriesInput().value).toBe('2');
+  });
+});
+
+describe('library field coherence after a save', () => {
+  it('invalidates the cached series-name list so the autocomplete re-reads it', async () => {
+    const user = userEvent.setup();
+    const { client } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: BOOK_ID, title: 'New' }))],
+    });
+    seedSeriesNames(client.cache, {
+      libraryId: LIBRARY_ID,
+      series: [{ id: 'U2VyaWVzOjE=', name: 'Dune' }],
+    });
+    expect(readSeriesNames(client.cache, { libraryId: LIBRARY_ID })).not.toBeNull();
+
+    await save(user);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    expect(readSeriesNames(client.cache, { libraryId: LIBRARY_ID })).toBeNull();
   });
 });
