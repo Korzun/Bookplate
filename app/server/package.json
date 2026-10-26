@@ -37,7 +37,7 @@
     "jsonwebtoken": "^9.0.3",
     "mime-types": "^2.1.35",
     "multer": "^2.5.0",
-    "nanoid": "^3.3.20",
+    "nanoid": "^6.0.2",
     "sharp": "^0.35.5",
     "smartcrop": "^2.0.5",
     "smartcrop-sharp": "^2.0.8",
