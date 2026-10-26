@@ -67,6 +67,7 @@ const makeBookNode = (overrides: Partial<Record<string, unknown>> = {}) => ({
   hasCover: true,
   thumbnailUrl: '/api/books/1/cover?width=88',
   progress: null,
+  rating: { __typename: 'BookRating', overall: null },
   ...overrides,
 });
 
@@ -302,6 +303,17 @@ describe('SeriesPage', () => {
     await findByText('Earthsea');
     await waitFor(() => {
       expect(getByText('Book 1 · 50%')).toBeInTheDocument();
+    });
+  });
+
+  it("renders each row's Overall rating from its SeriesBookRowFragment", async () => {
+    const { findByText, getByText } = await renderPage([
+      seriesMock({}, [{ rating: { __typename: 'BookRating', overall: 4 } }]),
+    ]);
+
+    await findByText('Earthsea');
+    await waitFor(() => {
+      expect(getByText('Great')).toBeInTheDocument();
     });
   });
 });

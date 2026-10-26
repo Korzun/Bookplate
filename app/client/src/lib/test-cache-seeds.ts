@@ -57,6 +57,7 @@ export const seedSeriesDetail = async (
                       hasCover: false,
                       thumbnailUrl: '/t.jpg',
                       progress: null,
+                      rating: { __typename: 'BookRating' as const, overall: null },
                     },
                     SeriesBookRowFragment
                   ),

@@ -6,6 +6,7 @@ import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { path } from '~/router';
 
 import { BookRow } from './index';
+import { toRatingValue } from './to-rating-value';
 
 /**
  * Colocated: this component declares exactly the fields it renders, and
@@ -39,13 +40,6 @@ export const BookRowFragment = graphql(`
     }
   }
 `);
-
-/** Narrow the wire `Int` to the picker's 1..5; anything else reads as unrated. */
-function toRatingValue(overall: number | null | undefined): 1 | 2 | 3 | 4 | 5 | undefined {
-  return overall === 1 || overall === 2 || overall === 3 || overall === 4 || overall === 5
-    ? overall
-    : undefined;
-}
 
 interface BookRowFromEntryProps {
   asCard?: boolean;

@@ -6,6 +6,7 @@ import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { path } from '~/router';
 
 import { BookRow } from './index';
+import { toRatingValue } from './to-rating-value';
 
 /**
  * Colocated: this component declares exactly the fields it renders, and
@@ -24,7 +25,9 @@ import { BookRow } from './index';
  * inside the `LibraryEntry` union, where `Series`'s own fields sit beside
  * it. This is a plain `Series.books` edge — no union, no collision — and
  * the series page shows no author per row (`showAuthor={false}`), so
- * `author` is dropped.
+ * `author` is dropped. `rating { overall }` is kept in step with
+ * `BookRowFragment`: a series row shows the same Overall glyph the library
+ * grid does.
  */
 export const SeriesBookRowFragment = graphql(`
   fragment SeriesBookRowFragment on Book {
@@ -36,6 +39,9 @@ export const SeriesBookRowFragment = graphql(`
     progress {
       id
       percentage
+    }
+    rating {
+      overall
     }
   }
 `);
@@ -81,6 +87,7 @@ export function BookRowFromSeriesBook({ asCard, showAuthor, book }: BookRowFromS
       hasCover={unmasked.hasCover}
       coverSrc={coverSrc}
       progressPercentage={unmasked.progress?.percentage}
+      overallRating={toRatingValue(unmasked.rating.overall)}
       onClick={handleNavigate}
     />
   );

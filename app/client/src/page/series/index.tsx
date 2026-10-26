@@ -40,15 +40,16 @@ const COVER_STACK_LAYER_WIDTH = 80;
  * the server field added in step 5 whose semantics were verified to match it
  * exactly (parent spec §15).
  *
- * Measured (`test:cost -w app/server`): breadth 33 (33.0%), complexity 1617
- * (4.9%) of budget — comfortably under the 70% gate on both axes, UNCHANGED
- * from before this task's colocation (Ruling E's "+1 breadth per fragment
- * spread site" applies only when a document moves from an INLINE selection
- * to a named-fragment spread; this document already spread
- * `...SeriesBookRowFragment` before this task — only the fragment's JS
- * *source file* moved, into `component/book-row/from-series-book.tsx`, not
- * its usage in the printed query the cost walker measures — see the task
- * report for the sha256 proof).
+ * Measured (`test:cost -w app/server`): breadth 36 (36.0%), complexity 1917
+ * (5.8%) of budget — comfortably under the 70% gate on both axes. The step
+ * from the previous 33 (33.0%) / 1617 (4.9%) is `rating { overall }` on
+ * `SeriesBookRowFragment` (+3 breadth, +300 complexity), scaled by
+ * `books(first: 100)`' literal ×100 — the same step `LibraryEntries` paid
+ * for the same field on `BookRowFragment`. Ruling E's "+1 breadth per
+ * fragment spread site" applies only when a document moves from an INLINE
+ * selection to a named-fragment spread; this document already spread
+ * `...SeriesBookRowFragment` before the colocation work, so the spread
+ * itself adds nothing.
  */
 export const SeriesDetailDocument = graphql(`
   query SeriesDetail($libraryId: ID!, $name: String!) {
