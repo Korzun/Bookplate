@@ -1,4 +1,5 @@
 import type { ApolloClient, NormalizedCacheObject } from '@apollo/client';
+import { gql } from '@apollo/client';
 import { ApolloProvider, useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
@@ -19,6 +20,7 @@ import type {
   ProgressRowFragmentFragment,
 } from '~/gql/graphql';
 import { BookLinkDocumentDocument, LinkPickerBooksDocument } from '~/graphql/progress';
+import { readProgressCount, seedProgressCount } from '~/lib/test-cache-seeds';
 import { renderWithApollo } from '~/test-utils';
 
 import { LinkProgressModal } from './index';
@@ -673,5 +675,68 @@ describe('LinkProgressModal', () => {
     await waitFor(() =>
       expect(screen.getByTestId('probe')).toHaveTextContent(RELINKED_PROGRESS_ID)
     );
+  });
+});
+
+describe('LinkProgressModal cache coherence', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const linkDune = async (onClose: () => void) => {
+    await waitFor(() => expect(screen.getByText('Dune')).toBeInTheDocument());
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByRole('button', { name: /dune/i }));
+    await user.click(screen.getByRole('button', { name: /^link$/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  };
+
+  it('evicts Book.progress on the linked book so the book page re-reads it', async () => {
+    const onClose = vi.fn();
+    const { client } = renderModal({ onClose }, [
+      pickerMock(undefined, [bookEdge('book-1', 'Dune', 'Frank Herbert')]),
+      linkSuccessMock('book-1'),
+    ]);
+    seedOrphanProgress(client);
+    client.cache.writeFragment({
+      id: client.cache.identify({ __typename: 'Book', id: 'book-1' }),
+      fragment: gql`
+        fragment BookProgressSeedForTest on Book {
+          id
+          progress {
+            id
+            percentage
+          }
+        }
+      `,
+      data: { __typename: 'Book', id: 'book-1', progress: null },
+    });
+
+    await linkDune(onClose);
+
+    const bookEntity = (client.cache.extract() as NormalizedCacheObject)['Book:book-1'] as Record<
+      string,
+      unknown
+    >;
+    expect(bookEntity).toBeDefined();
+    expect(bookEntity).not.toHaveProperty('progress');
+  });
+
+  it('evicts User.progressCount so the My Progress badge re-reads it', async () => {
+    const onClose = vi.fn();
+    const { client } = renderModal({ onClose }, [
+      pickerMock(undefined, [bookEdge('book-1', 'Dune', 'Frank Herbert')]),
+      linkSuccessMock('book-1'),
+    ]);
+    seedOrphanProgress(client);
+    seedProgressCount(client.cache, 'user-1', 3);
+    expect(readProgressCount(client.cache)).not.toBeNull();
+
+    await linkDune(onClose);
+
+    expect(readProgressCount(client.cache)).toBeNull();
   });
 });
