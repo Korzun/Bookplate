@@ -76,9 +76,9 @@ export const useStyle = createUseStyles((theme: Theme) => {
       whiteSpace: 'nowrap',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
-      // Five named segments do not fit a phone-width card; the icons carry the
-      // value there and the group's `title` still names the checked one.
-      [theme.breakpoint.mobile]: { display: 'none' },
+      // Shown at every width: the five names are short, the row the picker
+      // sits in gives it the full card width on a phone, and a first-time
+      // reader needs the words, not just the hands.
     },
     active: {},
     readOnly: {},
