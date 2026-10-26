@@ -8,7 +8,7 @@ export const Metadata = ({ children, title }: MetadataProps) => {
 
   return (
     <div className={styles.root}>
-      <div className={styles.title}>{title}:</div>
+      <div className={styles.title}>{title}</div>
       <div className={styles.value}>{children}</div>
     </div>
   );
