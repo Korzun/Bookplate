@@ -55,6 +55,8 @@ type Result = {
   };
 };
 
+const rating = z.number().int().min(1).max(5).optional();
+
 export function registerSearchLibrary(server: McpServer, deps: ToolDeps): void {
   server.registerTool(
     'search_library',
@@ -63,7 +65,9 @@ export function registerSearchLibrary(server: McpServer, deps: ToolDeps): void {
       description:
         'Lists the books and series in your library, newest-title order, optionally filtered. ' +
         'Books that belong to a series appear as one series entry; use get_series to see its books. ' +
-        'Pass `query` for a title/author search; combine with the other filters to narrow.',
+        'Pass `query` for a title/author search; combine with the other filters to narrow. ' +
+        'Rating minimums are 1 Bad, 2 Okay, 3 Nice, 4 Great, 5 Love, ANDed; `unrated` keeps books with no overall rating. ' +
+        'Under a rating filter, books inside a series are listed individually alongside their series.',
       inputSchema: {
         query: z.string().max(200).optional().describe('Free-text search over title and author'),
         author: z.string().max(200).optional(),
@@ -71,6 +75,12 @@ export function registerSearchLibrary(server: McpServer, deps: ToolDeps): void {
         subjects: z.array(z.string().max(100)).max(20).optional().describe('All must match'),
         status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED']).optional(),
         entryType: z.enum(['STANDALONE', 'SERIES']).optional(),
+        minOverall: rating.describe('Minimum overall rating, 1-5'),
+        minStory: rating.describe('Minimum story rating, 1-5'),
+        minCharacters: rating.describe('Minimum characters rating, 1-5'),
+        minWriting: rating.describe('Minimum writing rating, 1-5'),
+        minIdeas: rating.describe('Minimum ideas rating, 1-5'),
+        unrated: z.boolean().optional().describe('Only books with no overall rating'),
         first: z.number().int().min(1).max(50).optional().describe('Page size, default 20'),
         after: z.string().optional().describe('`nextCursor` from a previous page'),
       },
@@ -82,6 +92,14 @@ export function registerSearchLibrary(server: McpServer, deps: ToolDeps): void {
     },
     (args) =>
       guarded(deps, {}, async () => {
+        const minimums = {
+          overall: args.minOverall,
+          story: args.minStory,
+          characters: args.minCharacters,
+          writing: args.minWriting,
+          ideas: args.minIdeas,
+        };
+        const anyMinimum = Object.values(minimums).some((v) => v !== undefined);
         const filter = {
           query: args.query,
           author: args.author,
@@ -89,6 +107,8 @@ export function registerSearchLibrary(server: McpServer, deps: ToolDeps): void {
           subjects: args.subjects,
           status: args.status,
           entryType: args.entryType,
+          minRating: anyMinimum ? minimums : undefined,
+          unrated: args.unrated,
         };
         const data = await executeDocument<Result>(deps.context, DOCUMENT, {
           first: clampFirst(args.first, 20, 50),

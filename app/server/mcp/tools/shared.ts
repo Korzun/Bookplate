@@ -42,7 +42,7 @@ export const BOOK_SUMMARY_FIELDS = `
   hasCover hasActionablePendingFix
   validation { valid }
   progress { percentage }
-  rating { overall }
+  ${RATING_FIELDS_GQL}
 `;
 
 export type BookSummaryGql = {
@@ -62,7 +62,7 @@ export type BookSummaryGql = {
   hasActionablePendingFix: boolean;
   validation: { valid: boolean } | null;
   progress: { percentage: number } | null;
-  rating: { overall: number | null };
+  rating: RatingGql;
 };
 
 export const bookSummarySchema = z.object({
@@ -84,6 +84,7 @@ export const bookSummarySchema = z.object({
   hasPendingFixes: z.boolean(),
   valid: z.boolean().nullable().describe('Last validation outcome; null if never validated'),
   progressPercentage: z.number().nullable(),
+  rating: ratingSchema,
   overallRating: z.number().nullable().describe('Overall rating 1-5; null if unrated'),
 });
 export type BookSummary = z.infer<typeof bookSummarySchema>;
@@ -107,6 +108,7 @@ export const summarizeBook = (b: BookSummaryGql): BookSummary => ({
   hasPendingFixes: b.hasActionablePendingFix,
   valid: b.validation?.valid ?? null,
   progressPercentage: b.progress?.percentage ?? null,
+  rating: b.rating,
   overallRating: b.rating.overall,
 });
 
