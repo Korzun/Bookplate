@@ -25,6 +25,12 @@ import {
 } from '~/graphql/upload';
 import { UserListDocument } from '~/graphql/user';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
+import {
+  readSeriesDetail,
+  readSeriesNames,
+  seedSeriesDetail,
+  seedSeriesNames,
+} from '~/lib/test-cache-seeds';
 import { BookEditDocument } from '~/page/book-edit';
 import { LibraryEntriesDocument } from '~/page/library';
 import { useCurrentLibraryId } from '~/provider/library-target';
@@ -1445,4 +1451,68 @@ describe('fixKeyOf', () => {
       fixKeyOf({ field: 'title', kind: 'replace', from: 'Old', to: 'New', changes: {} })
     ).toEqual({ field: 'title', kind: 'replace', from: 'Old' });
   });
+});
+
+describe('series and queue coherence', () => {
+  const SERIES_ID = 'U2VyaWVzOjE=';
+  const seed = { libraryId: LIBRARY_ID, seriesId: SERIES_ID, name: 'Dune', bookId: BOOK_GID };
+  const read = { libraryId: LIBRARY_ID, name: 'Dune' };
+
+  it('invalidates the cached series book list when ACCEPT rotates the id', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      rotatingAcceptMock,
+    ]);
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    await seedSeriesDetail(client.cache, seed);
+    const itemId = result.current!.items[0]!.id;
+
+    await act(async () => {
+      await expect(result.current!.applyAllProposals(itemId)).resolves.toBe(true);
+    });
+
+    expect(await readSeriesDetail(client.cache, read)).toBeNull();
+  });
+
+  it('invalidates cached series book lists after a completed upload', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+    ]);
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+    await seedSeriesDetail(client.cache, { ...seed, bookId: 'Qm9vazoz' });
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')));
+    });
+    await completeTheUploadWith(BOOK_GID);
+
+    await waitFor(async () => expect(await readSeriesDetail(client.cache, read)).toBeNull());
+  });
+
+  it('invalidates the cached series-name list after a completed upload', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+    ]);
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+    seedSeriesNames(client.cache, {
+      libraryId: LIBRARY_ID,
+      series: [{ id: SERIES_ID, name: 'Dune' }],
+    });
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')));
+    });
+    await completeTheUploadWith(BOOK_GID);
+
+    await waitFor(() =>
+      expect(readSeriesNames(client.cache, { libraryId: LIBRARY_ID })).toBeNull()
+    );
+  });
+
 });

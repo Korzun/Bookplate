@@ -18,7 +18,7 @@ import {
 import { UserListDocument } from '~/graphql/user';
 import type { MetadataFix } from '~/lib/book-types';
 import type { ValidationFailure } from '~/lib/severity';
-import { unwrapResult } from '~/provider/apollo';
+import { invalidateBookChange, unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { UploadContext } from '../context';
@@ -389,27 +389,14 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
               'BookResolvePendingFixPayload'
             );
             if (outcome.status !== 'ok') return;
-            cache.evict({
-              id: cache.identify({ __typename: 'Library', id: outcome.payload.library.id }),
-              fieldName: 'entries',
+            // The payload carries no series, and ACCEPT can move the book
+            // between two — so every cached series is invalidated (see the
+            // helper's `seriesIds` doc).
+            invalidateBookChange(cache, {
+              libraryId: outcome.payload.library.id,
+              previousId: id,
+              currentId: outcome.payload.book.id,
             });
-            // The book id ROTATES whenever the EPUB is rewritten, and
-            // normalization writes the payload into a BRAND-NEW
-            // `Book:<newId>` entity — it cannot know the old one described
-            // the same book. Left alone, `Book:<oldId>` lingers with
-            // pre-accept metadata (and a `pendingFix` holding pre-accept
-            // proposals, which `page/book-edit`'s guard modal reads).
-            // `cache.gc()` below does NOT save us: a `Library.book(id:
-            // oldGid)` field written by any prior /book or /book-edit visit
-            // still REFERENCES the orphan, so it is reachable and never
-            // collected. Same branch, same reason, as
-            // `component/book-edit-form`'s save and
-            // `control/upload-replace-modal`'s replace on this identical
-            // `applyEpubChanges` path.
-            if (outcome.payload.book.id !== id) {
-              cache.evict({ id: cache.identify({ __typename: 'Book', id }) });
-            }
-            cache.gc();
           },
         });
         const outcome = unwrapResult<BookResolvePendingFixPayload>(
@@ -441,11 +428,13 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   const clearFixes = useCallback((bookGlobalId: string) => run(bookGlobalId, 'CLEAR'), [run]);
 
   // The upload lands over XHR, so there is no mutation payload for Apollo to
-  // reconcile from — the invalidation has to be explicit. Same field-level
-  // eviction `page/book`'s delete performs, and for the same reason: the new
-  // book's position in a sorted, filtered, paginated connection is the
-  // server's to decide, so the only correct move is to drop the stored
-  // connection and let the next read miss.
+  // reconcile from — the invalidation has to be explicit. Same helper
+  // `page/book`'s delete uses, for the same reason: the new book's position
+  // in a sorted, filtered, paginated connection is the server's to decide,
+  // so the only correct move is to drop the stored connection and let the
+  // next read miss. With no payload there is no series either, so every
+  // cached series' book list goes too (the new book may have joined one),
+  // along with the series-name and subject lists the edit form offers.
   // `itemLibraryId` is the library the bytes ACTUALLY went to, captured on the
   // item at add time — not `useCurrentLibraryId()`, which is the admin's global
   // switcher selection and may have moved since. Falling back to it keeps every
@@ -453,14 +442,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   // as before.
   const onUploaded = useCallback(
     (itemLibraryId: string | undefined) => {
-      const evictId = itemLibraryId ?? libraryId;
-      if (evictId !== undefined) {
-        client.cache.evict({
-          id: client.cache.identify({ __typename: 'Library', id: evictId }),
-          fieldName: 'entries',
-        });
-        client.cache.gc();
-      }
+      invalidateBookChange(client.cache, { libraryId: itemLibraryId ?? libraryId });
       void refetch(); // the new book may have arrived with proposals
     },
     [client, libraryId, refetch]
