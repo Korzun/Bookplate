@@ -57,7 +57,84 @@ const writeProgress = (cache: InMemoryCache, libraryId: string, progressId: stri
     },
   });
 
+const SERIES_BOOKS_PAGE = gql`
+  query SeriesPage($id: ID!) {
+    node(id: $id) {
+      ... on Series {
+        id
+        books(first: 100) {
+          edges {
+            node {
+              id
+              title
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const SERIES_BOOKS_ROW = gql`
+  query SeriesRow($id: ID!) {
+    node(id: $id) {
+      ... on Series {
+        id
+        books(first: 3) {
+          edges {
+            node {
+              id
+              title
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const seriesWithBooks = (query: typeof SERIES_BOOKS_PAGE, count: number) => ({
+  query,
+  variables: { id: 'SERIES-1' },
+  data: {
+    node: {
+      __typename: 'Series',
+      id: 'SERIES-1',
+      books: {
+        __typename: 'SeriesBooksConnection',
+        edges: Array.from({ length: count }, (_, i) => ({
+          __typename: 'SeriesBooksConnectionEdge',
+          node: { __typename: 'Book', id: `BOOK-${i + 1}`, title: `Book ${i + 1}` },
+        })),
+      },
+    },
+  },
+});
+
 describe('cacheConfig', () => {
+  // The shipped bug (2026-10-26, "Broken Earth"): the grid's series row selects
+  // `books(first: 3)` and the series page `books(first: 100)`. With one shared
+  // list per series, whichever screen fetched LAST owned it — a grid visit
+  // replaced the page's six books with three, and the page's cache-first read
+  // then showed three, with no request to correct it.
+  it("keeps a series' three-book row list apart from its full page list", () => {
+    const cache = new InMemoryCache(cacheConfig);
+    cache.writeQuery(seriesWithBooks(SERIES_BOOKS_PAGE, 6));
+    cache.writeQuery(seriesWithBooks(SERIES_BOOKS_ROW, 3));
+
+    const page = cache.readQuery<{ node: { books: { edges: unknown[] } } }>({
+      query: SERIES_BOOKS_PAGE,
+      variables: { id: 'SERIES-1' },
+    });
+    const row = cache.readQuery<{ node: { books: { edges: unknown[] } } }>({
+      query: SERIES_BOOKS_ROW,
+      variables: { id: 'SERIES-1' },
+    });
+
+    expect(page?.node.books.edges).toHaveLength(6);
+    expect(row?.node.books.edges).toHaveLength(3);
+  });
+
   it('merges BookRating so a one-field selection does not clobber the five-field one', () => {
     expect(cacheConfig.typePolicies?.BookRating).toEqual({ merge: true });
   });

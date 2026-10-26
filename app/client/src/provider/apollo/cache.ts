@@ -63,7 +63,13 @@ export const cacheConfig: InMemoryCacheConfig = {
     // the library grid selects only `overall`. Merge so the narrower write does
     // not replace the object (and warn about field loss) on the wider one.
     BookRating: { merge: true },
-    Series: { fields: { books: relayStylePagination() } },
+    // Keyed on `first`: the grid's series row selects `books(first: 3)` and
+    // the series page `books(first: 100)`, and nothing pages either further.
+    // With one shared list per series, whichever screen fetched last owned it
+    // — a grid visit replaced the page's full list with three books, and the
+    // page's cache-first read then showed three with no request to correct it
+    // (2026-10-26, "Broken Earth"). Two page sizes are two lists.
+    Series: { fields: { books: relayStylePagination(['first']) } },
     Validation: { fields: { messages: relayStylePagination() } },
     // `User.bookRequests` is a `t.prismaConnection`, same shape as
     // `Library.progress` above (no filter args, so no `keyArgs` needed) —
