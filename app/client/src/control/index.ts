@@ -3,6 +3,7 @@ export { BookLineageModal } from './book-lineage-modal';
 export { Button } from './button';
 export { ChipsInput } from './chips-input';
 export { ConfirmModal } from './confirm-modal';
+export { DateTimeInput } from './date-time-input';
 export { FieldList } from './field-list';
 export { LinkExistingBookModal } from './link-existing-book-modal';
 export { LinkProgressModal } from './link-progress-modal';
@@ -26,6 +27,7 @@ export { UnlinkBookLineageButton } from './unlink-book-lineage-button';
 export { UploadReplaceModal } from './upload-replace-modal';
 export { ValidationDetailModal } from './validation-detail-modal';
 
+export type { DateTimeInputProps } from './date-time-input';
 export type { ColumnDescriptor, FieldRow } from './field-list';
 export type { FooterAction } from './page-footer-actions';
 export type { PageActionIntentProps, PageActionItem } from './page-actions-menu';

@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import { Card } from '~/component/card';
 import { CoverImagePicker } from '~/component/cover-image-picker';
 import {
+  DateTimeInput,
   FieldList,
   NumberInput,
   PageFooterActions,
@@ -585,18 +586,11 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
               name="publisher"
               onChange={handlePublisherChange}
             />
-            <TextInput
+            <DateTimeInput
               value={publishDate}
               label="Publish Date"
               name="publishDate"
               onChange={handlePublishDateChange}
-              onValidChange={handleIsValidChange}
-              validate={(v) =>
-                !v ||
-                /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/.test(
-                  v
-                )
-              }
             />
           </div>
         </Card>
