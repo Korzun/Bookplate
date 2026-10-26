@@ -462,10 +462,11 @@ buttons, in `control/segmented-control`'s visual language.
   card header (`headerAction`, `Button type="link"`, the same slot and style
   as "Change" on the email setting) that reads "Less" while they show, with
   `aria-expanded` and `aria-controls` on it (new optional `Button` props).
-  The details open by themselves when any of them has a value and follow the
-  reader's own toggle from then on (a `null`-until-toggled choice over the
-  data-derived default, no effect). A read-only view with no details shows
-  no button. Most ratings are an Overall alone, and four empty rows pushed
+  The details start closed even when some of them have a value (revised
+  2026-10-26: they used to open by themselves then): a reader who fills
+  them in still does not want four extra rows on every visit, and Overall
+  is the one that matters at a glance. A read-only view with no details
+  shows no button. Most ratings are an Overall alone, and four empty rows pushed
   the description down on every unrated book. Each row is the shaded
   input row every labelled control in the app uses (`TextInput`'s
   `horizontal` layout: `bg.cardHeader`, `radius.md`, the label in

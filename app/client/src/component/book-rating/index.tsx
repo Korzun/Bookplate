@@ -37,19 +37,18 @@ const toRatingValue = (value: number | null): RatingValue | null =>
  * The four detail rows (Story, Characters, Writing, Ideas) sit behind a
  * "More" link button in the card header, which reads "Less" while they show:
  * most ratings are an Overall alone, and four empty rows would push the
- * description down on every unrated book. The details open by themselves
- * whenever any of them has a value, so a rated book shows everything, and
- * follow the reader's own toggle from then on. A read-only view with no
- * details has nothing to disclose and shows no button. The component owns
- * the card so the header button and the rows share one state.
+ * description down on every unrated book. The details start closed even
+ * when some of them have a value: a reader who fills them in still does not
+ * want four extra rows on every visit, and Overall is the one that matters at
+ * a glance. A read-only view with no details has nothing to disclose and
+ * shows no button. The component owns the card so the header button and the
+ * rows share one state.
  */
 export const BookRating = ({ rating, bookTitle, readOnly, onRate }: BookRatingProps) => {
   const style = useStyle();
   const detailsId = useId();
   const hasDetails = DETAIL_ROWS.some(({ field }) => toRatingValue(rating[field]) !== null);
-  // `null` until the reader toggles; before that the data decides.
-  const [detailsChoice, setDetailsChoice] = useState<boolean | null>(null);
-  const detailsOpen = detailsChoice ?? hasDetails;
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const handler = (field: RatingFieldKey) =>
     readOnly ? undefined : (value: RatingValue | null) => onRate(field, value);
 
@@ -72,7 +71,7 @@ export const BookRating = ({ rating, bookTitle, readOnly, onRate }: BookRatingPr
         type="link"
         ariaExpanded={detailsOpen}
         ariaControls={detailsId}
-        onClick={() => setDetailsChoice(!detailsOpen)}
+        onClick={() => setDetailsOpen(!detailsOpen)}
       >
         {detailsOpen ? 'Less' : 'More'}
       </Button>

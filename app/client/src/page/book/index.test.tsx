@@ -1823,10 +1823,13 @@ describe('BookPage', () => {
 
   describe('rating', () => {
     const owner = { user: { username: 'le', isAdmin: false } };
+    // The detail rows start closed whatever their values; open them first.
+    const openDetails = () => userEvent.click(screen.getByRole('button', { name: 'More' }));
 
     it('renders the current ratings from BookDetail', async () => {
       await renderPage([bookMock(), viewerBootstrapMock()], owner);
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await openDetails();
 
       expect(within(ratingGroup('Overall')).getByRole('radio', { name: 'Great' })).toHaveAttribute(
         'aria-checked',
@@ -1845,6 +1848,7 @@ describe('BookPage', () => {
     it('shows the ratings in their own card titled Rating', async () => {
       await renderPage([bookMock(), viewerBootstrapMock()], owner);
       const heading = await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await openDetails();
       const title = screen.getByText('Rating');
       // Card: root > header > titleGroup > title.
       const card = title.parentElement!.parentElement!.parentElement!;
@@ -1871,6 +1875,7 @@ describe('BookPage', () => {
         owner
       );
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await openDetails();
 
       await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' }));
 
@@ -1931,6 +1936,7 @@ describe('BookPage', () => {
         owner
       );
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await openDetails();
 
       await userEvent.click(within(ratingGroup('Story')).getByRole('radio', { name: 'Love' }));
 
@@ -1956,6 +1962,7 @@ describe('BookPage', () => {
         user: { username: 'admin', isAdmin: true },
       });
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await openDetails();
 
       const radios = within(ratingGroup('Overall')).getAllByRole('radio');
       expect(radios.length).toBe(5);

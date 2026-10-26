@@ -19,10 +19,11 @@ const moreButton = () => screen.getByRole('button', { name: 'More' });
 const lessButton = () => screen.getByRole('button', { name: 'Less' });
 
 describe('BookRating', () => {
-  it('is a card titled Rating with the More/Less button in its header, the Overall row, then one row per detail field, each a label then its radiogroup', () => {
+  it('is a card titled Rating with the More/Less button in its header, the Overall row, then one row per detail field, each a label then its radiogroup', async () => {
     renderWithProviders(
       <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
+    await userEvent.click(moreButton());
     const overallRow = screen.getByRole('radiogroup', {
       name: 'Overall rating for Dune',
     }).parentElement!;
@@ -62,28 +63,27 @@ describe('BookRating', () => {
     expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
   });
 
-  it('opens the detail rows by itself when any detail has a value, and still closes on Less', async () => {
+  it('keeps the detail rows closed even when a detail has a value, until the reader opens them', async () => {
     renderWithProviders(
       <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
-    expect(lessButton()).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
-    await userEvent.click(lessButton());
+    expect(moreButton()).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+    await userEvent.click(moreButton());
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
   });
 
-  it('opens the detail rows when a detail value arrives later, unless the reader has already toggled', async () => {
+  it("leaves the reader's toggle alone when a detail value arrives later", async () => {
     const props = { bookTitle: 'Dune', readOnly: false, onRate: vi.fn() };
     const { rerender } = renderWithProviders(<BookRating rating={empty} {...props} />);
-    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
     rerender(<BookRating rating={withDetail} {...props} />);
-    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
-    await userEvent.click(lessButton());
-    rerender(<BookRating rating={{ ...withDetail, ideas: 2 }} {...props} />);
     expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+    await userEvent.click(moreButton());
+    rerender(<BookRating rating={{ ...withDetail, ideas: 2 }} {...props} />);
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
   });
 
-  it('shows no button in a read-only view with no details, and Less when there are details', () => {
+  it('shows no button in a read-only view with no details, and a closed More when there are details', () => {
     const { unmount } = renderWithProviders(
       <BookRating rating={empty} bookTitle="Dune" readOnly onRate={vi.fn()} />
     );
@@ -93,8 +93,8 @@ describe('BookRating', () => {
     renderWithProviders(
       <BookRating rating={withDetail} bookTitle="Dune" readOnly onRate={vi.fn()} />
     );
-    expect(lessButton()).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getAllByRole('radiogroup')).toHaveLength(5);
+    expect(moreButton()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
   });
 
   it('names the segments on the Overall row only', () => {
@@ -109,10 +109,11 @@ describe('BookRating', () => {
     }
   });
 
-  it('renders five radiogroups labelled for the book', () => {
+  it('renders five radiogroups labelled for the book', async () => {
     renderWithProviders(
       <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
+    await userEvent.click(moreButton());
     const names = screen.getAllByRole('radiogroup').map((g) => g.getAttribute('aria-label'));
     expect(names).toEqual([
       'Overall rating for Dune',
@@ -134,10 +135,11 @@ describe('BookRating', () => {
     expect(onRate).toHaveBeenCalledWith('story', 5);
   });
 
-  it('passes readOnly through to every picker', () => {
+  it('passes readOnly through to every picker', async () => {
     renderWithProviders(
       <BookRating rating={withDetail} bookTitle="Dune" readOnly onRate={vi.fn()} />
     );
+    await userEvent.click(moreButton());
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(25);
     for (const radio of radios) expect(radio).toHaveAttribute('aria-disabled', 'true');
@@ -147,10 +149,11 @@ describe('BookRating', () => {
   // row is the shaded panel (its own background and radius; the picker inside
   // paints none, `surface="row"`), and it stacks label over picker at phone
   // width.
-  it('each row is a shaded panel that stacks at phone width; the picker paints no track', () => {
+  it('each row is a shaded panel that stacks at phone width; the picker paints no track', async () => {
     renderWithProviders(
       <BookRating rating={withDetail} bookTitle="Dune" readOnly={false} onRate={vi.fn()} />
     );
+    await userEvent.click(moreButton());
     const group = screen.getByRole('radiogroup', { name: 'Story rating for Dune' });
     const row = group.parentElement!;
     const css = Array.from(document.querySelectorAll('style'))
