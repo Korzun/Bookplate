@@ -129,8 +129,9 @@ export const BookResolvePendingFixDocument = graphql(`
     $id: ID!
     $action: PendingFixResolution!
     $fixes: [MetadataFixKeyInput!]
+    $value: String
   ) {
-    bookResolvePendingFix(input: { id: $id, action: $action, fixes: $fixes }) {
+    bookResolvePendingFix(input: { id: $id, action: $action, fixes: $fixes, value: $value }) {
       __typename
       ... on BookResolvePendingFixPayload {
         book {

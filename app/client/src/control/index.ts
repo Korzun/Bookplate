@@ -3,6 +3,7 @@ export { BookLineageModal } from './book-lineage-modal';
 export { Button } from './button';
 export { ChipsInput } from './chips-input';
 export { ConfirmModal } from './confirm-modal';
+export { EditFixModal } from './edit-fix-modal';
 export { DateTimeInput } from './date-time-input';
 export { FieldList } from './field-list';
 export { LinkExistingBookModal } from './link-existing-book-modal';

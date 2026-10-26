@@ -75,7 +75,12 @@ export type FixKey = { field: string; kind: string; from: string };
  * boolean, so `page/upload`'s view (`UploadView`,
  * `page/upload/index.tsx`) never sees a `FixOutcome`.
  */
-type FixOutcome = { ok: boolean; bookGlobalId?: string };
+type FixOutcome = { ok: boolean; bookGlobalId?: string; error?: string };
+
+/** What `editFix` resolves to: the server's own refusal message rides along
+ * so the page can show WHY (a failed epubcheck, a hash collision) instead of a
+ * generic "couldn't save". A transport failure carries no message. */
+export type EditFixResult = { ok: true } | { ok: false; error?: string };
 
 export type UploadItemStatus = 'queued' | 'uploading' | 'done' | 'error';
 
@@ -128,6 +133,10 @@ export type UseUploadQueue = {
   dismissAllProposals: (itemId: string) => Promise<boolean>;
   /** Async now (Task 8) — see `dismissAllProposals`'s own note. */
   dismissFix: (itemId: string, fix: MetadataFix) => Promise<boolean>;
+  /** Writes `value` to the field a flag-only ("needs review") proposal
+   * names, via `bookResolvePendingFix`'s EDIT action. Rewrites the EPUB like
+   * ACCEPT, so it follows a rotated book id the same way `applyFix` does. */
+  editFix: (itemId: string, fix: MetadataFix, value: string) => Promise<EditFixResult>;
   undo: (itemId: string) => Promise<boolean>;
   dismissCompleted: (itemId: string) => void;
 };
@@ -370,20 +379,31 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
    * regressing back in.
    */
   const run = useCallback(
-    async (id: string, action: PendingFixResolution, fixes?: FixKey[]): Promise<FixOutcome> => {
+    async (
+      id: string,
+      action: PendingFixResolution,
+      fixes?: FixKey[],
+      value?: string
+    ): Promise<FixOutcome> => {
       try {
         const { data: resolveData } = await resolve({
-          // `fixes` is OMITTED, not passed as undefined, for bulk actions —
-          // see this callback's own doc comment.
-          variables: fixes === undefined ? { id, action } : { id, action, fixes },
+          // `fixes` (and EDIT's `value`) are OMITTED, not passed as
+          // undefined, for bulk actions — see this callback's own doc comment.
+          variables: {
+            id,
+            action,
+            ...(fixes === undefined ? {} : { fixes }),
+            ...(value === undefined ? {} : { value }),
+          },
           update: (cache, { data: mutationData }) => {
-            // ACCEPT applies metadata; UNDO reverts it. Both change the
-            // fields the grid sorts and filters on, so both move the book's
-            // position in the connection — a move the payload cannot
-            // express. DISMISS and CLEAR only touch the pending-fix row,
-            // which the payload's own `library { pendingFixes }` selection
-            // already reconciles, so they evict nothing.
-            if (action !== 'ACCEPT' && action !== 'UNDO') return;
+            // ACCEPT and EDIT apply metadata; UNDO reverts it. All three
+            // change the fields the grid sorts and filters on, so all three
+            // move the book's position in the connection — a move the
+            // payload cannot express. DISMISS and CLEAR only touch the
+            // pending-fix row, which the payload's own `library {
+            // pendingFixes }` selection already reconciles, so they evict
+            // nothing.
+            if (action !== 'ACCEPT' && action !== 'EDIT' && action !== 'UNDO') return;
             const outcome = unwrapResult<BookResolvePendingFixPayload>(
               mutationData?.bookResolvePendingFix,
               'BookResolvePendingFixPayload'
@@ -403,9 +423,8 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
           resolveData?.bookResolvePendingFix,
           'BookResolvePendingFixPayload'
         );
-        return outcome.status === 'ok'
-          ? { ok: true, bookGlobalId: outcome.payload.book.id }
-          : { ok: false };
+        if (outcome.status === 'ok') return { ok: true, bookGlobalId: outcome.payload.book.id };
+        return outcome.status === 'error' ? { ok: false, error: outcome.message } : { ok: false };
       } catch {
         // A network failure resolves `false` like a typed error does — the
         // public `UseUploadQueue` contract is a bare boolean, and
@@ -422,6 +441,10 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   );
   const dismissFixes = useCallback(
     (bookGlobalId: string, fixes?: FixKey[]) => run(bookGlobalId, 'DISMISS', fixes),
+    [run]
+  );
+  const editFixes = useCallback(
+    (bookGlobalId: string, fix: FixKey, value: string) => run(bookGlobalId, 'EDIT', [fix], value),
     [run]
   );
   const undoFixes = useCallback((bookGlobalId: string) => run(bookGlobalId, 'UNDO'), [run]);
@@ -593,34 +616,49 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   // the very first accept of any this-session upload. `TransportItem.
   // bookGlobalId` is written once, in `xhr.onload`, and `items` above joins
   // the live transport against the server's rows on exactly that string. A
-  // successful ACCEPT (or the UNDO of an apply-snapshot) re-imports the
-  // rewritten EPUB, mints a new content-hash book id, and re-keys the
+  // successful ACCEPT or EDIT (or the UNDO of an apply-snapshot) re-imports
+  // the rewritten EPUB, mints a new content-hash book id, and re-keys the
   // `PendingFix` row under it — so without this the live item's id points at
   // a book the server no longer knows: the join matches nothing, the
-  // re-keyed row is emitted as a SECOND card for the same book, `FixReview`'s
-  // Edit link points at a dead id, and every further action on the live card
-  // resolves `missing`.
+  // re-keyed row is emitted as a SECOND card for the same book, and every
+  // further action on the live card resolves `missing`.
   //
   // DISMISS and CLEAR are deliberately NOT routed through here: neither
   // calls `applyEpubChanges`, so neither can rotate an id, and pretending
   // otherwise would suggest a hazard that path does not have.
-  const runRotating = useCallback(
-    async (itemId: string, action: (gid: string) => Promise<FixOutcome>): Promise<boolean> => {
+  const runRotatingOutcome = useCallback(
+    async (itemId: string, action: (gid: string) => Promise<FixOutcome>): Promise<FixOutcome> => {
       const gid = globalIdOf(itemId);
-      if (!gid) return false;
+      if (!gid) return { ok: false };
       const outcome = await action(gid);
       if (outcome.bookGlobalId !== undefined && outcome.bookGlobalId !== gid) {
         remapBookGlobalId(gid, outcome.bookGlobalId);
       }
-      return outcome.ok;
+      return outcome;
     },
     [globalIdOf, remapBookGlobalId]
+  );
+  const runRotating = useCallback(
+    async (itemId: string, action: (gid: string) => Promise<FixOutcome>): Promise<boolean> =>
+      (await runRotatingOutcome(itemId, action)).ok,
+    [runRotatingOutcome]
   );
 
   const applyFix = useCallback(
     async (itemId: string, fix: MetadataFix): Promise<boolean> =>
       runRotating(itemId, (gid) => acceptFixes(gid, [fixKeyOf(fix)])),
     [runRotating, acceptFixes]
+  );
+
+  const editFix = useCallback(
+    async (itemId: string, fix: MetadataFix, value: string): Promise<EditFixResult> => {
+      const outcome = await runRotatingOutcome(itemId, (gid) =>
+        editFixes(gid, fixKeyOf(fix), value)
+      );
+      if (outcome.ok) return { ok: true };
+      return outcome.error === undefined ? { ok: false } : { ok: false, error: outcome.error };
+    },
+    [runRotatingOutcome, editFixes]
   );
 
   const applyAllProposals = useCallback(
@@ -672,6 +710,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
     applyAllProposals,
     dismissAllProposals,
     dismissFix,
+    editFix,
     undo,
     dismissCompleted,
   };

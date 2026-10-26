@@ -165,6 +165,7 @@ const queueValue = (items: UploadItem[]): UseUploadQueue => ({
   applyAllProposals: async () => false,
   dismissAllProposals: async () => false,
   dismissFix: async () => false,
+  editFix: async () => ({ ok: false }),
   undo: async () => false,
   dismissCompleted: () => {},
 });

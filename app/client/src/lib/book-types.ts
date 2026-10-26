@@ -44,10 +44,11 @@ export type MetadataFix = {
 export type UploadFileResult = {
   filename: string;
   bookId: string;
-  /** Relay global id for `bookId` (Task 7, book-edit spec) — lets the
-   * upload queue build a working Edit link for flag-only proposals, which
-   * are produced right here at upload-analysis time, before any later
-   * PATCH could otherwise supply one. */
+  /** Relay global id for `bookId` (Task 7, book-edit spec) — the id the
+   * upload queue joins its live item against the server's pending-fix row
+   * on, and addresses every fix resolution (accept, dismiss, edit) by. Known
+   * right here at upload-analysis time, before any later mutation could
+   * otherwise supply one. */
   globalId: string;
   applied: MetadataFix[];
   proposals: MetadataFix[];

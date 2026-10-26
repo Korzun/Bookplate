@@ -1,11 +1,10 @@
 import { Fragment, useState } from 'react';
-import { Link } from 'react-router';
 
-import { Button } from '~/control';
+import { Button, EditFixModal } from '~/control';
 import { CheckIcon } from '~/icon';
 import type { MetadataFix } from '~/lib/book-types';
+import { labelForFix } from '~/lib/metadata-fix-label';
 import type { UndoSnapshot } from '~/provider/upload';
-import { path } from '~/router';
 
 import { CardDivider } from '../card-divider';
 import { Tag } from '../tag';
@@ -25,31 +24,18 @@ interface Props {
    * page-level "Accept all" is applying across the whole queue, so a
    * per-card decision can't race the in-flight sweep. */
   disabled?: boolean;
-  /** Relay global id for the book this row's proposals belong to, used ONLY
-   * to build the Edit link's `path.bookEdit(...)` href — `page/book-edit`
-   * queries `Library.book(id:)`, which requires a Relay global id, not the
-   * raw content hash the upload queue otherwise keys everything by (Task 7,
-   * book-edit spec — this prop was named `bookId` and fed the raw hash
-   * until then, which broke the Edit link the moment `page/book-edit`
-   * moved off REST). Callers must resolve one before rendering this, never
-   * derive it here — the client never encodes or decodes a Relay global id. */
-  bookGlobalId?: string;
-  /** Whether a to===null (flag-only) proposal offers an Edit link to the book
-   * page. Defaults to true; only takes effect when `bookGlobalId` is given. */
-  showEditLink?: boolean;
+  /** Saves a typed value for a flag-only (`to === null`, "needs review")
+   * proposal — the upload queue's `editFix`, which resolves it through
+   * `bookResolvePendingFix`'s EDIT action. Resolves `false` on failure so the
+   * modal stays open. The Edit button only renders when this is given. */
+  onEditFix?: (fix: MetadataFix, value: string) => Promise<boolean>;
+  /** Whether a flag-only proposal offers its Edit button. Defaults to true;
+   * `control/upload-replace-modal` turns it off, since a replacement's fixes
+   * are reviewed before the book exists to edit. */
+  showEdit?: boolean;
 }
 
-const FIELD_LABEL: Record<string, string> = {
-  title: 'Title',
-  titleSort: 'Title sort',
-  author: 'Author',
-  authorSort: 'Author sort',
-  subjects: 'Subjects',
-  document: 'EPUB',
-};
-
-const labelFor = (fix: MetadataFix): string =>
-  fix.kind === 'subjects-split' ? 'Subject' : (FIELD_LABEL[fix.field] ?? fix.field);
+const labelFor = labelForFix;
 
 // The undo `kind` is stored as the internal action name ('apply'/'dismiss');
 // surface it in the user-facing accept/reject language.
@@ -69,13 +55,16 @@ export const FixReview = ({
   onUndo,
   undo,
   disabled,
-  bookGlobalId,
-  showEditLink = true,
+  onEditFix,
+  showEdit = true,
 }: Props) => {
   const styles = useStyle();
   // True while a bulk fix action (Accept all / Reject all / Undo) is running,
   // so the buttons disable and a rapid second click can't re-trigger it.
   const [busy, setBusy] = useState(false);
+  // The flag-only proposal whose edit modal is open, if any. Mounting the
+  // modal per open (below) resets its input to that proposal's `from`.
+  const [editing, setEditing] = useState<MetadataFix | null>(null);
   const actionable = proposals.filter((p) => p.to !== null);
   const pendingUndo = undo;
 
@@ -243,17 +232,27 @@ export const FixReview = ({
                     </Button>
                   </Fragment>
                 ) : (
-                  showEditLink &&
-                  bookGlobalId && (
-                    <Link to={path.bookEdit(bookGlobalId)} className={styles.editLink}>
+                  showEdit &&
+                  onEditFix && (
+                    <Button type="link" disabled={controlsDisabled} onClick={() => setEditing(fix)}>
                       Edit
-                    </Link>
+                    </Button>
                   )
                 )}
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {editing && onEditFix && (
+        <EditFixModal
+          isOpen
+          fix={editing}
+          onSave={onEditFix}
+          onKeep={onDismissFix}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );

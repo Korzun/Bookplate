@@ -165,12 +165,13 @@ export const BookEditPage = () => {
   // armed within the TTL) is not a conflict. Neither is one whose every
   // remaining proposal is ADVISORY (`to === null`, "needs review"): the guard
   // exists because editing could overwrite a concrete pending suggestion, and
-  // an advisory fix has no suggested value to overwrite. It is also the only
-  // kind `FixReview` resolves by linking HERE — `bookResolvePendingFix`'s
+  // an advisory fix has no suggested value to overwrite. `bookResolvePendingFix`'s
   // ACCEPT filters to `to !== null` and leaves advisory proposals behind, so
-  // they can never be cleared by accepting. Guarding on them bounced the user
-  // straight back to the screen whose Edit link sent them, with no way out.
-  // Same rule `control/upload-replace-modal` already applies to gate Replace.
+  // they can never be cleared by accepting — `FixReview` resolves them through
+  // its own single-field edit modal (the EDIT action) rather than by linking
+  // here, but a user who still opens this page must not be bounced away by a
+  // flag nothing on this page could ever clear. Same rule
+  // `control/upload-replace-modal` already applies to gate Replace.
   //
   // `?? false` covers only the not-yet-loaded / not-found `book`, which the
   // branches below own outright — this value is never read before them.

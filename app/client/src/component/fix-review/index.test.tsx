@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { MetadataFix } from '~/lib/book-types';
 import { renderWithProviders } from '~/test-utils';
@@ -35,7 +36,13 @@ const noop = {
   onApplyAll: () => {},
   onDismissAll: () => {},
   onDismissFix: () => {},
+  onEditFix: () => Promise.resolve(true),
 };
+
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn();
+  HTMLDialogElement.prototype.close = vi.fn();
+});
 
 describe('FixReview', () => {
   it('renders the auto fix under "Automatic fixes"', () => {
@@ -76,7 +83,6 @@ describe('FixReview', () => {
         proposals={[actionableProposal, flagOnlyProposal]}
         {...noop}
         onApplyAll={onApplyAll}
-        bookGlobalId="abc"
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /accept all/i }));
@@ -92,41 +98,78 @@ describe('FixReview', () => {
         proposals={[actionableProposal, flagOnlyProposal]}
         {...noop}
         onDismissAll={onDismissAll}
-        bookGlobalId="abc"
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /reject all/i }));
     expect(onDismissAll).toHaveBeenCalled();
   });
 
-  it('a to===null proposal shows "needs review" with an Edit link by default', () => {
+  it('a to===null proposal shows "needs review" with an Edit button that opens the edit modal', async () => {
+    const user = userEvent.setup();
     renderWithProviders(
-      <FixReview
-        autoFixes={[]}
-        appliedFixes={[]}
-        proposals={[flagOnlyProposal]}
-        {...noop}
-        bookGlobalId="abc"
-      />
-    );
-    expect(screen.getByText('needs review')).toBeInTheDocument();
-    const editLink = screen.getByRole('link', { name: /edit/i });
-    expect(editLink).toHaveAttribute('href', expect.stringContaining('abc'));
-  });
-
-  it('with showEditLink={false}, a to===null proposal shows "needs review" and NO Edit link', () => {
-    renderWithProviders(
-      <FixReview
-        autoFixes={[]}
-        appliedFixes={[]}
-        proposals={[flagOnlyProposal]}
-        {...noop}
-        bookGlobalId="abc"
-        showEditLink={false}
-      />
+      <FixReview autoFixes={[]} appliedFixes={[]} proposals={[flagOnlyProposal]} {...noop} />
     );
     expect(screen.getByText('needs review')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /edit/i })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByRole('textbox', { hidden: true })).toHaveValue('book');
+  });
+
+  it('with showEdit={false}, a to===null proposal shows "needs review" and NO Edit button', () => {
+    renderWithProviders(
+      <FixReview
+        autoFixes={[]}
+        appliedFixes={[]}
+        proposals={[flagOnlyProposal]}
+        {...noop}
+        showEdit={false}
+      />
+    );
+    expect(screen.getByText('needs review')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^edit$/i })).toBeNull();
+  });
+
+  it('saving from the edit modal fires onEditFix with the flagged fix and the typed value', async () => {
+    const user = userEvent.setup();
+    const onEditFix = vi.fn().mockResolvedValue(true);
+    renderWithProviders(
+      <FixReview
+        autoFixes={[]}
+        appliedFixes={[]}
+        proposals={[flagOnlyProposal]}
+        {...noop}
+        onEditFix={onEditFix}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    const input = screen.getByRole('textbox', { hidden: true });
+    await user.clear(input);
+    await user.type(input, 'A Real Title');
+    await user.click(screen.getByRole('button', { name: 'Save', hidden: true }));
+
+    expect(onEditFix).toHaveBeenCalledWith(flagOnlyProposal, 'A Real Title');
+  });
+
+  it('"Keep as is" in the edit modal fires onDismissFix with the flagged fix', async () => {
+    const user = userEvent.setup();
+    const onDismissFix = vi.fn();
+    renderWithProviders(
+      <FixReview
+        autoFixes={[]}
+        appliedFixes={[]}
+        proposals={[flagOnlyProposal]}
+        {...noop}
+        onDismissFix={onDismissFix}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    await user.click(screen.getByRole('button', { name: 'Keep as is', hidden: true }));
+
+    expect(onDismissFix).toHaveBeenCalledWith(flagOnlyProposal);
   });
 
   it('renders only Undo when a snapshot is pending', () => {
@@ -153,7 +196,6 @@ describe('FixReview', () => {
         appliedFixes={[]}
         proposals={[actionableProposal, flagOnlyProposal]}
         {...noop}
-        bookGlobalId="abc"
         disabled
       />
     );

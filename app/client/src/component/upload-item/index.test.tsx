@@ -24,6 +24,7 @@ const noop = {
   onDismissAll: () => {},
   onUndo: () => {},
   onDismissFix: () => {},
+  onEditFix: () => Promise.resolve(true),
   onDismissCompleted: () => {},
 };
 
@@ -318,15 +319,12 @@ describe('UploadItem metadata fixes', () => {
     expect(onDismissFix).toHaveBeenCalledWith(proposals[0]);
   });
 
-  it('renders a flag-only row (no Accept) with an Edit link, and no Accept for it', () => {
+  it('renders a flag-only row with an Edit button and no Accept for it', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
-    // The title-is-filename proposal has to === null -> an Edit link to the book page.
-    const editLink = screen.getByRole('link', { name: /edit/i });
-    // The link must use `bookGlobalId` (`page/book-edit` queries
-    // `Library.book(id:)`, which requires a Relay global id) — the only book
-    // identifier an `UploadItem` carries at all now (Task 8: no raw book id
-    // anywhere under `provider/upload/`).
-    expect(editLink).toHaveAttribute('href', expect.stringContaining('global-xyz'));
+    // The title-is-filename proposal has to === null -> an Edit button that
+    // opens the single-field edit modal (no link to the full edit page).
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /edit/i })).toBeNull();
     // Only one actionable proposal -> only one Accept button (the flag-only row has none).
     expect(screen.getAllByRole('button', { name: /^accept$/i })).toHaveLength(1);
   });

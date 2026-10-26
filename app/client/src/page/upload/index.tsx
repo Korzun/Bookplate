@@ -24,6 +24,7 @@ export const UploadView = () => {
     applyAllProposals,
     dismissAllProposals,
     dismissFix,
+    editFix,
     undo,
     dismissCompleted,
   } = useUploadQueue();
@@ -155,6 +156,18 @@ export const UploadView = () => {
                 if (!ok) showToast("Couldn't undo", 'error');
               }}
               onDismissFix={(fix) => void dismissFix(item.id, fix)}
+              onEditFix={async (fix, value) => {
+                const result = await editFix(item.id, fix, value);
+                if (!result.ok) {
+                  showToast(
+                    result.error === undefined
+                      ? "Couldn't save the change"
+                      : `Couldn't save the change: ${result.error}`,
+                    'error'
+                  );
+                }
+                return result.ok;
+              }}
               onDismissCompleted={() => dismissCompleted(item.id)}
             />
           ))}
