@@ -185,6 +185,15 @@ const uploadingItem: UploadItem = {
   bytesUploaded: 0,
 };
 
+/**
+ * How many copies of ONE badge the DOM holds across both layouts. CSS hides
+ * the off-breakpoint layout, so both are present: desktop renders the badge
+ * once, and the mobile bar three times per tab — on the real (transparent)
+ * tab and on each of the two visible rows painted above it, so the badge
+ * shows over the icon rather than under its copy.
+ */
+const BADGE_COPIES = 4;
+
 describe('Nav', () => {
   it('hides the Users tab for non-admins', () => {
     renderWithApollo(<Nav />, {
@@ -399,9 +408,7 @@ describe('Nav', () => {
       ],
     });
 
-    // One badge per layout (desktop + mobile); CSS hides the off-breakpoint
-    // one, so both are in the DOM.
-    await waitFor(() => expect(screen.getAllByText('2')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('2')).toHaveLength(BADGE_COPIES));
     // A count wins over the dot: nothing is uploading in this test anyway.
     expect(screen.queryAllByTestId('nav-badge-dot')).toHaveLength(0);
   });
@@ -416,7 +423,7 @@ describe('Nav', () => {
       ],
     });
 
-    await waitFor(() => expect(screen.getAllByText('1')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('1')).toHaveLength(BADGE_COPIES));
     expect(screen.queryByText('2')).toBeNull();
   });
 
@@ -430,7 +437,7 @@ describe('Nav', () => {
       mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
     });
 
-    await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(BADGE_COPIES));
   });
 
   /**
@@ -521,7 +528,7 @@ describe('Nav', () => {
       }
     );
 
-    await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(BADGE_COPIES));
 
     // WHICH tab carries it, not merely that two exist. The dot used to live on
     // Add, when Add and Request were one destination; with two tabs, a dot on
@@ -669,7 +676,7 @@ describe('Nav', () => {
       }
     );
 
-    await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(BADGE_COPIES));
     expect(screen.queryByText('3')).not.toBeInTheDocument();
   });
 
@@ -704,7 +711,7 @@ describe('Nav', () => {
       }
     );
 
-    await waitFor(() => expect(screen.getAllByText('2')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('2')).toHaveLength(BADGE_COPIES));
     expect(screen.queryAllByTestId('nav-badge-dot')).toHaveLength(0);
   });
 
