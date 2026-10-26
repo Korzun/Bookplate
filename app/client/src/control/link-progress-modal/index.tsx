@@ -5,7 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BookLinkDocumentMutation } from '~/gql/graphql';
 import { BookLinkDocumentDocument, LinkPickerBooksDocument } from '~/graphql/progress';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
-import { unwrapResult } from '~/provider/apollo';
+import {
+  invalidateSeriesProgress,
+  invalidateUserProgressCounts,
+  unwrapResult,
+} from '~/provider/apollo';
 
 import { Button } from '../button';
 import { useModalDialog } from '../use-modal-dialog';
@@ -166,6 +170,16 @@ const DEBOUNCE_MS = 200;
  *     `useDeleteProgress`'s scan-and-null-Book step here, because none has
  *     ever been needed under the invariant above.
  *
+ *     The TARGET book is the other side of that move, and it IS handled:
+ *     the server re-creates the row at `document = bookId` (a new Progress
+ *     id), so the selected book's cached `progress` — `null` from any prior
+ *     book-page or grid read, or an older row the orphan out-dated — is
+ *     wrong the moment the link lands. `update` evicts that one field, so
+ *     the book page and its grid row re-read it; it also drops
+ *     `User.progressCount` (the merge can retire one of two rows) and
+ *     `Series.progressPercentage` via the shared helpers in
+ *     `provider/apollo/invalidate.ts`, none of which the payload carries.
+ *
  *   **Seen-to-fail**: deleting the `fieldName: 'progress'` `cache.evict`
  *   call below (leaving only the entity-level evict) leaves "re-fetches
  *   Library.progress after a link so the row reappears attached to its
@@ -255,7 +269,16 @@ export function LinkProgressModal({
             id: cache.identify({ __typename: 'Library', id: libraryId }),
             fieldName: 'progress',
           });
-          cache.gc();
+          // The server MOVES the orphan row onto the book (a new Progress id),
+          // so the book's cached `progress` — null, or an older row — is
+          // stale; the merge can also drop `User.progressCount` by one. The
+          // payload carries neither, so both are evicted for re-read.
+          cache.evict({
+            id: cache.identify({ __typename: 'Book', id: selectedBookId }),
+            fieldName: 'progress',
+          });
+          invalidateUserProgressCounts(cache);
+          invalidateSeriesProgress(cache); // also runs `cache.gc()`
         },
       });
 
