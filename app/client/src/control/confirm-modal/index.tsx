@@ -43,19 +43,12 @@ export function ConfirmModal({
   // Escape dismisses the modal, except while the action is in flight — the
   // Cancel button is disabled then, so Escape is gated to match.
   const modalRef = useModalDialog(isOpen, handleCancel, !loading);
-  const handleClickBackground = useCallback(
-    (event: React.MouseEvent<HTMLDialogElement, MouseEvent>) => {
-      event.stopPropagation();
-      handleCancel();
-    },
-    [handleCancel]
-  );
-  const handleClickDialog = useCallback((event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+  const handleClickDialog = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
   }, []);
 
   return (
-    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickDialog}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>
           {Icon && (

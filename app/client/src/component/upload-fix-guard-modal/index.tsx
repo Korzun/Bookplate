@@ -24,20 +24,10 @@ export function UploadFixGuardModal({
   const styles = useStyle();
   const modalRef = useModalDialog(isOpen, onCancel);
 
-  const handleBackdrop = useCallback(
-    (event: React.MouseEvent<HTMLDialogElement>) => {
-      event.stopPropagation();
-      onCancel();
-    },
-    [onCancel]
-  );
-  const stop = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => event.stopPropagation(),
-    []
-  );
+  const stop = useCallback((event: React.MouseEvent) => event.stopPropagation(), []);
 
   return (
-    <dialog ref={modalRef} className={styles.root} onClick={handleBackdrop}>
+    <dialog ref={modalRef} className={styles.root} onClick={stop}>
       <div className={styles.dialog} onClick={stop}>
         <div className={styles.header}>Fixes waiting for this book</div>
         <div className={styles.body}>

@@ -104,6 +104,7 @@ describe('ValidationDetailModal', () => {
       />
     );
     const dialogElement = screen.getByRole('dialog', { hidden: true });
+    fireEvent.mouseDown(dialogElement);
     fireEvent.click(dialogElement);
     expect(onClose).toHaveBeenCalled();
   });

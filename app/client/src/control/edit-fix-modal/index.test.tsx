@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -126,6 +126,31 @@ describe('EditFixModal', () => {
 
     expect(onSave).not.toHaveBeenCalled();
     expect(onKeep).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('does not close when a text selection started in the input is released on the backdrop', () => {
+    const onClose = vi.fn();
+    renderWithProviders(<EditFixModal isOpen fix={flagged} {...noop} onClose={onClose} />);
+    const dialog = screen.getByRole('dialog', { hidden: true });
+
+    // A drag-select: the press lands in the input, the release lands on the
+    // backdrop, and the browser fires the click on their common ancestor —
+    // the <dialog> itself, exactly where a backdrop click would land.
+    fireEvent.mouseDown(input());
+    fireEvent.click(dialog);
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('closes on a click that both starts and ends on the backdrop', () => {
+    const onClose = vi.fn();
+    renderWithProviders(<EditFixModal isOpen fix={flagged} {...noop} onClose={onClose} />);
+    const dialog = screen.getByRole('dialog', { hidden: true });
+
+    fireEvent.mouseDown(dialog);
+    fireEvent.click(dialog);
+
     expect(onClose).toHaveBeenCalledOnce();
   });
 });

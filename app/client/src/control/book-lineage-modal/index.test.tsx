@@ -180,6 +180,7 @@ describe('BookLineageModal', () => {
     );
     const dialogEl = container.querySelector('dialog');
     expect(dialogEl).not.toBeNull();
+    fireEvent.mouseDown(dialogEl as HTMLDialogElement);
     fireEvent.click(dialogEl as HTMLDialogElement);
     expect(onClose).toHaveBeenCalledTimes(1);
   });

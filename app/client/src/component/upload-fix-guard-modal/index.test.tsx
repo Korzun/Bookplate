@@ -40,7 +40,9 @@ describe('UploadFixGuardModal', () => {
   });
   it('calls onCancel on backdrop click', () => {
     const { onCancel } = setup();
-    fireEvent.click(screen.getByRole('dialog', { hidden: true }));
+    const dialog = screen.getByRole('dialog', { hidden: true });
+    fireEvent.mouseDown(dialog);
+    fireEvent.click(dialog);
     expect(onCancel).toHaveBeenCalledOnce();
   });
 });

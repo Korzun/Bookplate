@@ -307,20 +307,12 @@ export function LinkProgressModal({
   // Escape dismisses the modal the same way the Cancel button does.
   const modalRef = useModalDialog(isOpen, handleCancel);
 
-  const handleClickBackground = useCallback(
-    (e: React.MouseEvent<HTMLDialogElement>) => {
-      e.stopPropagation();
-      handleCancel();
-    },
-    [handleCancel]
-  );
-
-  const handleClickDialog = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const handleClickDialog = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
 
   return (
-    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickDialog}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>Link Progress</div>
         <div className={styles.body}>
