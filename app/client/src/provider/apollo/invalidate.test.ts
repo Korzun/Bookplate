@@ -194,7 +194,11 @@ describe('invalidateBookChange', () => {
     expect(readSeriesDetail(cache, 'Dune')).toBeNull();
     expect(readSeriesDetail(cache, 'Emma')).not.toBeNull();
     expect(seriesEntity(cache, SERIES_A)).toMatchObject({ name: 'Dune' });
-    expect(seriesEntity(cache, SERIES_A)).not.toHaveProperty('books');
+    // Every `books(...)` variant goes: an evict by field name alone covers all
+    // of a keyed field's argument variants.
+    expect(Object.keys(seriesEntity(cache, SERIES_A)).some((key) => key.startsWith('books'))).toBe(
+      false
+    );
     expect(seriesEntity(cache, SERIES_A)).not.toHaveProperty('progressPercentage');
   });
 
@@ -290,7 +294,11 @@ describe('invalidateSeriesProgress', () => {
 
     expect(readSeriesDetail(cache, 'Dune')).toBeNull();
     expect(readSeriesDetail(cache, 'Emma')).toBeNull();
-    expect(seriesEntity(cache, SERIES_A)).toHaveProperty('books');
+    // `books` is keyed on its page size (`cacheConfig`), so the stored field
+    // name carries the argument — match any variant.
+    expect(Object.keys(seriesEntity(cache, SERIES_A)).some((key) => key.startsWith('books'))).toBe(
+      true
+    );
     expect(seriesEntity(cache, SERIES_A)).not.toHaveProperty('progressPercentage');
   });
 });
