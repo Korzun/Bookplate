@@ -89,6 +89,7 @@ const seedSeriesDetail = (cache: InMemoryCache, seriesId: string, name: string, 
           totalSize: 10,
           subjects: [],
           progressPercentage: 0.5,
+          overallRating: null,
           books: {
             __typename: 'SeriesBooksConnection',
             edges: [

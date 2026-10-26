@@ -332,6 +332,7 @@ const seedSeriesDetail = (client: Client, seriesId: string, name: string, bookId
           totalSize: 0,
           subjects: [],
           progressPercentage: null,
+          overallRating: null,
           books: {
             __typename: 'SeriesBooksConnection',
             edges: [

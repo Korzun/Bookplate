@@ -95,6 +95,7 @@ const seriesMock = (
           totalSize: 3_000_000,
           subjects: ['Fantasy'],
           progressPercentage: null,
+          overallRating: null,
           books: {
             __typename: 'SeriesBooksConnection',
             edges: bookOverrides.map((bookOverride) => ({
@@ -264,6 +265,22 @@ describe('SeriesPage', () => {
     expect(routerMocks.navigate).toHaveBeenCalledWith(
       path.library({ author: 'Ursula K. Le Guin' })
     );
+  });
+
+  it('shows the series Overall rating in the metadata, glyph and name, for any viewer', async () => {
+    const { findByText, container } = await renderPage([seriesMock({ overallRating: 5 })]);
+
+    await findByText('Earthsea');
+    expect(screen.getByText('rating')).toBeInTheDocument();
+    expect(screen.getByText('Love')).toBeInTheDocument();
+    expect(container.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('omits the rating metadata while no member book is rated', async () => {
+    const { findByText } = await renderPage([seriesMock({ overallRating: null })]);
+
+    await findByText('Earthsea');
+    expect(screen.queryByText('rating')).toBeNull();
   });
 
   it('shows the progress badge from Series.progressPercentage for a non-admin', async () => {
