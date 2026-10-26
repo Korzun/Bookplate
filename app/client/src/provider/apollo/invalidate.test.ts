@@ -105,6 +105,7 @@ const seedSeriesDetail = (cache: InMemoryCache, seriesId: string, name: string, 
                       hasCover: false,
                       thumbnailUrl: '/t.jpg',
                       progress: null,
+                      rating: { __typename: 'BookRating' as const, overall: null },
                     },
                     SeriesBookRowFragment
                   ),

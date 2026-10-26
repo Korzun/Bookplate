@@ -30,6 +30,7 @@ const makeSeriesBookRowData = (
   hasCover: true,
   thumbnailUrl: '/api/books/1/cover?width=88&user=le&v=1',
   progress: { __typename: 'Progress', id: 'gid-progress-1', percentage: 0.5 },
+  rating: { __typename: 'BookRating', overall: null },
   ...overrides,
 });
 
@@ -68,6 +69,31 @@ describe('BookRowFromSeriesBook', () => {
 
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
     expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+  });
+
+  it('passes the overall rating through to the row', () => {
+    const book = makeFragmentData(
+      makeSeriesBookRowData({ hasCover: false, rating: { __typename: 'BookRating', overall: 5 } }),
+      SeriesBookRowFragment
+    );
+
+    renderWithApollo(<BookRowFromSeriesBook book={book} showAuthor={false} />);
+
+    expect(screen.getByText('Love')).toBeInTheDocument();
+  });
+
+  it('treats an out-of-range overall as unrated', () => {
+    const book = makeFragmentData(
+      makeSeriesBookRowData({ hasCover: false, rating: { __typename: 'BookRating', overall: 7 } }),
+      SeriesBookRowFragment
+    );
+
+    const { container } = renderWithApollo(
+      <BookRowFromSeriesBook book={book} showAuthor={false} />
+    );
+
+    expect(screen.getByText('Book 1 · 50%')).toBeInTheDocument();
+    expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
   });
 
   it('uses the server-supplied thumbnailUrl for the cover, authorized via useAuthorizedSrc', async () => {
