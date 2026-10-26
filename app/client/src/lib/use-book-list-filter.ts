@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router';
 
 import type { BookListFilter } from './book-types';
 
-function filterFromSearchParams(params: URLSearchParams): BookListFilter {
+export function filterFromSearchParams(params: URLSearchParams): BookListFilter {
   const filter: BookListFilter = {};
   const q = params.get('q');
   if (q) filter.query = q;
@@ -18,6 +18,10 @@ function filterFromSearchParams(params: URLSearchParams): BookListFilter {
   if (subjects.length > 0) filter.subjects = subjects;
   const entryType = params.get('entryType');
   if (entryType === 'series' || entryType === 'standalone') filter.entryType = entryType;
+  const minOverall = params.get('minOverall');
+  if (minOverall && /^[1-5]$/.test(minOverall))
+    filter.minOverall = Number(minOverall) as NonNullable<BookListFilter['minOverall']>;
+  if (params.get('unrated') === '1') filter.unrated = true;
   return filter;
 }
 
@@ -29,6 +33,8 @@ export function filterToSearchParams(filter: BookListFilter): URLSearchParams {
   if (filter.status) params.set('status', filter.status);
   for (const s of filter.subjects ?? []) params.append('subjects', s);
   if (filter.entryType) params.set('entryType', filter.entryType);
+  if (filter.minOverall) params.set('minOverall', String(filter.minOverall));
+  if (filter.unrated) params.set('unrated', '1');
   return params;
 }
 

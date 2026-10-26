@@ -96,10 +96,14 @@ export type LibraryEntryType =
 export type LibraryFilter = {
   author?: string | null | undefined;
   entryType?: LibraryEntryType | null | undefined;
+  /** Keep books (and series with a book) meeting every minimum given. */
+  minRating?: RatingMinimums | null | undefined;
   query?: string | null | undefined;
   seriesName?: string | null | undefined;
   status?: LibraryEntryStatus | null | undefined;
   subjects?: Array<string> | null | undefined;
+  /** Keep books (and series with a book) that have no overall rating. */
+  unrated?: boolean | null | undefined;
 };
 
 export type LineageType =
@@ -150,6 +154,15 @@ export type ProgressSetInput = {
   percentage: number;
   /** Must be the viewer's own User id: unlike every other user-associated mutation, there is no admin write path for progress. */
   userId: string | number;
+};
+
+/** Minimum rating per dimension, 1–5. Dimensions left null are not filtered. */
+export type RatingMinimums = {
+  characters?: number | null | undefined;
+  ideas?: number | null | undefined;
+  overall?: number | null | undefined;
+  story?: number | null | undefined;
+  writing?: number | null | undefined;
 };
 
 export type SearchSuggestionsFilter = {
