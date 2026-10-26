@@ -395,17 +395,16 @@ builder.node(model, {
         // `listBooksPage` computed, each entry carrying the real row it was
         // ordered by — mapping over it only reshapes that ordering into
         // edges, never reimplementing it or re-fetching anything.
-        const edges: Edge[] = page.items.map(
-          (item): Edge =>
-            item.type === 'standalone'
-              ? {
-                  cursor: encodeCursor({ k: item.row.title, t: 'b', id: item.row.id }),
-                  node: item.row,
-                }
-              : {
-                  cursor: encodeCursor({ k: item.row.sortKey, t: 's', id: item.row.id }),
-                  node: item.row,
-                }
+        const edges: Edge[] = page.items.map((item): Edge =>
+          item.type === 'standalone'
+            ? {
+                cursor: encodeCursor({ k: item.row.title, t: 'b', id: item.row.id }),
+                node: item.row,
+              }
+            : {
+                cursor: encodeCursor({ k: item.row.sortKey, t: 's', id: item.row.id }),
+                node: item.row,
+              }
         );
 
         return {
