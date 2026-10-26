@@ -1,3 +1,9 @@
+## 0.12.0
+
+- Book ratings in the UI and over MCP
+- fix(client): paint the mobile nav badge over the icon, not under the overlay rows
+- feat(client): publish date is picked with native date and time inputs
+
 ## 0.11.0
 
 - chore(scripts): add a release watcher that follows the pipeline to publish
