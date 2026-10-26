@@ -777,6 +777,298 @@ describe('Mutation.bookResolvePendingFix', () => {
     });
   });
 
+  describe('EDIT', () => {
+    const editInput = (fix: { field: string; kind: string; from: string }, value: string) => ({
+      id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+      action: 'EDIT',
+      fixes: [{ field: fix.field, kind: fix.kind, from: fix.from }],
+      value,
+    });
+
+    it('writes the typed value to the flagged field under the NEW book id, records it as an applied fix, and arms an apply undo', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'book');
+      await seedPendingFix(BOOK_ID, { proposals: [ADVISORY_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: editInput(ADVISORY_PROPOSAL, 'A Real Title') },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        __typename: string;
+        book: {
+          id: string;
+          title: string;
+          pendingFix: {
+            state: {
+              proposals: unknown[];
+              appliedFixes: { field: string; kind: string; from: string; to: string }[];
+              undo: { kind: string; proposals: unknown[]; appliedFixes: unknown[] };
+            };
+          } | null;
+        };
+      };
+      expect(data.__typename).toBe('BookResolvePendingFixPayload');
+      expect(data.book.title).toBe('A Real Title');
+      expect(rawBookId(data.book.id)).not.toBe(BOOK_ID);
+      expect(data.book.pendingFix?.state.proposals).toEqual([]);
+      // The seeded sort is empty, so the edit drags a derived title sort
+      // along in the same write — see the dedicated follow-up test below.
+      expect(data.book.pendingFix?.state.appliedFixes).toEqual([
+        { field: 'title', kind: 'title-is-filename', from: 'book', to: 'A Real Title' },
+        { field: 'titleSort', kind: 'title-sort-missing', from: '', to: 'Real Title, A' },
+      ]);
+      expect(data.book.pendingFix?.state.undo).toEqual({
+        kind: 'APPLY',
+        proposals: [{ field: 'title', kind: 'title-is-filename', from: 'book', to: null }],
+        appliedFixes: [],
+      });
+      expect(await pendingFixRowFor(rawBookId(data.book.id))).not.toBeNull();
+      expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
+    });
+
+    it('retires every other proposal on the edited field (their `from` is now stale) while a proposal on another field survives', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'book');
+      const staleTitleProposal = {
+        ...TITLE_PROPOSAL,
+        from: 'book',
+        to: 'Book',
+        changes: { title: 'Book' },
+      };
+      await seedPendingFix(BOOK_ID, {
+        proposals: [ADVISORY_PROPOSAL, staleTitleProposal, AUTHOR_PROPOSAL],
+      });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: editInput(ADVISORY_PROPOSAL, 'A Real Title') },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        book: {
+          title: string;
+          pendingFix: {
+            state: {
+              proposals: { field: string; kind: string }[];
+              appliedFixes: { field: string; kind: string }[];
+              undo: { proposals: unknown[] };
+            };
+          };
+        };
+      };
+      // The user's value wins — the stale title-case suggestion was neither
+      // applied over it nor left on offer.
+      expect(data.book.title).toBe('A Real Title');
+      expect(data.book.pendingFix.state.proposals).toMatchObject([
+        { field: 'author', kind: 'replace' },
+      ]);
+      expect(data.book.pendingFix.state.appliedFixes).toMatchObject([
+        { field: 'title', kind: 'title-is-filename' },
+        { field: 'titleSort', kind: 'title-sort-missing' },
+      ]);
+      // Undo still knows about all three, so reverting brings them all back.
+      expect(data.book.pendingFix.state.undo.proposals).toHaveLength(3);
+    });
+
+    it('is a strict no-op when the key matches no current proposal: no rewrite, id unchanged, row untouched', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+      await seedPendingFix(BOOK_ID, { proposals: [AUTHOR_PROPOSAL] });
+      const reimportSpy = vi.mocked(reimportBook);
+      const before = await pendingFixRowFor(BOOK_ID);
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: editInput(ADVISORY_PROPOSAL, 'A Real Title') },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as { book: { id: string; title: string } };
+      expect(data.book.title).toBe('Untouched');
+      expect(rawBookId(data.book.id)).toBe(BOOK_ID);
+      expect(reimportSpy).not.toHaveBeenCalled();
+      expect(await pendingFixRowFor(BOOK_ID)).toEqual(before);
+    });
+
+    it('rejects EDIT without a value as a request error, changing nothing', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'book');
+      await seedPendingFix(BOOK_ID, { proposals: [ADVISORY_PROPOSAL] });
+      const reimportSpy = vi.mocked(reimportBook);
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+            action: 'EDIT',
+            fixes: [{ field: 'title', kind: 'title-is-filename', from: 'book' }],
+          },
+        },
+      });
+
+      expect(result.errors?.[0]?.message).toBe('EDIT requires `value`');
+      expect(reimportSpy).not.toHaveBeenCalled();
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('book');
+    });
+
+    it('is gated on validation like ACCEPT: BookNotValidatedError when the book is invalid', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'book', { valid: false });
+      await seedPendingFix(BOOK_ID, { proposals: [ADVISORY_PROPOSAL] });
+      const reimportSpy = vi.mocked(reimportBook);
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: editInput(ADVISORY_PROPOSAL, 'A Real Title') },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as { __typename: string };
+      expect(data.__typename).toBe('BookNotValidatedError');
+      expect(reimportSpy).not.toHaveBeenCalled();
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('book');
+    });
+
+    it('follows a title edit with its derived title sort in the same write, recorded as an applied fix', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'book');
+      // A Calibre-style file: the sort is a plain copy of the (bad) title.
+      await harness.prisma.book.update({
+        where: { userId_id: { userId: harness.aliceOwner.userId, id: BOOK_ID } },
+        data: { titleSort: 'book' },
+      });
+      await seedPendingFix(BOOK_ID, { proposals: [ADVISORY_PROPOSAL] });
+      const reimportSpy = vi.mocked(reimportBook);
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: editInput(ADVISORY_PROPOSAL, 'The Real Title') },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        book: {
+          id: string;
+          title: string;
+          pendingFix: { state: { proposals: unknown[]; appliedFixes: unknown[] } };
+        };
+      };
+      expect(data.book.title).toBe('The Real Title');
+      const row = await harness.prisma.book.findUnique({
+        where: { userId_id: { userId: harness.aliceOwner.userId, id: rawBookId(data.book.id) } },
+      });
+      expect(row?.titleSort).toBe('Real Title, The');
+      // One rewrite, not two: the sort rode along with the title.
+      expect(reimportSpy).toHaveBeenCalledTimes(1);
+      expect(data.book.pendingFix.state.proposals).toEqual([]);
+      expect(data.book.pendingFix.state.appliedFixes).toEqual([
+        { field: 'title', kind: 'title-is-filename', from: 'book', to: 'The Real Title' },
+        { field: 'titleSort', kind: 'title-sort-missing', from: 'book', to: 'Real Title, The' },
+      ]);
+    });
+
+    it('leaves an author sort it cannot derive reliably on the row as a new proposal', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Fine Title');
+      const authorFlag = {
+        field: 'author',
+        kind: 'html-entity',
+        from: 'Seed Author',
+        to: null,
+        changes: {},
+      };
+      await seedPendingFix(BOOK_ID, { proposals: [authorFlag] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: editInput(authorFlag, 'Ursula K. Le Guin') },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        book: {
+          id: string;
+          pendingFix: { state: { proposals: unknown[]; appliedFixes: unknown[] } };
+        };
+      };
+      const row = await harness.prisma.book.findUnique({
+        where: { userId_id: { userId: harness.aliceOwner.userId, id: rawBookId(data.book.id) } },
+      });
+      expect(row?.author).toBe('Ursula K. Le Guin');
+      expect(row?.authorSort).toBe('');
+      expect(data.book.pendingFix.state.appliedFixes).toEqual([
+        { field: 'author', kind: 'html-entity', from: 'Seed Author', to: 'Ursula K. Le Guin' },
+      ]);
+      expect(data.book.pendingFix.state.proposals).toEqual([
+        { field: 'authorSort', kind: 'author-sort-missing', from: '', to: 'Guin, Ursula K. Le' },
+      ]);
+    });
+
+    it('UNDO after a title edit restores the original title sort too', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'book');
+      await harness.prisma.book.update({
+        where: { userId_id: { userId: harness.aliceOwner.userId, id: BOOK_ID } },
+        data: { titleSort: 'book' },
+      });
+      await seedPendingFix(BOOK_ID, { proposals: [ADVISORY_PROPOSAL] });
+
+      const edited = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: editInput(ADVISORY_PROPOSAL, 'The Real Title') },
+      });
+      const editedId = rawBookId(
+        (edited.data?.bookResolvePendingFix as { book: { id: string } }).book.id
+      );
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, editedId), action: 'UNDO' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as { book: { id: string; title: string } };
+      expect(data.book.title).toBe('book');
+      const row = await harness.prisma.book.findUnique({
+        where: { userId_id: { userId: harness.aliceOwner.userId, id: rawBookId(data.book.id) } },
+      });
+      expect(row?.titleSort).toBe('book');
+    });
+
+    it('UNDO after an EDIT restores the original value and the flagged proposal', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'book');
+      await seedPendingFix(BOOK_ID, { proposals: [ADVISORY_PROPOSAL] });
+
+      const edited = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: editInput(ADVISORY_PROPOSAL, 'A Real Title') },
+      });
+      const editedId = rawBookId(
+        (edited.data?.bookResolvePendingFix as { book: { id: string } }).book.id
+      );
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, editedId), action: 'UNDO' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        book: {
+          title: string;
+          pendingFix: { state: { proposals: unknown[]; appliedFixes: unknown[]; undo: unknown } };
+        };
+      };
+      expect(data.book.title).toBe('book');
+      expect(data.book.pendingFix.state.proposals).toEqual([
+        { field: 'title', kind: 'title-is-filename', from: 'book', to: null },
+      ]);
+      expect(data.book.pendingFix.state.appliedFixes).toEqual([]);
+      expect(data.book.pendingFix.state.undo).toBeNull();
+    });
+  });
+
   describe('UNDO', () => {
     it('UNDO after a dismiss restores the proposals and clears the snapshot', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');

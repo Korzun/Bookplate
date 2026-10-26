@@ -163,6 +163,66 @@ function deriveAuthorSort(
   return { value: `${surname}, ${rest}${suffixPart}`, auto: false, reliable: !flagged };
 }
 
+/** Calibre's title_sort rule: a leading article moves to the end
+ * ("The Hobbit" → "Hobbit, The"); anything else sorts as itself. */
+function deriveTitleSort(title: string): string {
+  const art = LEADING_ARTICLE.exec(title);
+  return art ? `${art[2].trim()}, ${art[1]}` : title;
+}
+
+/**
+ * After `field` is rewritten from `previous` to `next` (the pending-fix EDIT
+ * action, `book/mutation/resolve-pending-fix.ts`), the matching sort field
+ * is usually stale: it was empty, a plain copy of the old value, or the old
+ * value's own derivation — in every case something derived from text that
+ * no longer exists. Returns the issue that brings it back in step with
+ * `next`, using the same derivations and the same auto-eligibility the
+ * upload-time checks use, or `null` when the sort was set independently of
+ * the old value (left alone — it was the user's), when nothing can be
+ * derived, or when it already matches.
+ *
+ * An inverted "Last, First" author is `null` too: `detectMetadataIssues`'s
+ * own `author-inverted` check owns that case, and it runs at upload, not
+ * here.
+ */
+export function followSortField(
+  field: 'title' | 'author',
+  previous: string,
+  next: string,
+  currentSort: string
+): MetadataIssue | null {
+  const sort = currentSort.trim();
+  const was = previous.trim();
+  if (field === 'title') {
+    const stale = sort === '' || sort === was || sort === deriveTitleSort(was);
+    if (!stale) return null;
+    const to = deriveTitleSort(next.trim());
+    if (to === '' || to === sort) return null;
+    return {
+      field: 'titleSort',
+      kind: 'title-sort-missing',
+      from: sort,
+      to,
+      autoEligible: true,
+      changes: { titleSort: to },
+    };
+  }
+  const author = next.trim();
+  if (author === '' || author.includes(',')) return null;
+  const stale = sort === '' || sort === was || sort === deriveAuthorSort(was)?.value;
+  if (!stale) return null;
+  const derived = deriveAuthorSort(author);
+  if (derived === null || derived.value === sort) return null;
+  return {
+    field: 'authorSort',
+    kind: 'author-sort-missing',
+    from: sort,
+    to: derived.value,
+    autoEligible: derived.reliable && !MULTI_AUTHOR.test(author),
+    changes: { authorSort: derived.value },
+  };
+}
+
 function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
@@ -334,9 +394,8 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
   }
 
   // 7. Title sort missing / wrong (leading article).
-  const art = LEADING_ARTICLE.exec(scalar.title);
-  if (art) {
-    const correct = `${art[2].trim()}, ${art[1]}`;
+  if (LEADING_ARTICLE.test(scalar.title)) {
+    const correct = deriveTitleSort(scalar.title);
     const sortStartsWithArticle = LEADING_ARTICLE.test(scalar.titleSort);
     if ((scalar.titleSort === '' || sortStartsWithArticle) && scalar.titleSort !== correct) {
       issues.push({

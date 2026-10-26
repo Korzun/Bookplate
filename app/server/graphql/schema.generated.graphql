@@ -241,6 +241,11 @@ input BookResolvePendingFixInput {
   """
   fixes: [MetadataFixKeyInput!]
   id: ID!
+
+  """
+  The replacement value EDIT writes to the addressed proposal’s field. Required by EDIT (a request error without it); ignored by every other action.
+  """
+  value: String
 }
 
 type BookResolvePendingFixPayload {
@@ -888,6 +893,7 @@ enum PendingFixResolution {
   ACCEPT
   CLEAR
   DISMISS
+  EDIT
   UNDO
 }
 
