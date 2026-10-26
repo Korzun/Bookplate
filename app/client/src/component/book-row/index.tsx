@@ -1,4 +1,7 @@
 import cx from 'classnames';
+import { Fragment, type ReactNode } from 'react';
+
+import { RATING_OPTIONS } from '~/control';
 
 import { Card } from '../card';
 import { useStyle } from './style';
@@ -23,6 +26,8 @@ export interface BookRowProps {
   coverSrc?: string;
   /** 0..1, or `undefined` when there is no progress to show. */
   progressPercentage?: number;
+  /** The book's Overall rating (1..5), or `undefined` when unrated. */
+  overallRating?: 1 | 2 | 3 | 4 | 5;
   onClick?: () => void;
 }
 
@@ -35,11 +40,12 @@ export function BookRow({
   hasCover,
   coverSrc,
   progressPercentage,
+  overallRating,
   onClick,
 }: BookRowProps) {
   const styles = useStyle();
 
-  const meta: string[] = [];
+  const meta: ReactNode[] = [];
   if (showAuthor && author) {
     meta.push(author);
   }
@@ -52,6 +58,15 @@ export function BookRow({
     } else {
       meta.push(`Completed`);
     }
+  }
+  if (overallRating !== undefined) {
+    const { Icon, name } = RATING_OPTIONS[overallRating - 1];
+    meta.push(
+      <span key="rating">
+        <Icon aria-hidden width={14} height={14} className={styles.ratingGlyph} />
+        <span>{name}</span>
+      </span>
+    );
   }
 
   const content = (
@@ -68,7 +83,14 @@ export function BookRow({
       </div>
       <div className={styles.info}>
         <div className={styles.title}>{title}</div>
-        <div className={styles.meta}>{meta.join(' · ')}</div>
+        <div className={styles.meta}>
+          {meta.map((item, i) => (
+            <Fragment key={i}>
+              {i > 0 ? ' · ' : null}
+              {item}
+            </Fragment>
+          ))}
+        </div>
       </div>
     </div>
   );

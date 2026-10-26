@@ -47,6 +47,7 @@ const bookEdge = (cursor: string) => ({
     hasCover: true,
     thumbnailUrl: '/thumb.jpg',
     progress: null,
+    rating: { __typename: 'BookRating' as const, overall: null },
   },
 });
 

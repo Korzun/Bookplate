@@ -50,15 +50,14 @@ import { toLibraryFilter } from './to-library-filter';
  * needs its own `id` for Apollo's normalized cache to key the result
  * (`src/provider/apollo/selection-ids.test.ts` guards this).
  *
- * Measured (`test:cost -w app/server`): breadth 47 (47.0%), complexity 6007
- * (18.2%) of budget — comfortably under the 70% gate on both axes, UNCHANGED
- * from before task 5's colocation. Ruling E's "+1 breadth per fragment
- * spread site" applies when a document moves from an INLINE selection to a
- * named-fragment spread — this document already spread `...BookRowFragment`
- * `/...SeriesRowFragment` before task 5; only the two fragments' JS *source
- * file* moved (into `component/book-row/from-entry.tsx` and
- * `component/series-row/index.tsx`), not their usage in the printed query
- * document the cost walker actually measures, so neither axis moved.
+ * Measured (`test:cost -w app/server`): breadth 50 (50.0%), complexity 6307
+ * (19.1%) of budget — comfortably under the 70% gate on both axes. The step
+ * from the previous 47 (47.0%) / 6007 (18.2%) is `rating { overall }` on
+ * `BookRowFragment` (+3 breadth, +300 complexity), scaled by `entries`' own
+ * ×100. Ruling E's "+1 breadth per fragment spread site" applies when a
+ * document moves from an INLINE selection to a named-fragment spread — this
+ * document already spread `...BookRowFragment`/`...SeriesRowFragment` before
+ * the colocation work, so the spread itself adds nothing.
  */
 export const LibraryEntriesDocument = graphql(`
   query LibraryEntries($libraryId: ID!, $first: Int!, $after: String, $filter: LibraryFilter) {

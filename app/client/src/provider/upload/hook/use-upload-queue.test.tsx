@@ -178,6 +178,7 @@ const seededBookNode = {
   hasCover: false,
   thumbnailUrl: '',
   progress: null,
+  rating: { __typename: 'BookRating' as const, overall: null },
 };
 
 const entriesMock: MockedResponse<LibraryEntriesQuery, LibraryEntriesQueryVariables> = {

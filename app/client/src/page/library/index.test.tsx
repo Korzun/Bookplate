@@ -161,6 +161,7 @@ const bookEdge = (cursor: string, overrides: Partial<BookRowFragmentFragment> = 
         hasCover: true,
         thumbnailUrl: '/thumb.jpg',
         progress: null,
+        rating: { __typename: 'BookRating' as const, overall: null },
         ...overrides,
       },
       BookRowFragment

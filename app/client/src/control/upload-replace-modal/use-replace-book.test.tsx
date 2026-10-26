@@ -58,6 +58,7 @@ const bookRowNode = (id: string) => ({
   hasCover: false,
   thumbnailUrl: '',
   progress: null,
+  rating: { __typename: 'BookRating' as const, overall: null },
 });
 
 /** Seeds the grid's own connection so the invalidation assertions prove the
