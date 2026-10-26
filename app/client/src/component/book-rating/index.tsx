@@ -52,9 +52,13 @@ export const BookRating = ({ rating, bookTitle, readOnly, onRate }: BookRatingPr
   const handler = (field: RatingFieldKey) =>
     readOnly ? undefined : (value: RatingValue | null) => onRate(field, value);
 
+  // The Overall row names itself only while the detail rows are open: there
+  // it lines up with four labelled rows, but collapsed it is the card's only
+  // content and the card title already says "Rating", so the label would just
+  // narrow the picker. The picker's accessible name is unaffected.
   const row = ({ field, label }: (typeof RATING_ROWS)[number]) => (
     <div key={field} className={style.row}>
-      <span className={style.label}>{label}</span>
+      {(field !== 'overall' || detailsOpen) && <span className={style.label}>{label}</span>}
       <RatingPicker
         surface="row"
         label={`${label} rating for ${bookTitle}`}
