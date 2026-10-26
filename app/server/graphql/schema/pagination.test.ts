@@ -1,6 +1,6 @@
 import { GraphQLError } from 'graphql';
 
-import { rejectOversizeIdBatch, rejectOversizePage } from './pagination';
+import { rejectOversizeIdBatch, rejectOversizePage, rejectRatingOutOfRange } from './pagination';
 
 describe('rejectOversizePage', () => {
   it('allows a request exactly at maxSize', () => {
@@ -71,5 +71,12 @@ describe('rejectOversizeIdBatch', () => {
         extensions: { code: 'PAGE_SIZE_EXCEEDED', http: { status: 400 } },
       })
     );
+  });
+});
+
+describe('rejectRatingOutOfRange', () => {
+  it('rejects a non-integer minimum and accepts in-range integers', () => {
+    expect(() => rejectRatingOutOfRange('F', { overall: 2.5 })).toThrow(GraphQLError);
+    expect(() => rejectRatingOutOfRange('F', { overall: 1, ideas: 5 })).not.toThrow();
   });
 });
