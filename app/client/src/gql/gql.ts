@@ -55,7 +55,6 @@ type Documents = {
     "\n  query LibraryTargetResolve($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n    }\n  }\n": typeof types.LibraryTargetResolveDocument,
     "\n  fragment McpConnectionFragment on McpConnection {\n    id\n    clientName\n    clientUri\n    logoUri\n    scopes\n    createdAt\n    lastUsedAt\n  }\n": typeof types.McpConnectionFragmentFragmentDoc,
     "\n  fragment McpConnectionsFragment on Viewer {\n    mcpEnabled\n    mcpUrl\n    mcpConnections {\n      ...McpConnectionFragment\n    }\n  }\n": typeof types.McpConnectionsFragmentFragmentDoc,
-    "\n  query McpStatus {\n    viewer {\n      mcpEnabled\n      mcpUrl\n    }\n  }\n": typeof types.McpStatusDocument,
     "\n  mutation ViewerRevokeMcpConnection($id: ID!) {\n    viewerRevokeMcpConnection(id: $id)\n  }\n": typeof types.ViewerRevokeMcpConnectionDocument,
     "\n  query McpClient($clientId: String!) {\n    mcpClient(clientId: $clientId) {\n      clientId\n      clientName\n      clientUri\n    }\n  }\n": typeof types.McpClientDocument,
     "\n  mutation McpAuthorize($input: McpAuthorizeInput!) {\n    mcpAuthorize(input: $input) {\n      __typename\n      ... on McpAuthorizePayload {\n        redirectUrl\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n": typeof types.McpAuthorizeDocument,
@@ -138,7 +137,6 @@ const documents: Documents = {
     "\n  query LibraryTargetResolve($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n    }\n  }\n": types.LibraryTargetResolveDocument,
     "\n  fragment McpConnectionFragment on McpConnection {\n    id\n    clientName\n    clientUri\n    logoUri\n    scopes\n    createdAt\n    lastUsedAt\n  }\n": types.McpConnectionFragmentFragmentDoc,
     "\n  fragment McpConnectionsFragment on Viewer {\n    mcpEnabled\n    mcpUrl\n    mcpConnections {\n      ...McpConnectionFragment\n    }\n  }\n": types.McpConnectionsFragmentFragmentDoc,
-    "\n  query McpStatus {\n    viewer {\n      mcpEnabled\n      mcpUrl\n    }\n  }\n": types.McpStatusDocument,
     "\n  mutation ViewerRevokeMcpConnection($id: ID!) {\n    viewerRevokeMcpConnection(id: $id)\n  }\n": types.ViewerRevokeMcpConnectionDocument,
     "\n  query McpClient($clientId: String!) {\n    mcpClient(clientId: $clientId) {\n      clientId\n      clientName\n      clientUri\n    }\n  }\n": types.McpClientDocument,
     "\n  mutation McpAuthorize($input: McpAuthorizeInput!) {\n    mcpAuthorize(input: $input) {\n      __typename\n      ... on McpAuthorizePayload {\n        redirectUrl\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n": types.McpAuthorizeDocument,
@@ -358,10 +356,6 @@ export function graphql(source: "\n  fragment McpConnectionFragment on McpConnec
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  fragment McpConnectionsFragment on Viewer {\n    mcpEnabled\n    mcpUrl\n    mcpConnections {\n      ...McpConnectionFragment\n    }\n  }\n"): (typeof documents)["\n  fragment McpConnectionsFragment on Viewer {\n    mcpEnabled\n    mcpUrl\n    mcpConnections {\n      ...McpConnectionFragment\n    }\n  }\n"];
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "\n  query McpStatus {\n    viewer {\n      mcpEnabled\n      mcpUrl\n    }\n  }\n"): (typeof documents)["\n  query McpStatus {\n    viewer {\n      mcpEnabled\n      mcpUrl\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

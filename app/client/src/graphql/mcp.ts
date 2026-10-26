@@ -31,16 +31,6 @@ export const McpConnectionsFragment = graphql(`
   }
 `);
 
-/** The admin's `component/mcp-setup` card: is MCP on, and at what URL. */
-export const McpStatusDocument = graphql(`
-  query McpStatus {
-    viewer {
-      mcpEnabled
-      mcpUrl
-    }
-  }
-`);
-
 export const ViewerRevokeMcpConnectionDocument = graphql(`
   mutation ViewerRevokeMcpConnection($id: ID!) {
     viewerRevokeMcpConnection(id: $id)

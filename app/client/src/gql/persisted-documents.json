@@ -27,7 +27,6 @@
   "sha256:a3f47fbdb2373c83992b20d4738e6755cc895673642bac28f5ee6035489b64ec": "query SeriesNames($libraryId: ID!) { __typename node(id: $libraryId) { __typename id ... on Library { __typename id series { __typename id name } } } }",
   "sha256:ef403349e86f2f538eb80b4af6c1fee7b3b80502410d442387f2b82b254801a3": "query SeriesNextIndex($libraryId: ID!, $name: String!) { __typename node(id: $libraryId) { __typename id ... on Library { __typename id seriesNextIndex(name: $name) } } }",
   "sha256:adfcd6f548db4a86c2e131f8a0bbe531d6a5eec59e12fa72f13626da96fa2e1c": "query LibraryTargetResolve($libraryId: ID!) { __typename node(id: $libraryId) { __typename id } }",
-  "sha256:3973dfa05c0668344296c3cfa54568d56e9652955d27e816faf847dc01ae0e9f": "query McpStatus { __typename viewer { __typename mcpEnabled mcpUrl } }",
   "sha256:bf98e0b53606b1f663b0424957aaa65de0df8613fcbfa5b1e4168980c7d072f7": "mutation ViewerRevokeMcpConnection($id: ID!) { __typename viewerRevokeMcpConnection(id: $id) }",
   "sha256:e94c369d597210b704931dee769b0faee3ac2a27041ab04ef2832136246618bd": "query McpClient($clientId: String!) { __typename mcpClient(clientId: $clientId) { __typename clientId clientName clientUri } }",
   "sha256:dd4daf27f6217b7a1d1ce28d748c73f9d72967a335fcbd724507fecba57ded82": "mutation McpAuthorize($input: McpAuthorizeInput!) { __typename mcpAuthorize(input: $input) { __typename ... on InvalidInputError { __typename message } ... on McpAuthorizePayload { __typename redirectUrl } } }",

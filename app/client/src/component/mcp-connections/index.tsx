@@ -73,7 +73,9 @@ export const McpConnections = ({ viewer: viewerRef }: McpConnectionsProps) => {
 
   // Nothing at all unless the install publishes an MCP server: a reader
   // cannot set `public_url`, so a card telling them to would only confuse.
-  // The admin's `component/mcp-setup` card carries that explanation.
+  // The admin's instructions (set `public_url`, restart) live in the README's
+  // "Connect an AI assistant (MCP)" section, which Home Assistant shows on the
+  // add-on's Documentation tab — where the admin is already configuring it.
   if (viewer === undefined || !viewer.mcpEnabled || viewer.mcpUrl === null) return null;
 
   return (
