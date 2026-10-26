@@ -25,6 +25,7 @@ import {
   createPendingFixLoader,
   createProgressLoader,
   createSeriesProgressLoader,
+  createSeriesRatingLoader,
   createValidationCountsLoader,
   createViewerRowLoader,
 } from './loaders';
@@ -268,6 +269,7 @@ export const createHarness = async (
     loadProgress: createProgressLoader(prisma),
     loadPendingFix: createPendingFixLoader(prisma),
     loadSeriesProgress: createSeriesProgressLoader(prisma),
+    loadSeriesRating: createSeriesRatingLoader(prisma),
     loadValidationCounts: createValidationCountsLoader(prisma),
     loadBookByDocument: createBookByDocumentLoader(prisma),
     loadDeviceEditionCount: createDeviceEditionCountLoader(prisma),

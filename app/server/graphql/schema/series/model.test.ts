@@ -209,6 +209,74 @@ describe('Series', () => {
   });
 });
 
+describe('Series.overallRating', () => {
+  const QUERY = '{ viewer { library { seriesByName(name: "The Expanse") { overallRating } } } }';
+
+  const readRating = async (): Promise<number | null> => {
+    const result = await harness.execute(QUERY, { viewer: harness.aliceViewer });
+    expect(result.errors).toBeUndefined();
+    return (
+      (
+        result.data as {
+          viewer: { library: { seriesByName: { overallRating: number | null } | null } };
+        }
+      ).viewer.library.seriesByName?.overallRating ?? null
+    );
+  };
+
+  const rate = (id: string, ratingOverall: number | null) =>
+    harness.prisma.book.update({
+      where: { userId_id: { userId: harness.aliceOwner.userId, id } },
+      data: { ratingOverall },
+    });
+
+  // The two "Expanse" books seeded by the outer `beforeEach` are
+  // `'b'.repeat(32)` (Book 1) and `'c'.repeat(32)` (Book 2), both unrated.
+  it('is null while no member book has an Overall rating', async () => {
+    expect(await readRating()).toBeNull();
+  });
+
+  it('is the rated member’s Overall when only one member is rated — unrated members do not count', async () => {
+    await rate('b'.repeat(32), 3);
+    expect(await readRating()).toBe(3);
+  });
+
+  it('is the mean of the rated members, rounded DOWN to a step', async () => {
+    await rate('b'.repeat(32), 4);
+    await rate('c'.repeat(32), 5);
+    // (4 + 5) / 2 = 4.5 -> 4: one Great and one Love read as Great. A series
+    // only earns the higher word when every member reaches it.
+    expect(await readRating()).toBe(4);
+  });
+
+  it('ignores an unrated member when averaging, rather than counting it as 0', async () => {
+    await rate('b'.repeat(32), 5);
+    await rate('c'.repeat(32), null);
+    expect(await readRating()).toBe(5);
+  });
+
+  it('is null for a series with no member books', async () => {
+    await harness.prisma.series.create({
+      data: {
+        id: 'series-empty',
+        userId: harness.aliceOwner.userId,
+        name: 'Empty Series',
+        sortKey: 'empty series',
+        bookCount: 0,
+      },
+    });
+    const result = await harness.execute(
+      '{ viewer { library { seriesByName(name: "Empty Series") { overallRating } } } }',
+      { viewer: harness.aliceViewer }
+    );
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { seriesByName: { overallRating: number | null } } } })
+        .viewer.library.seriesByName.overallRating
+    ).toBeNull();
+  });
+});
+
 describe('Series.progressPercentage', () => {
   const QUERY =
     '{ viewer { library { seriesByName(name: "The Expanse") { progressPercentage } } } }';

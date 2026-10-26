@@ -60,6 +60,30 @@ export const model = builder.prismaNode('Series', {
       resolve: (series, _args, context) => context.loadSeriesProgress(series.userId, series.id),
     }),
     /**
+     * The series' Overall rating as the library grid shows it: the mean of
+     * the RATED member books' `Book.rating.overall`, rounded DOWN to a 1..5
+     * step, `null` while no member is rated. Unrated members are left
+     * out of the average, not counted as 0 — the opposite of
+     * `progressPercentage`'s rule, for the reason `series-rating.ts` gives.
+     *
+     * Named `overallRating`, not `rating`: `SeriesRowFragment` is spread
+     * beside `BookRowFragment` in `LibraryEntries`' union selection, where
+     * `Book.rating` is an OBJECT (`BookRating`) — the same `SameResponseShape`
+     * collision `progressPercentage`'s doc comment above describes.
+     *
+     * Resolved through `context.loadSeriesRating` (`loaders/series-rating.ts`),
+     * a request-scoped batching loader, for the same N+1 reason as
+     * `progressPercentage`.
+     */
+    overallRating: t.field({
+      type: 'Int',
+      nullable: true,
+      description:
+        'The mean Overall rating of the rated member books, rounded down to a 1..5 step; ' +
+        'null while no member is rated. Unrated members do not count.',
+      resolve: (series, _args, context) => context.loadSeriesRating(series.userId, series.id),
+    }),
+    /**
      * A connection, not the plain list this started as — see the cleanup
      * spec, §"5. Connections for growable lists". Backward pagination
      * (`last`/`before`) genuinely works here, as it does on
