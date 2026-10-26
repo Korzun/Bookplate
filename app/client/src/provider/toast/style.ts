@@ -3,6 +3,18 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 export const useStyle = createUseStyles((theme: Theme) => ({
   container: {
     position: 'fixed' as const,
+    // The container is a popover (see `provider.tsx`), and the user-agent
+    // stylesheet for `[popover]` centres it with `inset: 0; margin: auto` and
+    // gives it a border, padding and a background. Undo all of that so it
+    // stays the bare corner-anchored flex column it always was.
+    inset: 'auto',
+    margin: 0,
+    border: 0,
+    padding: 0,
+    background: 'transparent',
+    overflow: 'visible',
+    width: 'auto',
+    height: 'auto',
     bottom: theme.space.xxxxl,
     right: theme.space.xxxxl,
     zIndex: theme.zIndex.toast,
