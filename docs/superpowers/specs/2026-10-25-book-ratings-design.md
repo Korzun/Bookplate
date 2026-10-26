@@ -438,9 +438,10 @@ buttons, in `control/segmented-control`'s visual language.
   (`bg.input`, hairline border, `shadow.cardStack`), and there is no lens
   when the value is null. Each segment stacks a 20px icon over the value
   name (`fontSize.xs`); icons and names are `text.muted`, the checked one
-  `brand.default`, hover `text.secondary`. The names are hidden by CSS at
-  phone width, where five named segments do not fit; the group always
-  carries a `title` with the checked name.
+  `brand.default`, hover `text.secondary`. The names show at every width:
+  they are short, the Overall row gives the picker the full card width on a
+  phone, and a first-time reader needs the words, not just the hands. The
+  group always carries a `title` with the checked name.
 - `surface?: 'track' | 'row'`: `track` (default) paints the rail in
   `bg.track`; `row` paints no rail, for a picker sitting in a shaded input
   row whose grey is then the track (below). The rating picker has its own

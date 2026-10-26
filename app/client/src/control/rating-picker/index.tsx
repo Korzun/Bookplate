@@ -36,7 +36,7 @@ type RatingPickerProps = {
   onChange?: (value: RatingValue | null) => void;
   /** The group's accessible name, e.g. the rating field it edits. */
   label: string;
-  /** Render each value's name under its icon (hidden at phone width by CSS). */
+  /** Render each value's name under its icon, at every width. */
   showNames?: boolean;
   /**
    * What the picker sits on. `track` (default) paints its own `bg.track`
