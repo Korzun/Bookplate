@@ -1,7 +1,7 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
@@ -138,5 +138,38 @@ describe('NavLayout — the global library picker', () => {
     renderLayout({ isAdmin: true });
 
     expect(await screen.findByText('library page')).toBeInTheDocument();
+  });
+});
+
+/**
+ * `navigator.standalone` is the iOS signal `lib/is-standalone` reads (the
+ * display-mode media query is unreliable there, and jsdom's `matchMedia` stub
+ * in `setup.ts` never matches anyway). It is read at render time, so setting
+ * it before `renderLayout` is enough; the `afterEach` puts it back so the
+ * suite above keeps running as a browser tab.
+ */
+const setStandalone = (standalone: boolean) =>
+  Object.defineProperty(navigator, 'standalone', {
+    value: standalone,
+    writable: true,
+    configurable: true,
+  });
+
+afterEach(() => setStandalone(false));
+
+describe('NavLayout — pull to refresh', () => {
+  it('mounts the gesture when running as an installed app, where the browser has none', () => {
+    setStandalone(true);
+    renderLayout();
+
+    expect(screen.getByTestId('pull-to-refresh')).toBeInTheDocument();
+  });
+
+  it('leaves it out in a browser tab, which has its own', () => {
+    renderLayout();
+
+    // Positive control: the layout DID render, so this cannot pass vacuously.
+    expect(screen.getByTestId('nav')).toBeInTheDocument();
+    expect(screen.queryByTestId('pull-to-refresh')).not.toBeInTheDocument();
   });
 });
