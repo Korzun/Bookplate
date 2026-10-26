@@ -384,14 +384,17 @@ is testable without GraphQL.
 
 ### Client
 
-**Icons: emoji through a filter.** `~/icon/emoji.tsx` exports `EmojiIcon`,
-which sets one emoji as SVG `<text>` in the platform's colour emoji font
+**Icons: emoji as a mask.** `~/icon/emoji.tsx` exports `EmojiIcon`, which
+sets one emoji as SVG `<text>` in the platform's colour emoji font
 (`Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji`) inside the 24-unit
-view box, font size 18, and runs it through an SVG filter — `feFlood` of
-`currentColor` composited `in` the glyph's alpha — so the glyph is a flat
-silhouette in whatever text colour the segment has: muted when idle, brand
-when checked, in both themes. The filter id comes from `useId`. Five one-line
-wrappers in `~/icon` give the picker named components taking `IconProps`:
+view box, font size 18, as an alpha `<mask>` (`mask-type: alpha`) over a
+`currentColor` rectangle, so the glyph is a flat silhouette in whatever text
+colour the segment has: muted when idle, brand when checked, in both themes.
+Not an SVG filter: `feFlood flood-color="currentColor"` paints right once but
+WebKit does not repaint the filter when the inherited colour changes, so
+hover and selection never recoloured the icon; a mask over ordinary paint
+repaints. The mask id comes from `useId`. Five one-line wrappers in `~/icon`
+give the picker named components taking `IconProps`:
 
 | File | Glyph |
 |------|-------|
