@@ -8,11 +8,8 @@ import {
   bookSummarySchema,
   describeBook,
   describeRating,
-  RATING_FIELDS_GQL,
-  ratingSchema,
   summarizeBook,
   type BookSummaryGql,
-  type RatingGql,
 } from './shared';
 
 const DOCUMENT = `
@@ -23,7 +20,7 @@ const DOCUMENT = `
           ratedCount
           fields { field count mean distribution }
           favourites(minOverall: $minOverall, first: $first) {
-            ${BOOK_SUMMARY_FIELDS} ${RATING_FIELDS_GQL}
+            ${BOOK_SUMMARY_FIELDS}
           }
         }
       }
@@ -39,7 +36,7 @@ type Result = {
       ratingProfile: {
         ratedCount: number;
         fields: FieldGql[];
-        favourites: Array<BookSummaryGql & { rating: RatingGql }>;
+        favourites: BookSummaryGql[];
       };
     } | null;
   };
@@ -83,7 +80,7 @@ export function registerGetTasteProfile(server: McpServer, deps: ToolDeps): void
             distribution: z.array(z.number()).describe('Counts of ratings 1..5'),
           })
         ),
-        favourites: z.array(bookSummarySchema.extend({ rating: ratingSchema })),
+        favourites: z.array(bookSummarySchema),
       },
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
@@ -98,10 +95,7 @@ export function registerGetTasteProfile(server: McpServer, deps: ToolDeps): void
           fields: [],
           favourites: [],
         };
-        const favourites = profile.favourites.map((b) => ({
-          ...summarizeBook(b),
-          rating: b.rating,
-        }));
+        const favourites = profile.favourites.map(summarizeBook);
         // The text rounds the mean to one decimal; structuredContent keeps the exact value.
         const lines = profile.fields.map(
           (f) =>

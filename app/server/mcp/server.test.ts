@@ -247,6 +247,51 @@ describe('read tools', () => {
     expect(byTitle).toEqual({ 'Alpha Book': 5, 'Beta Book': 4 });
   });
 
+  it('search_library filters by rating minimums, ANDed', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const titles = async (args: Record<string, unknown>) =>
+      (await search(mcp!, args)).entries.map((e) => e.title).sort();
+    expect(await titles({ minOverall: 5 })).toEqual(['Alpha Book']);
+    expect(await titles({ minOverall: 4 })).toEqual(['Alpha Book', 'Beta Book']);
+    expect(await titles({ minOverall: 4, minCharacters: 5 })).toEqual(['Alpha Book']);
+  });
+
+  it('search_library unrated lists books with no overall rating', async () => {
+    await harness.prisma.book.update({
+      where: { userId_id: { userId: harness.aliceOwner.userId, id: BETA_ID } },
+      data: { ratingOverall: null },
+    });
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const out = await search(mcp, { unrated: true });
+    expect(out.entries.map((e) => e.title)).toEqual(['Beta Book']);
+  });
+
+  it('search_library rejects minIdeas 0, 6 and 2.5 before reaching GraphQL', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    for (const minIdeas of [0, 6, 2.5]) {
+      const result = await mcp.call('search_library', { minIdeas });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('minIdeas');
+    }
+  });
+
+  it('search_library summaries carry the full rating', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const out = await search(mcp, { query: 'Alpha' });
+    expect(out.entries[0]).toMatchObject({
+      overallRating: 5,
+      rating: { overall: 5, story: null, characters: 5, writing: 3, ideas: null },
+    });
+  });
+
+  it('search_library describes the rating semantics', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const { tools } = await mcp.client.listTools();
+    const description = tools.find((t) => t.name === 'search_library')!.description;
+    expect(description).toContain('unrated');
+    expect(description).toContain('listed individually alongside their series');
+  });
+
   it('get_taste_profile reports counts, means and the favourites in ratedAt order', async () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
     const result = await mcp.call('get_taste_profile', {});
