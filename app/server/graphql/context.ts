@@ -14,6 +14,7 @@ import {
   createPendingFixLoader,
   createProgressLoader,
   createSeriesProgressLoader,
+  createSeriesRatingLoader,
   createValidationCountsLoader,
   createViewerRowLoader,
   type BookByDocumentLoader,
@@ -23,6 +24,7 @@ import {
   type PendingFixLoader,
   type ProgressLoader,
   type SeriesProgressLoader,
+  type SeriesRatingLoader,
   type ValidationCountsLoader,
   type ViewerRowLoader,
 } from './loaders';
@@ -96,6 +98,7 @@ export type Context = {
   loadProgress: ProgressLoader;
   loadPendingFix: PendingFixLoader;
   loadSeriesProgress: SeriesProgressLoader;
+  loadSeriesRating: SeriesRatingLoader;
   loadValidationCounts: ValidationCountsLoader;
   loadBookByDocument: BookByDocumentLoader;
   loadDeviceEditionCount: DeviceEditionCountLoader;
@@ -164,6 +167,7 @@ export const createContextForViewer = (deps: ContextDeps, viewer: Viewer | null)
   loadProgress: createProgressLoader(deps.prisma),
   loadPendingFix: createPendingFixLoader(deps.prisma),
   loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
+  loadSeriesRating: createSeriesRatingLoader(deps.prisma),
   loadValidationCounts: createValidationCountsLoader(deps.prisma),
   loadBookByDocument: createBookByDocumentLoader(deps.prisma),
   loadDeviceEditionCount: createDeviceEditionCountLoader(deps.prisma),

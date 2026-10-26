@@ -1031,6 +1031,11 @@ type Series implements Node {
   books(after: String, before: String, first: Int, last: Int): SeriesBooksConnection!
   id: ID!
   name: String!
+
+  """
+  The mean Overall rating of the rated member books, rounded down to a 1..5 step; null while no member is rated. Unrated members do not count.
+  """
+  overallRating: Int
   progressPercentage: Float
   publisher: String!
   subjects: [String!]!

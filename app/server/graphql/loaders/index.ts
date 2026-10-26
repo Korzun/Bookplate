@@ -23,6 +23,7 @@ export { createOwnerLoader, type OwnerLoader } from './owner';
 export { createPendingFixLoader, type PendingFixLoader } from './pending-fix';
 export { createProgressLoader, type ProgressLoader } from './progress';
 export { createSeriesProgressLoader, type SeriesProgressLoader } from './series-progress';
+export { createSeriesRatingLoader, type SeriesRatingLoader } from './series-rating';
 export {
   createValidationCountsLoader,
   type SeverityCount,

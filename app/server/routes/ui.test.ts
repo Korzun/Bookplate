@@ -98,6 +98,7 @@ import {
   createPendingFixLoader,
   createProgressLoader,
   createSeriesProgressLoader,
+  createSeriesRatingLoader,
   createValidationCountsLoader,
   createViewerRowLoader,
 } from '../graphql/loaders';
@@ -398,6 +399,7 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     loadProgress: createProgressLoader(prisma),
     loadPendingFix: createPendingFixLoader(prisma),
     loadSeriesProgress: createSeriesProgressLoader(prisma),
+    loadSeriesRating: createSeriesRatingLoader(prisma),
     loadValidationCounts: createValidationCountsLoader(prisma),
     loadBookByDocument: createBookByDocumentLoader(prisma),
     loadDeviceEditionCount: createDeviceEditionCountLoader(prisma),
