@@ -5,6 +5,7 @@ import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import { unzipSync, strToU8 } from 'fflate';
 
 import { packEpub } from './epub-zip';
+import { isOpfListElement, unprefixOpf } from './opf-namespace';
 
 export interface EpubChanges {
   title?: string;
@@ -64,10 +65,14 @@ function loadOpf(filePath: string): LoadedOpf {
     // we prepend exactly one below. Keeping it produced a duplicate declaration
     // that epubcheck rejects (RSC-005 "declaration must be at the start").
     ignoreDeclaration: true,
-    isArray: (name) =>
-      ['item', 'meta', 'dc:title', 'dc:creator', 'dc:identifier', 'dc:subject'].includes(name),
+    isArray: (name) => isOpfListElement(name),
   });
-  const opf = parser.parse(Buffer.from(opfData).toString('utf8')) as Record<string, unknown>;
+  // Prefixed packages (`<opf:package>`) are normalised to the default-namespace
+  // shape before anything below looks an element up by name — see
+  // `opf-namespace.ts` for the bug that made this necessary.
+  const opf = unprefixOpf(
+    parser.parse(Buffer.from(opfData).toString('utf8')) as Record<string, unknown>
+  );
   const pkg = (opf?.package ?? opf) as Record<string, unknown>;
   if (!pkg.metadata) pkg.metadata = {};
   const metadata = pkg.metadata as Record<string, unknown>;

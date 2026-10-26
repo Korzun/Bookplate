@@ -235,6 +235,56 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true });
 });
 
+// A package whose OPF elements carry a namespace PREFIX instead of a default
+// namespace — `<opf:package>`, `<opf:metadata>`, `<opf:item>` — as some
+// Calibre exports do. Modelled on a real library file (2026-10-26): note the
+// `<meta>` elements inside it are UNprefixed and declare the namespace
+// themselves, so a document can mix both spellings.
+function makePrefixedEpub(opts: { title: string; author: string; titleSort?: string }): Buffer {
+  const zip = new AdmZip();
+  zip.addFile(
+    'META-INF/container.xml',
+    Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`)
+  );
+  const titleSortMeta = opts.titleSort
+    ? `<meta xmlns="http://www.idpf.org/2007/opf" name="calibre:title_sort" content="${opts.titleSort}"/>`
+    : '';
+  zip.addFile(
+    'content.opf',
+    Buffer.from(`<?xml version="1.0"  encoding="UTF-8"?>
+<opf:package xmlns:opf="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0" unique-identifier="dcid">
+  <opf:metadata>
+    <dc:title>${opts.title}</dc:title>
+    <dc:creator opf:role="aut" opf:file-as="Wolfe, Gene">${opts.author}</dc:creator>
+    <dc:identifier id="dcid" opf:scheme="UUID">urn:uuid:3bb29391-0400-4c37-ab78-3aa12be79562</dc:identifier>
+    <dc:language>en</dc:language>
+    <meta property="dcterms:modified">2026-07-07T11:00:00Z</meta>
+    ${titleSortMeta}
+    <meta xmlns="http://www.idpf.org/2007/opf" name="cover" content="cover"/>
+  </opf:metadata>
+  <opf:manifest>
+    <opf:item id="cover" href="OEBPS/cover.jpg" media-type="image/jpeg"/>
+    <opf:item id="part1" href="part1.xhtml" media-type="application/xhtml+xml"/>
+    <opf:item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+  </opf:manifest>
+  <opf:spine toc="ncx">
+    <opf:itemref idref="part1"/>
+  </opf:spine>
+</opf:package>`)
+  );
+  zip.addFile('OEBPS/cover.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  zip.addFile(
+    'part1.xhtml',
+    Buffer.from('<html xmlns="http://www.w3.org/1999/xhtml"><body><p>x</p></body></html>')
+  );
+  return zip.toBuffer();
+}
+
 describe('partialMD5', () => {
   it('returns a 32-char hex string', () => {
     const filePath = path.join(tmpDir, 'test.epub');
@@ -282,6 +332,24 @@ describe('parseEpub', () => {
     const meta = parseEpub(filePath);
     expect(meta.title).toBe('My Title');
     expect(meta.author).toBe('Jane Doe');
+  });
+
+  it('reads a package whose OPF elements carry a namespace prefix', () => {
+    const filePath = path.join(tmpDir, 'prefixed.epub');
+    fs.writeFileSync(
+      filePath,
+      makePrefixedEpub({
+        title: 'The Shadow of the Torturer',
+        author: 'Wolfe, Gene',
+        titleSort: 'Shadow of the Torturer, The',
+      })
+    );
+    const meta = parseEpub(filePath);
+    expect(meta.title).toBe('The Shadow of the Torturer');
+    expect(meta.author).toBe('Wolfe, Gene');
+    expect(meta.titleSort).toBe('Shadow of the Torturer, The');
+    // The cover is found through the prefixed manifest too.
+    expect(meta.coverMime).toBe('image/jpeg');
   });
 
   it('parses description', () => {
