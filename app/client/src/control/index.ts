@@ -14,7 +14,7 @@ export { PageFooterActions } from './page-footer-actions';
 export { PasswordResultModal } from './password-result-modal';
 export { Popover } from './popover';
 export { ProportionalChapterSlider } from './proportional-chapter-slider';
-export { RatingPicker } from './rating-picker';
+export { RATING_OPTIONS, RatingPicker } from './rating-picker';
 export { ResetPasswordButton } from './reset-password-button';
 export { SetProgressModal } from './set-progress-modal';
 export { Select } from './select';

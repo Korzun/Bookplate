@@ -99,6 +99,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     background: theme.color.chip.status.bg,
     borderColor: theme.color.chip.status.border,
   },
+  chipRating: {
+    color: theme.color.chip.rating.text,
+    background: theme.color.chip.rating.bg,
+    borderColor: theme.color.chip.rating.border,
+  },
   chipAuthor: {
     color: theme.color.chip.author.text,
     background: theme.color.chip.author.bg,
@@ -179,6 +184,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   dropdownItemTypeStatus: {
     color: theme.color.chip.status.text,
     background: theme.color.chip.status.bg,
+  },
+  dropdownItemTypeRating: {
+    color: theme.color.chip.rating.text,
+    background: theme.color.chip.rating.bg,
   },
   dropdownItemTypeAuthor: {
     color: theme.color.chip.author.text,

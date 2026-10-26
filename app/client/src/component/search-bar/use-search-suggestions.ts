@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { useEffect, useState } from 'react';
 
+import { RATING_OPTIONS } from '~/control';
 import type {
   SearchSuggestionsFilter,
   SearchSuggestionsQuery,
@@ -11,7 +12,7 @@ import type { BookListFilter } from '~/lib/book-types';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 export type Suggestion = {
-  type: 'entryType' | 'status' | 'author' | 'series' | 'book' | 'subject';
+  type: 'entryType' | 'status' | 'rating' | 'author' | 'series' | 'book' | 'subject';
   label: string;
   value: string;
   additive: boolean;
@@ -36,9 +37,39 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
   { label: 'Completed', value: 'completed' },
 ];
 
+/**
+ * Rating quick picks, strongest first. Values are `minOverall` thresholds
+ * (`'5'`, `'4'`, `'3'`) or the literal `'unrated'`; thresholds 1 and 2 are
+ * reachable only through the URL (see `ratingFilterLabel`).
+ */
+export const RATING_QUICK_PICKS: ReadonlyArray<{
+  label: string;
+  value: '5' | '4' | '3' | 'unrated';
+}> = [
+  { label: 'Love', value: '5' },
+  { label: 'Great or better', value: '4' },
+  { label: 'Nice or better', value: '3' },
+  { label: 'Unrated', value: 'unrated' },
+];
+
+/**
+ * The chip text for the active rating filter, or `null` when none is set.
+ * Names come from `RATING_OPTIONS` so there is no second name table; 5 reads
+ * "Love" (nothing is better), the rest "<name> or better".
+ */
+export function ratingFilterLabel(
+  filter: Pick<BookListFilter, 'minOverall' | 'unrated'>
+): string | null {
+  if (filter.unrated) return 'Unrated';
+  if (!filter.minOverall) return null;
+  const name = RATING_OPTIONS[filter.minOverall - 1].name;
+  return filter.minOverall === 5 ? name : `${name} or better`;
+}
+
 const GROUP_LABEL: Record<Suggestion['type'], string> = {
   entryType: 'Type',
   status: 'Status',
+  rating: 'Rating',
   author: 'Author',
   series: 'Series',
   book: 'Book',
@@ -100,7 +131,8 @@ export function useSearchSuggestions(
   const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
-  const { status, author, seriesName, subjects, entryType } = filter;
+  const { status, author, seriesName, subjects, entryType, minOverall, unrated } = filter;
+  const ratingActive = !!minOverall || !!unrated;
 
   useEffect(() => {
     const query = inputValue.trim();
@@ -141,8 +173,8 @@ export function useSearchSuggestions(
 
   const query = inputValue.trim();
 
-  // When input is empty, return static quick-pick groups (Type and/or
-  // Status) so the dropdown shows useful options on focus. Both are omitted
+  // When input is empty, return static quick-pick groups (Type, Status
+  // and/or Rating) so the dropdown shows useful options on focus. Both are omitted
   // when the corresponding filter is already active.
   if (!query) {
     const emptyGroups: SuggestionGroup[] = [];
@@ -166,6 +198,20 @@ export function useSearchSuggestions(
         label: GROUP_LABEL.status,
         items: STATUS_OPTIONS.map((opt) => ({
           type: 'status' as const,
+          label: opt.label,
+          value: opt.value,
+          additive: false,
+          matchStart: 0,
+          matchLength: 0,
+        })),
+      });
+    }
+    if (!ratingActive) {
+      emptyGroups.push({
+        type: 'rating',
+        label: GROUP_LABEL.rating,
+        items: RATING_QUICK_PICKS.map((opt) => ({
+          type: 'rating' as const,
           label: opt.label,
           value: opt.value,
           additive: false,
@@ -202,6 +248,23 @@ export function useSearchSuggestions(
         }
       }
       if (items.length > 0) result.push({ type: 'status', label: GROUP_LABEL.status, items });
+    }
+
+    if (!ratingActive) {
+      const items: Suggestion[] = [];
+      for (const opt of RATING_QUICK_PICKS) {
+        const info = matchInfo(opt.label, debouncedQuery);
+        if (info) {
+          items.push({
+            type: 'rating',
+            label: opt.label,
+            value: opt.value,
+            additive: false,
+            ...info,
+          });
+        }
+      }
+      if (items.length > 0) result.push({ type: 'rating', label: GROUP_LABEL.rating, items });
     }
 
     const serverGroups: ServerGroup[] = library.searchSuggestions;

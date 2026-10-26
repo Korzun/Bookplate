@@ -125,6 +125,7 @@ export interface Theme {
       book: { text: string; bg: string; border: string };
       entryType: { text: string; bg: string; border: string };
       user: { text: string; bg: string; border: string };
+      rating: { text: string; bg: string; border: string };
     };
   };
   space: {
@@ -297,6 +298,7 @@ function buildTheme(mode: ThemeMode): Theme {
         border: 'rgba(192, 65, 94, 0.22)',
       },
       user: { text: '#a23a95', bg: 'rgba(162,58,149,0.08)', border: 'rgba(162,58,149,0.22)' },
+      rating: { text: '#b5451b', bg: 'rgba(181,69,27,0.08)', border: 'rgba(181,69,27,0.22)' },
     },
   };
 
@@ -382,6 +384,7 @@ function buildTheme(mode: ThemeMode): Theme {
         border: 'rgba(192, 65, 94, 0.32)',
       },
       user: { text: '#E7A6DA', bg: 'rgba(162,58,149,0.16)', border: 'rgba(162,58,149,0.30)' },
+      rating: { text: '#F2A07B', bg: 'rgba(242,160,123,0.16)', border: 'rgba(242,160,123,0.30)' },
     },
   };
 
