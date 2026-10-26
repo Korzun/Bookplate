@@ -33,14 +33,14 @@ below).
 
 ## The scale (requester's)
 
-| Value | Name | Icon (hand gesture, outline) |
-|-------|------|------------------------------|
+| Value | Name | Icon (hand-gesture emoji, drawn flat in the text colour) |
+|-------|------|----------------------------------------------------------|
 | unrated | — | none; the "0" of the requester's six-point framing |
-| 1 | Bad | thumbs down |
-| 2 | Okay | thumbs up |
-| 3 | Nice | OK sign |
-| 4 | Great | clapping hands |
-| 5 | Love | ASL "I love you" (index, little finger and thumb extended) |
+| 1 | Bad | 👎 thumbs down (U+1F44E) |
+| 2 | Okay | 👌 OK hand (U+1F44C) |
+| 3 | Nice | ✌️ victory hand (U+270C U+FE0F) |
+| 4 | Great | 👏 clapping hands (U+1F44F) |
+| 5 | Love | 🤟 love-you gesture, ASL "I love you" (U+1F91F) |
 
 Values are integers only. "Unrated" is stored and transported as null, never
 as 0; 0 is accepted on the MCP input as a synonym for "clear" (below) because
@@ -384,29 +384,32 @@ is testable without GraphQL.
 
 ### Client
 
-**Icons: five new files in `~/icon`**, each following `icon/props.ts`;
-the OK sign uses the stroke defaults, the other four the filled defaults:
+**Icons: emoji through a filter.** `~/icon/emoji.tsx` exports `EmojiIcon`,
+which sets one emoji as SVG `<text>` in the platform's colour emoji font
+(`Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji`) inside the 24-unit
+view box, font size 18, and runs it through an SVG filter — `feFlood` of
+`currentColor` composited `in` the glyph's alpha — so the glyph is a flat
+silhouette in whatever text colour the segment has: muted when idle, brand
+when checked, in both themes. The filter id comes from `useId`. Five one-line
+wrappers in `~/icon` give the picker named components taking `IconProps`:
 
-| File | Source |
-|------|--------|
-| `thumb-down.tsx` | Drawn by Simon Korzun in Sketch (20-unit art board scaled to 24): filled outline of a fist, four folded fingers facing left, thumb down |
-| `thumb-up.tsx` | The thumb-down rotated 180° (Tabler's own thumb-up/thumb-down relationship) |
-| `hand-ok.tsx` | Hugeicons `ok-finger` (`@hugeicons/core-free-icons` 4.3.5, MIT) at stroke 2, its open wrist closed with a palm heel, reworked in Sketch so the index finger's inner edge runs unbroken into the thumb's root |
-| `hands-clap.tsx` | Two copies of Simon Korzun's palm-forward hand at 85%, each 30° off vertical and mirrored about the other, the back hand 6 units left and 2.5 up; an SVG mask (per-instance id from `useId`) grows the front silhouette by 0.9 units and cuts the back hand with it |
-| `hand-love-you.tsx` | Drawn by Simon Korzun in Sketch: ASL "I love you", index and little finger up, middle and ring folded, thumb out to the right (the source's horizontal flip is kept) |
+| File | Glyph |
+|------|-------|
+| `thumb-down.tsx` | 👎 `ThumbDownIcon` |
+| `hand-ok.tsx` | 👌 `HandOkIcon` |
+| `hand-peace.tsx` | ✌️ `HandPeaceIcon` |
+| `hands-clap.tsx` | 👏 `HandsClapIcon` |
+| `hand-love-you.tsx` | 🤟 `HandLoveYouIcon` |
 
-The four filled icons are Sketch outlines baked to paths: a 1.8-unit outline
-with 0.9-unit finger lines, nonzero fill with the inner contour wound the
-other way (the clap's hands are at 85%, so 1.53 and 0.77). The OK sign stays
-a stroke-2 drawing. Ink boxes are 13.8 by 18.6 for the thumbs, 17 by 21 for
-the OK sign, 20.6 by 18.6 for the clap and 18.6 by 18 for "I love you", all
-centred on (12, 12) by rasterised measurement. Four earlier sets were
-rejected: Tabler thumbs plus hand-drawn OK and clap (ring and clap illegible,
-thumbs off-centre), five Hugeicons icons (mitten thumbs with cuffs beside
-fingered hands), a hand-drawn Tabler-construction family (thumbs twice the
-horns' thumb, no thumbs on the clap, a bare circle for the OK ring) and its
-five rounds of stroke-2 revisions. Each file carries a source comment line.
-Every icon must read correctly at 20px, the size the segments use.
+The silhouettes keep the emoji's holes (the OK ring, the gap between the
+victory fingers) and anti-aliased edges; what they drop is the shading and
+outline detail, which did not survive 20px anyway. Font size 18 fills the box
+the way the 24-unit stroke icons did (about 20 units), measured in WebKit and
+Chromium. The platform's own emoji means the glyphs differ between macOS,
+Windows and Android, which is accepted. Five hand-drawn and library outline
+sets were tried and rejected before this: Tabler thumbs with hand-drawn OK and
+clap, five Hugeicons icons, a Tabler-construction family and its five rounds
+of revisions, and Sketch outlines by the requester with a mask-composed clap.
 
 **Control: `~/control/rating-picker`.** A segmented control of five icon
 buttons, in `control/segmented-control`'s visual language.

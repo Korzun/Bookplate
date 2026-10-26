@@ -1,53 +1,5 @@
-import { useId } from 'react';
+import { EmojiIcon } from './emoji';
+import { IconProps } from './props';
 
-import { IconProps, defaultFilledIconProps } from './props';
-
-// Two copies of Simon Korzun's "great" hand (Sketch, 20-unit art board scaled to 24, then to 85%), each turned 30° off
-// vertical and mirrored about the other, the back hand 6 units left and 2.5 up. A mask grows the front hand's silhouette by
-// 0.9 units so the back hand is cut with the same gap as the outline weight. Filled outline, 1.53-unit outline and
-// 0.77-unit finger lines, ink box centred on (12, 12).
-const FRONT_OUTLINE =
-  'M19.92 7.29c.07 .03 .14 .06 .21 .1c.64 .37 .99 1.06 .96 1.75c.07 .03 .14 .06 .21 .1c.92 .53 1.23 1.7 .7 2.62l-4.4 7.61c-.99 1.71 -3.17 2.29 -4.88 1.31l-3.17 -1.83c-1.19 -.68 -1.88 -1.99 -1.78 -3.35l.34 -4.71c.03 -.38 .14 -.76 .33 -1.09c.85 -1.47 2.93 -1.09 3.39 .33l2.3 -3.99c.53 -.92 1.7 -1.23 2.62 -.7c.07 .04 .14 .08 .2 .13c.58 -.37 1.35 -.42 1.99 -.05c.64 .37 .99 1.06 .96 1.75';
-
-export const HandsClapIcon = (props: IconProps) => {
-  const {
-    'aria-hidden': ariaHidden,
-    'aria-label': ariaLabel,
-    className,
-    fill,
-    height,
-    role,
-    width,
-  } = { ...defaultFilledIconProps, ...props };
-  const maskId = useId();
-
-  return (
-    <svg
-      aria-hidden={ariaHidden}
-      aria-label={ariaLabel}
-      className={className}
-      fill={fill}
-      height={height}
-      role={role}
-      viewBox="0 0 24 24"
-      width={width}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-        <rect width="24" height="24" fill="white" />
-        <path
-          d={FRONT_OUTLINE}
-          fill="black"
-          stroke="black"
-          strokeWidth="1.8"
-          strokeLinejoin="round"
-        />
-      </mask>
-      <path
-        d="M4.08 4.79c-.07 .03 -.14 .06 -.21 .1c-.64 .37 -.99 1.06 -.96 1.75c-.07 .03 -.14 .06 -.21 .1c-.92 .53 -1.23 1.7 -.7 2.62l4.4 7.61c.99 1.71 3.17 2.29 4.88 1.31l3.17 -1.83c1.19 -.68 1.88 -1.99 1.78 -3.35l-.34 -4.71c-.03 -.38 -.14 -.76 -.33 -1.09c-.85 -1.47 -2.93 -1.09 -3.39 .33l-2.3 -3.99c-.53 -.92 -1.7 -1.23 -2.62 -.7c-.07 .04 -.14 .08 -.2 .13c-.58 -.37 -1.35 -.42 -1.99 -.05c-.64 .37 -.99 1.06 -.96 1.75M6.33 4.51l2.83 4.9c.16 .28 .52 .37 .79 .21c.28 -.16 .37 -.52 .21 -.79l-2.32 -4.02c-.11 -.19 -.04 -.42 .14 -.53c.19 -.11 .42 -.04 .53 .14l3.18 5.52c.53 .91 1.92 .52 1.9 -.53l-.02 -1.16c-.01 -.35 .45 -.47 .62 -.17c.08 .13 .12 .28 .13 .44l.34 4.71c.06 .78 -.34 1.52 -1.01 1.92l-3.17 1.83c-.98 .56 -2.22 .23 -2.79 -.75l-4.4 -7.61c-.11 -.19 -.04 -.42 .14 -.53c.19 -.11 .42 -.04 .53 .14l1.81 3.14c.16 .28 .52 .37 .79 .21c.28 -.16 .37 -.52 .21 -.79l-2.32 -4.02c-.11 -.19 -.04 -.42 .14 -.53c.19 -.11 .42 -.04 .53 .14l2.32 4.02c.16 .28 .52 .37 .79 .21c.28 -.16 .37 -.52 .21 -.79l-2.83 -4.9c-.11 -.19 -.04 -.42 .14 -.53c.19 -.11 .42 -.04 .53 .14"
-        mask={`url(#${maskId})`}
-      />
-      <path d="M19.92 7.29c.07 .03 .14 .06 .21 .1c.64 .37 .99 1.06 .96 1.75c.07 .03 .14 .06 .21 .1c.92 .53 1.23 1.7 .7 2.62l-4.4 7.61c-.99 1.71 -3.17 2.29 -4.88 1.31l-3.17 -1.83c-1.19 -.68 -1.88 -1.99 -1.78 -3.35l.34 -4.71c.03 -.38 .14 -.76 .33 -1.09c.85 -1.47 2.93 -1.09 3.39 .33l2.3 -3.99c.53 -.92 1.7 -1.23 2.62 -.7c.07 .04 .14 .08 .2 .13c.58 -.37 1.35 -.42 1.99 -.05c.64 .37 .99 1.06 .96 1.75M17.67 7.01l-2.83 4.9c-.16 .28 -.52 .37 -.79 .21c-.28 -.16 -.37 -.52 -.21 -.79l2.32 -4.02c.11 -.19 .04 -.42 -.14 -.53c-.19 -.11 -.42 -.04 -.53 .14l-3.18 5.52c-.53 .91 -1.92 .52 -1.9 -.53l.02 -1.16c.01 -.35 -.45 -.47 -.62 -.17c-.08 .13 -.12 .28 -.13 .44l-.34 4.71c-.06 .78 .34 1.52 1.01 1.92l3.17 1.83c.98 .56 2.22 .23 2.79 -.75l4.4 -7.61c.11 -.19 .04 -.42 -.14 -.53c-.19 -.11 -.42 -.04 -.53 .14l-1.81 3.14c-.16 .28 -.52 .37 -.79 .21c-.28 -.16 -.37 -.52 -.21 -.79l2.32 -4.02c.11 -.19 .04 -.42 -.14 -.53c-.19 -.11 -.42 -.04 -.53 .14l-2.32 4.02c-.16 .28 -.52 .37 -.79 .21c-.28 -.16 -.37 -.52 -.21 -.79l2.83 -4.9c.11 -.19 .04 -.42 -.14 -.53c-.19 -.11 -.42 -.04 -.53 .14" />
-    </svg>
-  );
-};
+// Clapping hands 👏 (U+1F44F) as a currentColor silhouette; rating 4, Great.
+export const HandsClapIcon = (props: IconProps) => <EmojiIcon glyph={'\u{1F44F}'} {...props} />;

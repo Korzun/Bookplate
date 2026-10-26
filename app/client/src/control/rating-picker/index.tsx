@@ -4,10 +4,10 @@ import { type CSSProperties, type KeyboardEvent, useRef } from 'react';
 import {
   HandLoveYouIcon,
   HandOkIcon,
+  HandPeaceIcon,
   HandsClapIcon,
   type IconProps,
   ThumbDownIcon,
-  ThumbUpIcon,
 } from '~/icon';
 
 import { useStyle } from './style';
@@ -22,8 +22,8 @@ type RatingOption = {
 
 export const RATING_OPTIONS: ReadonlyArray<RatingOption> = [
   { value: 1, name: 'Bad', Icon: ThumbDownIcon },
-  { value: 2, name: 'Okay', Icon: ThumbUpIcon },
-  { value: 3, name: 'Nice', Icon: HandOkIcon },
+  { value: 2, name: 'Okay', Icon: HandOkIcon },
+  { value: 3, name: 'Nice', Icon: HandPeaceIcon },
   { value: 4, name: 'Great', Icon: HandsClapIcon },
   { value: 5, name: 'Love', Icon: HandLoveYouIcon },
 ];
