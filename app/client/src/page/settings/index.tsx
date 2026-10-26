@@ -5,7 +5,6 @@ import {
   ConnectionUrls,
   EmailSetting,
   McpConnections,
-  McpSetup,
   MyProgress,
   NotificationSettings,
   Page,
@@ -98,7 +97,6 @@ export const SettingsPage = () => {
     return (
       <Page>
         <ThemeSetting />
-        <McpSetup />
         {emailSection}
         {notificationSection}
         <Button loading={loggingOut} onClick={handleLogout} danger>

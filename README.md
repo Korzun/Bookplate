@@ -61,7 +61,7 @@ Add-on options (set in the **Configuration** tab):
 | `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
 | `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
 | `email_from_name`        | string | *(library name)* | From-display-name for outgoing mail. Defaults to `library_name` when left blank. |
-| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Adds a clickable link beside the code that every verification/reset email already carries, and — when it is an **https** origin — enables the MCP server so AI assistants can connect (see "Connect an AI assistant" below). Email works code-only without it; MCP stays off. |
+| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Adds a clickable link beside the code that every verification/reset email already carries, and — when it is an **https** origin — enables the MCP server so AI assistants can connect (see "Connect an AI assistant" → "Enable it" below). Email works code-only without it; MCP stays off. |
 
 Example:
 
@@ -198,21 +198,41 @@ In KOReader: **top menu → tools (🔧) → Progress sync → Custom sync serve
 ### Connect an AI assistant (MCP)
 
 Bookplate is also a remote [MCP](https://modelcontextprotocol.io) server, so
-Claude (web, desktop or Claude Code) or any other MCP client can search your
-library, read and fix metadata, run validation, upload or replace books, act on
-import recommendations, and request books — as *you*, in *your* library.
+Claude (web, desktop or Claude Code) or any other MCP client can search a
+reader's library, read and fix metadata, run validation, upload or replace
+books, act on import recommendations, and request books — as *that reader*, in
+*their* library.
 
-1. Set `public_url` to the **https** address your Bookplate is reachable at
-   (a reverse proxy, Cloudflare Tunnel, Nabu Casa URL, …). MCP stays off
-   without it: the OAuth flow needs a stable, secure origin to publish.
-2. Add `<public_url>/mcp` to the assistant as a custom connector / remote MCP
-   server. For Claude Code: `claude mcp add --transport http bookplate <public_url>/mcp`.
-3. The assistant opens Bookplate in your browser. Sign in as a **reader** (the
+#### Enable it (admin)
+
+MCP is **off** until the add-on knows a stable, secure address to publish: the
+OAuth flow that connects an assistant needs an **https** origin, and readers
+will not see the option on their settings page until there is one.
+
+1. In the add-on's **Configuration** tab, set `public_url` to the **https**
+   origin this Bookplate is reached at — your reverse proxy, Cloudflare Tunnel
+   or Nabu Casa address, for example `https://bookplate.example.com`. If that
+   address goes through a proxy you run, set `trust_proxy_hops` too (see
+   "Configuration" above).
+2. Restart the add-on. The log reports `MCP server disabled: set public_url to
+   an https origin …` when the URL is missing or not https; otherwise the MCP
+   endpoint is live at `<public_url>/mcp`.
+
+Once enabled, every reader's **Settings** page gains an **AI assistants** card
+showing that URL, so you do not need to hand it out yourself. The admin
+account has no library and cannot connect an assistant; use a reader account.
+
+#### Connect (reader)
+
+1. Add `<public_url>/mcp` (copy it from the **AI assistants** card on your
+   Settings page) to the assistant as a custom connector / remote MCP server.
+   For Claude Code: `claude mcp add --transport http bookplate <public_url>/mcp`.
+2. The assistant opens Bookplate in your browser. Sign in as a **reader** (the
    admin account has no library to connect), choose **Read only** if you want
    the assistant to look but not change anything, and approve.
-4. Every connected assistant is listed under **Settings → AI assistants**,
-   with the date it connected and when it was last used. **Disconnect** cuts
-   its access immediately.
+3. Every connected assistant is listed under **Settings → AI assistants →
+   Clients**, with the date it connected and when it was last used.
+   **Disconnect** cuts its access immediately.
 
 Tools: `search_library`, `get_book`, `get_series`, `list_series`,
 `list_library_facets`, `list_pending_fixes`, `get_validation_report`,

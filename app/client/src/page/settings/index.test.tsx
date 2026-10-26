@@ -21,7 +21,6 @@ vi.mock('~/component', () => ({
   ConnectionUrls: () => <div>ConnectionUrls</div>,
   EmailSetting: () => <div>EmailSetting</div>,
   McpConnections: () => <div>McpConnections</div>,
-  McpSetup: () => <div>McpSetup</div>,
   MyProgress: () => <div>MyProgress</div>,
   NotificationSettings: () => <div>NotificationSettings</div>,
   Page: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
@@ -44,7 +43,6 @@ describe('SettingsPage', () => {
 
     expect(screen.getByText('SyncPassword')).toBeInTheDocument();
     expect(screen.getByText('McpConnections')).toBeInTheDocument();
-    expect(screen.queryByText('McpSetup')).not.toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 
@@ -54,11 +52,11 @@ describe('SettingsPage', () => {
     // `ThemeSetting` is the positive control — without it this test would pass
     // against a page that rendered nothing at all. It replaced
     // `ScanLibrarySetting` here when main removed the library scan from the
-    // interface; the admin branch renders only the theme setting and Log out.
+    // interface. The admin's MCP setup card is gone too: the admin configures
+    // `public_url` in Home Assistant, so the instructions live in the README.
     expect(screen.getByText('ThemeSetting')).toBeInTheDocument();
     expect(screen.queryByText('SyncPassword')).not.toBeInTheDocument();
     expect(screen.queryByText('McpConnections')).not.toBeInTheDocument();
-    expect(screen.getByText('McpSetup')).toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 });
