@@ -18,7 +18,7 @@ import {
 import { UserListDocument } from '~/graphql/user';
 import type { MetadataFix } from '~/lib/book-types';
 import type { ValidationFailure } from '~/lib/severity';
-import { invalidateBookChange, unwrapResult } from '~/provider/apollo';
+import { invalidateBookChange, invalidateRequestQueues, unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { UploadContext } from '../context';
@@ -481,6 +481,14 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
       fulfilledRef.current.add(item.id);
       void fulfillRequest({
         variables: { id: item.fulfillsRequestId, bookId: item.bookGlobalId },
+        // The admin's PENDING queue is a server-filtered connection; the
+        // fulfilled row's `status` normalizes but its edge cannot leave the
+        // filtered list by itself.
+        update: (cache, { data: mutationData }) => {
+          if (mutationData?.bookRequestFulfill?.__typename === 'BookRequestFulfillPayload') {
+            invalidateRequestQueues(cache);
+          }
+        },
       })
         .then((result) => {
           if (result.data?.bookRequestFulfill?.__typename !== 'BookRequestFulfillPayload') return;

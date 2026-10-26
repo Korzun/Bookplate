@@ -234,6 +234,27 @@ describe('UserRequestList — decline all', () => {
     expect(onHeaderActions.mock.calls.at(-1)?.[0]).toBeUndefined();
   });
 
+  it('removes declined requests from the queue without a reload (queue coherence)', async () => {
+    const onHeaderActions = vi.fn();
+    const userId = 'VXNlcjoxMjM=';
+    const { user } = renderList({
+      userId,
+      requests: [requestRow({ id: 'req-1', title: 'Dune' })],
+      onHeaderActions,
+      extraMocks: [declineMock('req-1', 'no thanks'), listMock(userId, [])],
+    });
+    await screen.findByText('Dune');
+    const latest = onHeaderActions.mock.calls.at(-1)?.[0] as PageActionItem[];
+    act(() => latest[0].onClick());
+    const dialog = within(screen.getByRole('dialog'));
+    await user.type(dialog.getByLabelText(/reason/i), 'no thanks');
+    await user.click(screen.getByRole('button', { name: 'Decline all' }));
+    await waitFor(() => expect(declined).toContain('req-1'));
+
+    await waitFor(() => expect(screen.queryByText('Dune')).not.toBeInTheDocument());
+    expect(await screen.findByText(/no requests/i)).toBeInTheDocument();
+  });
+
   it('declines every loaded request, with the one reason', async () => {
     const onHeaderActions = vi.fn();
     const { user } = renderList({

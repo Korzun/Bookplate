@@ -8,7 +8,7 @@ import type { BookRequestDeclineMutation } from '~/gql/graphql';
 import { BookRequestDeclineDocument, UserRequestListDocument } from '~/graphql/book-request';
 import { UserListDocument } from '~/graphql/user';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
-import { unwrapResult } from '~/provider/apollo';
+import { invalidateRequestQueues, unwrapResult } from '~/provider/apollo';
 
 import { EmptyState } from '../empty-state';
 import { useStyle } from './style';
@@ -168,6 +168,11 @@ export const UserRequestList = ({ userId, skip, onHeaderActions }: UserRequestLi
       for (const id of ids) {
         const { data: declineData } = await runDecline({
           variables: { id, reason: trimmed === '' ? undefined : trimmed },
+          update: (cache, { data: mutationData }) => {
+            if (mutationData?.bookRequestDecline?.__typename === 'BookRequestDeclinePayload') {
+              invalidateRequestQueues(cache);
+            }
+          },
         });
         const outcome = unwrapResult<BookRequestDeclinePayload>(
           declineData?.bookRequestDecline,
