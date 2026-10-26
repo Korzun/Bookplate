@@ -12,7 +12,7 @@ import { SearchSuggestionsDocument } from '~/graphql/search-suggestions';
 import type { BookListFilter } from '~/lib/book-types';
 import { renderHookWithApollo } from '~/test-utils';
 
-import { useSearchSuggestions } from './use-search-suggestions';
+import { ratingFilterLabel, useSearchSuggestions } from './use-search-suggestions';
 
 const LIBRARY_ID = 'LIB-1';
 
@@ -74,14 +74,22 @@ describe('useSearchSuggestions', () => {
     vi.useRealTimers();
   });
 
-  it('returns Type and Status quick-pick groups when inputValue is empty and no filter is active', () => {
+  it('returns Type, Status and Rating quick-pick groups when inputValue is empty and no filter is active', () => {
     // No mocks: a request here would throw ("No more mocked responses").
     const { result } = renderProbe('', emptyFilter, []);
-    expect(result.current?.groups).toHaveLength(2);
+    expect(result.current?.groups).toHaveLength(3);
     expect(result.current?.groups[0].type).toBe('entryType');
     expect(result.current?.groups[0].items).toHaveLength(2);
     expect(result.current?.groups[1].type).toBe('status');
     expect(result.current?.groups[1].items).toHaveLength(3);
+    expect(result.current?.groups[2].type).toBe('rating');
+    expect(result.current?.groups[2].items.map((i) => i.value)).toEqual(['5', '4', '3', 'unrated']);
+    expect(result.current?.groups[2].items.map((i) => i.label)).toEqual([
+      'Love',
+      'Great or better',
+      'Nice or better',
+      'Unrated',
+    ]);
     expect(result.current?.loading).toBe(false);
   });
 
@@ -102,7 +110,7 @@ describe('useSearchSuggestions', () => {
       await vi.advanceTimersByTimeAsync(500);
     });
     expect(spy).not.toHaveBeenCalled();
-    expect(result.current?.groups).toHaveLength(2);
+    expect(result.current?.groups).toHaveLength(3);
   });
 
   it('does not fire a request before the 200ms debounce elapses', async () => {
@@ -246,13 +254,58 @@ describe('useSearchSuggestions', () => {
 
   it('omits the Type group when entryType filter is already set', () => {
     const { result } = renderProbe('', { entryType: 'series' }, []);
-    expect(result.current?.groups).toHaveLength(1);
+    expect(result.current?.groups).toHaveLength(2);
     expect(result.current?.groups[0].type).toBe('status');
   });
 
   it('omits both Type and Status groups when both are already set', () => {
     const { result } = renderProbe('', { entryType: 'series', status: 'completed' }, []);
-    expect(result.current?.groups).toHaveLength(0);
+    expect(result.current?.groups).toHaveLength(1);
+    expect(result.current?.groups[0].type).toBe('rating');
+  });
+
+  it('omits the Rating group when minOverall is set, and when unrated is set', () => {
+    const base: BookListFilter = { entryType: 'series', status: 'completed' };
+    const withMin = renderProbe('', { ...base, minOverall: 4 }, []);
+    expect(withMin.result.current?.groups).toHaveLength(0);
+    const withUnrated = renderProbe('', { ...base, unrated: true }, []);
+    expect(withUnrated.result.current?.groups).toHaveLength(0);
+  });
+
+  it('surfaces a matching Rating item for typed input', async () => {
+    const love = renderProbe('lov', emptyFilter, [suggestionsMock('lov', {}, [])]);
+    const unrated = renderProbe('unr', emptyFilter, [suggestionsMock('unr', {}, [])]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(love.result.current?.loading).toBe(false));
+    await waitFor(() => expect(unrated.result.current?.loading).toBe(false));
+    const loveGroup = love.result.current?.groups.find((g) => g.type === 'rating');
+    expect(loveGroup?.items.map((i) => i.value)).toEqual(['5']);
+    expect(loveGroup?.items[0].additive).toBe(false);
+    expect(loveGroup?.items[0].matchStart).toBe(0);
+    expect(loveGroup?.items[0].matchLength).toBe(3);
+    const unratedGroup = unrated.result.current?.groups.find((g) => g.type === 'rating');
+    expect(unratedGroup?.items.map((i) => i.value)).toEqual(['unrated']);
+  });
+
+  it('omits typed Rating matches once a rating filter is active', async () => {
+    const { result } = renderProbe('lov', { minOverall: 5 }, [suggestionsMock('lov', {}, [])]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(result.current?.loading).toBe(false));
+    expect(result.current?.groups.find((g) => g.type === 'rating')).toBeUndefined();
+  });
+
+  it('ratingFilterLabel names every URL-reachable threshold', () => {
+    expect(ratingFilterLabel({ minOverall: 5 })).toBe('Love');
+    expect(ratingFilterLabel({ minOverall: 4 })).toBe('Great or better');
+    expect(ratingFilterLabel({ minOverall: 3 })).toBe('Nice or better');
+    expect(ratingFilterLabel({ minOverall: 2 })).toBe('Okay or better');
+    expect(ratingFilterLabel({ minOverall: 1 })).toBe('Bad or better');
+    expect(ratingFilterLabel({ unrated: true })).toBe('Unrated');
+    expect(ratingFilterLabel({})).toBeNull();
   });
 
   it('marks subject items as additive=true', async () => {
@@ -302,7 +355,7 @@ describe('useSearchSuggestions', () => {
     await waitFor(() => expect(result.current?.groups.length).toBeGreaterThan(0));
 
     act(() => result.current?.setInput(''));
-    expect(result.current?.groups).toHaveLength(2); // Type + Status
+    expect(result.current?.groups).toHaveLength(3); // Type + Status + Rating
     expect(result.current?.groups[0].type).toBe('entryType');
     expect(result.current?.loading).toBe(false);
   });

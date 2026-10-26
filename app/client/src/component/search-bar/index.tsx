@@ -2,14 +2,15 @@ import cx from 'classnames';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 
-import { Button } from '~/control';
+import { Button, RATING_OPTIONS } from '~/control';
+import type { RatingValue } from '~/control';
 import { SearchIcon, XIcon } from '~/icon';
 import type { BookListFilter } from '~/lib/book-types';
 import { path } from '~/router';
 
 import { useStyle } from './style';
 import type { Suggestion, SuggestionGroup } from './use-search-suggestions';
-import { useSearchSuggestions } from './use-search-suggestions';
+import { ratingFilterLabel, useSearchSuggestions } from './use-search-suggestions';
 
 const STATUS_LABELS: Record<string, string> = {
   'not-started': 'Not Started',
@@ -20,6 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
 type ChipDef =
   | { kind: 'entryType'; value: 'Series' | 'Single books' }
   | { kind: 'status'; value: string }
+  | { kind: 'rating'; value: string; glyph: RatingValue | null }
   | { kind: 'author'; value: string }
   | { kind: 'series'; value: string }
   | { kind: 'subject'; value: string };
@@ -33,6 +35,13 @@ function filterToChips(filter: BookListFilter): ChipDef[] {
     });
   if (filter.status)
     chips.push({ kind: 'status', value: STATUS_LABELS[filter.status] ?? filter.status });
+  const ratingLabel = ratingFilterLabel(filter);
+  if (ratingLabel)
+    chips.push({
+      kind: 'rating',
+      value: ratingLabel,
+      glyph: filter.unrated ? null : (filter.minOverall ?? null),
+    });
   if (filter.author) chips.push({ kind: 'author', value: filter.author });
   if (filter.seriesName) chips.push({ kind: 'series', value: filter.seriesName });
   for (const s of filter.subjects ?? []) chips.push({ kind: 'subject', value: s });
@@ -45,6 +54,8 @@ function removeChip(filter: BookListFilter, chip: ChipDef): BookListFilter {
       return { ...filter, entryType: undefined };
     case 'status':
       return { ...filter, status: undefined };
+    case 'rating':
+      return { ...filter, minOverall: undefined, unrated: undefined };
     case 'author':
       return { ...filter, author: undefined };
     case 'series':
@@ -60,6 +71,14 @@ function applySelection(filter: BookListFilter, suggestion: Suggestion): BookLis
       return { ...filter, entryType: suggestion.value as 'series' | 'standalone' };
     case 'status':
       return { ...filter, status: suggestion.value as BookListFilter['status'] };
+    case 'rating':
+      return suggestion.value === 'unrated'
+        ? { ...filter, minOverall: undefined, unrated: true }
+        : {
+            ...filter,
+            minOverall: Number(suggestion.value) as RatingValue,
+            unrated: undefined,
+          };
     case 'author':
       return { ...filter, author: suggestion.value };
     case 'series':
@@ -69,6 +88,12 @@ function applySelection(filter: BookListFilter, suggestion: Suggestion): BookLis
     case 'book':
       return filter;
   }
+}
+
+/** The rating picker's own hand glyph, in `currentColor` so the surrounding text colours it. */
+function RatingGlyph({ value }: { value: RatingValue }) {
+  const { Icon } = RATING_OPTIONS[value - 1];
+  return <Icon aria-hidden={true} height={14} width={14} />;
 }
 
 function renderHighlighted(
@@ -90,6 +115,7 @@ function renderHighlighted(
 const TYPE_CHIP_CLASS: Record<ChipDef['kind'], string> = {
   entryType: 'chipEntryType',
   status: 'chipStatus',
+  rating: 'chipRating',
   author: 'chipAuthor',
   series: 'chipSeries',
   subject: 'chipSubject',
@@ -98,6 +124,7 @@ const TYPE_CHIP_CLASS: Record<ChipDef['kind'], string> = {
 const TYPE_CHIP_LABEL: Record<ChipDef['kind'], string> = {
   entryType: 'Type',
   status: 'Status',
+  rating: 'Rating',
   author: 'Author',
   series: 'Series',
   subject: 'Subject',
@@ -106,6 +133,7 @@ const TYPE_CHIP_LABEL: Record<ChipDef['kind'], string> = {
 const TYPE_DROPDOWN_CLASS: Record<Suggestion['type'], string> = {
   entryType: 'dropdownItemTypeEntryType',
   status: 'dropdownItemTypeStatus',
+  rating: 'dropdownItemTypeRating',
   author: 'dropdownItemTypeAuthor',
   series: 'dropdownItemTypeSeries',
   book: 'dropdownItemTypeBook',
@@ -235,6 +263,7 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
                 className={cx(style.chip, style[TYPE_CHIP_CLASS[chip.kind] as keyof typeof style])}
               >
                 <span className={style.chipTypeLabel}>{TYPE_CHIP_LABEL[chip.kind]}</span>
+                {chip.kind === 'rating' && chip.glyph && <RatingGlyph value={chip.glyph} />}
                 {chip.value}
                 <button
                   type="button"
@@ -315,6 +344,9 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
                     >
                       {group.label}
                     </span>
+                    {item.type === 'rating' && item.value !== 'unrated' && (
+                      <RatingGlyph value={Number(item.value) as RatingValue} />
+                    )}
                     <span className={style.dropdownItemText}>
                       {renderHighlighted(
                         item.label,
