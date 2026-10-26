@@ -455,7 +455,15 @@ buttons, in `control/segmented-control`'s visual language.
 **Component: `~/component/book-rating`.** The block the book page renders.
 
 - Props: the five values, `bookTitle`, `readOnly`, and `onRate(field, value)`.
-- Layout: five rows, one per field, Overall first. Each row is the shaded
+- Layout: five rows, one per field, Overall first and always on screen, the
+  four detail rows (Story, Characters, Writing, Ideas) behind a "Details"
+  disclosure between them — a text button in the label's grey with a chevron
+  that turns down when open, `aria-expanded` and `aria-controls` on it. It
+  opens by itself when any detail has a value and follows the reader's own
+  toggle from then on (a `null`-until-toggled choice over the data-derived
+  default, no effect). A read-only view with no details shows no toggle. Most
+  ratings are an Overall alone, and four empty rows pushed the description
+  down on every unrated book. Each row is the shaded
   input row every labelled control in the app uses (`TextInput`'s
   `horizontal` layout: `bg.cardHeader`, `radius.md`, the label in
   `recipe.label` inset `space.sm` with a 6rem minimum width), with the
@@ -467,9 +475,7 @@ buttons, in `control/segmented-control`'s visual language.
   text row, so the label is vertically centred. At phone width the row takes
   the `vertical` form of the same panel: label above the picker, inside the
   grey, picker the full row width. Rows are `space.md` apart, as in the
-  other forms. Sub-ratings are always visible; they are the
-  point of the feature, and hiding them behind a disclosure would make the
-  common case two taps.
+  other forms.
 - No "saving…" state: the mutation is sent with an `optimisticResponse`
   carrying the new `BookRating`, so the icon flips on tap. On error the cache
   reverts and the page's existing error surface (whatever `handleValidate`
@@ -477,7 +483,7 @@ buttons, in `control/segmented-control`'s visual language.
 
 **Book page (`page/book/index.tsx`).** The block is its own `Card` titled
 "Rating", placed between the title card and the Description card, so the
-five rows have the card's full width at every size. `readOnly` is `isAdmin`.
+rows have the card's full width at every size. `readOnly` is `isAdmin`.
 `BookDetailDocument` selects `rating { overall story characters writing ideas }`.
 A new `BookRateDocument` mutation selects `book { id rating { … } }` and
 nothing else, so the payload normalizes onto the same `Book:<id>` the route
