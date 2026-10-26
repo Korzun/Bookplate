@@ -8,12 +8,14 @@ import {
   BOOK_SUMMARY_FIELDS,
   bookSummarySchema,
   describeBook,
+  describeOverall,
+  seriesOverallRatingSchema,
   summarizeBook,
   type BookSummaryGql,
 } from './shared';
 
 const SERIES_FIELDS = `
-  id name author publisher subjects bookCount totalPages totalSize progressPercentage
+  id name author publisher subjects bookCount totalPages totalSize progressPercentage overallRating
   books(first: 100) { edges { node { ${BOOK_SUMMARY_FIELDS} } } }
 `;
 
@@ -27,6 +29,7 @@ type SeriesGql = {
   totalPages: number;
   totalSize: number;
   progressPercentage: number | null;
+  overallRating: number | null;
   books: { edges: Array<{ node: BookSummaryGql }> };
 };
 
@@ -72,6 +75,7 @@ export function registerGetSeries(server: McpServer, deps: ToolDeps): void {
         totalPages: z.number(),
         totalSize: z.number(),
         progressPercentage: z.number().nullable(),
+        overallRating: seriesOverallRatingSchema,
         books: z.array(bookSummarySchema),
       },
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
@@ -107,10 +111,15 @@ export function registerGetSeries(server: McpServer, deps: ToolDeps): void {
           totalPages: series.totalPages,
           totalSize: series.totalSize,
           progressPercentage: series.progressPercentage,
+          overallRating: series.overallRating,
           books,
         };
         const text = [
-          `Series "${out.name}" by ${out.author || 'unknown'} — ${out.bookCount} book(s), id=${out.id}`,
+          [
+            `Series "${out.name}" by ${out.author || 'unknown'} — ${out.bookCount} book(s)`,
+            ...(out.overallRating === null ? [] : [describeOverall(out.overallRating)]),
+            `id=${out.id}`,
+          ].join(', '),
           ...books.map((b) => `  ${b.seriesIndex}. ${describeBook(b)}`),
         ].join('\n');
         return ok(text, out);

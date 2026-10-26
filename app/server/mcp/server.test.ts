@@ -379,6 +379,36 @@ describe('read tools', () => {
     expect(textOf(garbage)).toBe('No book with that id in your library');
   });
 
+  it('list_series and get_series carry the series’ Overall rating once a member is rated', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const updated = await harness.execute(
+      `mutation($input: BookUpdateMetadataInput!) {
+         bookUpdateMetadata(input: $input) { __typename ... on BookUpdateMetadataPayload { book { id } } }
+       }`,
+      { variables: { input: { id: alphaId, series: 'Saga', seriesIndex: 1 } } }
+    );
+    expect(updated.errors).toBeUndefined();
+    const movedId = (updated.data as { bookUpdateMetadata: { book: { id: string } } })
+      .bookUpdateMetadata.book.id;
+
+    // The seeded Alpha Book already carries a rating; re-rating it is what
+    // makes the aggregate observable as this test's own value.
+    const rated = await mcp.call('rate_book', { bookId: movedId, overall: 4 });
+    expect(rated.isError).toBeFalsy();
+
+    const list = await mcp.call('list_series');
+    const summary = (
+      list.structuredContent as { series: Array<{ name: string; overallRating: number | null }> }
+    ).series[0];
+    expect(summary).toEqual(expect.objectContaining({ name: 'Saga', overallRating: 4 }));
+    expect((list.content as Array<{ text: string }>)[0].text).toContain('rated Great');
+
+    const detail = await mcp.call('get_series', { name: 'Saga' });
+    expect((detail.structuredContent as { overallRating: number | null }).overallRating).toBe(4);
+    expect((detail.content as Array<{ text: string }>)[0].text).toContain('rated Great');
+  });
+
   it('list_series, get_series and list_library_facets see a series once metadata puts a book in one', async () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
     const alphaId = await findId(mcp, 'Alpha Book');
