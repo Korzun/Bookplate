@@ -1,6 +1,6 @@
 import type { NormalizedCacheObject } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -554,6 +554,41 @@ describe('BookEditForm', () => {
     const titleInput = container.querySelector('input[name="title"]') as HTMLInputElement;
     await user.clear(titleInput);
     await user.type(titleInput, 'New Title');
+
+    await save(user);
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(path.book(BOOK_ID)));
+  });
+
+  // The publish date is picked, never typed: the field is a native date input
+  // and the save carries the bare `YYYY-MM-DD` it produces, so the user never
+  // has to know the stored format.
+  it('sends the picked publish date as a bare ISO date', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload(), { publishDate: '2023-06-06' })],
+    });
+
+    const dateInput = container.querySelector('input[name="publishDate"]') as HTMLInputElement;
+    expect(dateInput.type).toBe('date');
+    fireEvent.change(dateInput, { target: { value: '2023-06-06' } });
+
+    await save(user);
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(path.book(BOOK_ID)));
+  });
+
+  it('sends a UTC timestamp when a time is added to the publish date', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithApollo(
+      <BookEditForm book={book({ publishDate: '2023-06-06' })} />,
+      {
+        mocks: [...baseMocks(), saveMock(updatePayload(), { publishDate: '2023-06-06T16:30:00Z' })],
+      }
+    );
+
+    const timeInput = container.querySelector('input[name="publishDateTime"]') as HTMLInputElement;
+    fireEvent.change(timeInput, { target: { value: '16:30' } });
 
     await save(user);
 
