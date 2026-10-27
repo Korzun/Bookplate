@@ -1,7 +1,7 @@
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { renderWithApollo } from '~/test-utils';
+import { metaItems, renderWithApollo } from '~/test-utils';
 
 import { BookRow } from './index';
 
@@ -37,16 +37,23 @@ describe('BookRow (presentational)', () => {
     expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
   });
 
-  it('joins author, series index and in-progress percentage into the meta line', () => {
-    const { getByText } = renderWithApollo(
+  it('lists author, series index and in-progress percentage as separate meta items, in order', () => {
+    const { container } = renderWithApollo(
       <BookRow {...baseProps} seriesIndex={3} progressPercentage={0.42} />
     );
-    expect(getByText('Frank Herbert · Book 3 · 42%')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', 'Book 3', '42%']);
   });
 
   it('shows "Completed" once progress reaches 1', () => {
-    const { getByText } = renderWithApollo(<BookRow {...baseProps} progressPercentage={1} />);
-    expect(getByText('Frank Herbert · Completed')).toBeInTheDocument();
+    const { container } = renderWithApollo(<BookRow {...baseProps} progressPercentage={1} />);
+    expect(metaItems(container)).toEqual(['Frank Herbert', 'Completed']);
+  });
+
+  it('puts the rating last, as its own meta item', () => {
+    const { container } = renderWithApollo(
+      <BookRow {...baseProps} progressPercentage={0.42} overallRating={4} />
+    );
+    expect(metaItems(container)).toEqual(['Frank Herbert', '42%', 'Great']);
   });
 
   it('omits the author when showAuthor is false', () => {

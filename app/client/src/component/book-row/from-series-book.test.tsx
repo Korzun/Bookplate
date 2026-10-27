@@ -14,7 +14,7 @@ import { makeFragmentData } from '~/gql';
 import type { SeriesBookRowFragmentFragment } from '~/gql/graphql';
 import { apiFetch } from '~/lib/api-fetch';
 import { path } from '~/router';
-import { renderWithApollo } from '~/test-utils';
+import { metaItems, renderWithApollo } from '~/test-utils';
 
 import { BookRowFromSeriesBook, SeriesBookRowFragment } from './from-series-book';
 
@@ -92,7 +92,7 @@ describe('BookRowFromSeriesBook', () => {
       <BookRowFromSeriesBook book={book} showAuthor={false} />
     );
 
-    expect(screen.getByText('Book 1 · 50%')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Book 1', '50%']);
     expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
   });
 

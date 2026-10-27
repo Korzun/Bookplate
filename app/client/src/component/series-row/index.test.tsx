@@ -15,7 +15,7 @@ import { makeFragmentData } from '~/gql';
 import type { SeriesRowFragmentFragment } from '~/gql/graphql';
 import { apiFetch } from '~/lib/api-fetch';
 import { path } from '~/router';
-import { renderWithApollo } from '~/test-utils';
+import { metaItems, renderWithApollo } from '~/test-utils';
 
 import { SeriesRow, SeriesRowFragment } from './index';
 
@@ -74,10 +74,10 @@ describe('SeriesRow', () => {
     // (task 7's report) would break this the same way.
     const series = makeFragmentData(makeSeriesRowData(), SeriesRowFragment);
 
-    const { getByText } = renderWithApollo(<SeriesRow series={series} />);
+    const { getByText, container } = renderWithApollo(<SeriesRow series={series} />);
 
     expect(getByText('Dune Chronicles')).toBeInTheDocument();
-    expect(getByText('Frank Herbert · 6 book series')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', '6 book series']);
   });
 
   /**
@@ -156,9 +156,9 @@ describe('SeriesRow', () => {
       SeriesRowFragment
     );
 
-    const { getByText, queryByText } = renderWithApollo(<SeriesRow series={series} />);
+    const { container, queryByText } = renderWithApollo(<SeriesRow series={series} />);
 
-    expect(getByText('Frank Herbert · 6 book series')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', '6 book series']);
     expect(queryByText(/%|Completed/)).not.toBeInTheDocument();
   });
 
@@ -170,9 +170,9 @@ describe('SeriesRow', () => {
       SeriesRowFragment
     );
 
-    const { getByText } = renderWithApollo(<SeriesRow series={series} />);
+    const { container } = renderWithApollo(<SeriesRow series={series} />);
 
-    expect(getByText('Frank Herbert · 6 book series · 42%')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', '6 book series', '42%']);
   });
 
   it('shows "Completed" instead of "100%" when every member book is fully read', () => {
@@ -181,9 +181,9 @@ describe('SeriesRow', () => {
       SeriesRowFragment
     );
 
-    const { getByText } = renderWithApollo(<SeriesRow series={series} />);
+    const { container } = renderWithApollo(<SeriesRow series={series} />);
 
-    expect(getByText('Frank Herbert · 6 book series · Completed')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', '6 book series', 'Completed']);
   });
 
   it('shows "0%", not the empty-progress state, when the only progress reads 0%', () => {
@@ -192,9 +192,9 @@ describe('SeriesRow', () => {
       SeriesRowFragment
     );
 
-    const { getByText } = renderWithApollo(<SeriesRow series={series} />);
+    const { container } = renderWithApollo(<SeriesRow series={series} />);
 
-    expect(getByText('Frank Herbert · 6 book series · 0%')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', '6 book series', '0%']);
   });
 
   it('shows the series Overall rating glyph and name after the progress segment', () => {
@@ -207,26 +207,25 @@ describe('SeriesRow', () => {
 
     expect(getByText('Love')).toBeInTheDocument();
     expect(container.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
-    // The rating is the LAST segment: the separators and the earlier
-    // segments are the meta line's own text nodes, the rating sits in a span.
-    expect(getByText('Frank Herbert · 6 book series · 42% ·')).toBeInTheDocument();
+    // The rating is the LAST item of the meta line.
+    expect(metaItems(container)).toEqual(['Frank Herbert', '6 book series', '42%', 'Love']);
   });
 
   it('omits the rating segment while no member book is rated', () => {
     const series = makeFragmentData(makeSeriesRowData({ overallRating: null }), SeriesRowFragment);
 
-    const { getByText, container } = renderWithApollo(<SeriesRow series={series} />);
+    const { container } = renderWithApollo(<SeriesRow series={series} />);
 
-    expect(getByText('Frank Herbert · 6 book series')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', '6 book series']);
     expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
   });
 
   it('treats an out-of-range overall as unrated', () => {
     const series = makeFragmentData(makeSeriesRowData({ overallRating: 9 }), SeriesRowFragment);
 
-    const { getByText, container } = renderWithApollo(<SeriesRow series={series} />);
+    const { container } = renderWithApollo(<SeriesRow series={series} />);
 
-    expect(getByText('Frank Herbert · 6 book series')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', '6 book series']);
     expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
   });
 

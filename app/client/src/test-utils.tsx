@@ -320,3 +320,16 @@ export function renderWithControlledLink<TData = Record<string, unknown>>(
     ...renderWithProviders(<ApolloProvider client={client}>{ui}</ApolloProvider>, options),
   };
 }
+
+/**
+ * The text of each `MetaLine` item under `container`, in order. Glyph SVGs
+ * (the rating icons draw their emoji as an SVG `<text>` node) are dropped so a
+ * rated item reads as its name alone, e.g. `'Love'`.
+ */
+export function metaItems(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll('[data-testid="meta-item"]')).map((item) => {
+    const copy = item.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('svg').forEach((svg) => svg.remove());
+    return copy.textContent ?? '';
+  });
+}

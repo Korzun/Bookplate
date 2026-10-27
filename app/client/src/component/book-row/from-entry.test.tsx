@@ -14,7 +14,7 @@ import { makeFragmentData } from '~/gql';
 import type { BookRowFragmentFragment } from '~/gql/graphql';
 import { apiFetch } from '~/lib/api-fetch';
 import { path } from '~/router';
-import { renderWithApollo } from '~/test-utils';
+import { metaItems, renderWithApollo } from '~/test-utils';
 
 import { BookRowFragment, BookRowFromEntry } from './from-entry';
 
@@ -64,10 +64,10 @@ describe('BookRowFromEntry', () => {
     // nothing. Reverted; recorded in task 7's report.
     const book = makeFragmentData(makeBookRowData({ hasCover: false }), BookRowFragment);
 
-    const { getByText } = renderWithApollo(<BookRowFromEntry book={book} />);
+    const { getByText, container } = renderWithApollo(<BookRowFromEntry book={book} />);
 
     expect(getByText('Dune')).toBeInTheDocument();
-    expect(getByText('Frank Herbert · Book 1 · 50%')).toBeInTheDocument();
+    expect(metaItems(container)).toEqual(['Frank Herbert', 'Book 1', '50%']);
   });
 
   it('passes the overall rating through to the row', () => {
@@ -84,8 +84,8 @@ describe('BookRowFromEntry', () => {
       makeBookRowData({ hasCover: false, rating: { __typename: 'BookRating', overall: 7 } }),
       BookRowFragment
     );
-    const { getByText, container } = renderWithApollo(<BookRowFromEntry book={book} />);
-    expect(getByText('Frank Herbert · Book 1 · 50%')).toBeInTheDocument();
+    const { container } = renderWithApollo(<BookRowFromEntry book={book} />);
+    expect(metaItems(container)).toEqual(['Frank Herbert', 'Book 1', '50%']);
     expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
   });
 

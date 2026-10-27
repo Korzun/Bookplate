@@ -39,9 +39,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.color.text.muted,
     marginBottom: '.1rem', // single-component tight margin
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
   },
   navigate: {
     cursor: 'pointer',

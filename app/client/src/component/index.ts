@@ -23,6 +23,7 @@ export { SearchBar } from './search-bar';
 export { Nav } from './nav';
 export { LibrarySwitcher } from './library-switcher';
 export { McpConnections } from './mcp-connections';
+export { MetaLine, type MetaLineProps } from './meta-line';
 export { MetadataList, type Metadata } from './metadata-list';
 export { MyProgress } from './my-progress';
 export { MyProgressContent } from './my-progress-content';
