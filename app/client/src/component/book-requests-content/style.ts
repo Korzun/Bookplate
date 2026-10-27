@@ -9,7 +9,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   form: {
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.space.xxxs,
+    gap: theme.space.md,
   },
   message: {
     fontSize: theme.fontSize.md,
