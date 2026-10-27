@@ -1,3 +1,14 @@
+## 0.13.0
+
+- feat(client): rating details stay collapsed even when detail ratings exist
+- feat(client): pull down to refresh the screen in the installed app
+- fix(client): cache invalidation after book, progress and request mutations
+- feat: rating-based search in the library, GraphQL, MCP and search bar
+- Nitpicks: needs-review modal, series ratings, and a round of UI fixes
+- The admin's MCP setup moves from a Settings card to the README
+- build(deps): bump the npm_and_yarn group with 18 updates
+- build(deps): bump the npm_and_yarn group across 1 directory with 5 updates
+
 ## 0.12.0
 
 - Book ratings in the UI and over MCP
