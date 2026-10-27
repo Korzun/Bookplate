@@ -14,7 +14,7 @@ vi.mock('react-router', async (orig) => ({
 
 import { apiFetch } from '~/lib/api-fetch';
 import { path } from '~/router';
-import { renderWithApollo } from '~/test-utils';
+import { metaItems, renderWithApollo } from '~/test-utils';
 
 import { SeriesDetailDocument } from './index';
 
@@ -313,13 +313,13 @@ describe('SeriesPage', () => {
     // ref with `progress: null`), removed by this task: the fragment's own
     // `progress { percentage }` now flows straight to `BookRowFromSeriesBook`
     // with no fabrication in between.
-    const { findByText, getByText } = await renderPage([
+    const { findByText, container } = await renderPage([
       seriesMock({}, [{ progress: { __typename: 'Progress', id: 'p-1', percentage: 0.5 } }]),
     ]);
 
     await findByText('Earthsea');
     await waitFor(() => {
-      expect(getByText('Book 1 · 50%')).toBeInTheDocument();
+      expect(metaItems(container)).toEqual(['Book 1', '50%']);
     });
   });
 

@@ -1,7 +1,8 @@
 import cx from 'classnames';
-import { Fragment, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { Card } from '../card';
+import { MetaLine } from '../meta-line';
 import { RatingLabel } from '../rating-label';
 import { useStyle } from './style';
 
@@ -76,14 +77,7 @@ export function BookRow({
       </div>
       <div className={styles.info}>
         <div className={styles.title}>{title}</div>
-        <div className={styles.meta}>
-          {meta.map((item, i) => (
-            <Fragment key={i}>
-              {i > 0 ? ' · ' : null}
-              {item}
-            </Fragment>
-          ))}
-        </div>
+        <MetaLine items={meta} className={styles.meta} />
       </div>
     </div>
   );

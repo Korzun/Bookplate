@@ -3,6 +3,7 @@ import cx from 'classnames';
 import { formatTimestamp } from '~/utils';
 
 import { BookLineageMergeRow, type BookLineageMergeRowProps } from '../book-lineage-merge-row';
+import { MetaLine } from '../meta-line';
 import { useStyle } from './style';
 
 export type BookLineageRowProps = {
@@ -41,7 +42,7 @@ export const BookLineageRow = ({
         })}
       >
         <div className={styles.entryId}>{documentId}</div>
-        <div className={styles.timestamp}>{formatTimestamp(timestamp).join(' · ')}</div>
+        <MetaLine items={formatTimestamp(timestamp)} className={styles.timestamp} />
         {mergeRows.map((row) => (
           <BookLineageMergeRow key={row.documentId} {...row} />
         ))}

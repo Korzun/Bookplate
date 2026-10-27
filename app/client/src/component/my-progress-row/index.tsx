@@ -8,6 +8,7 @@ import { useDeleteProgress } from '~/lib/use-progress-mutations';
 import { useToast } from '~/provider/toast';
 import { relativeTime } from '~/utils';
 
+import { MetaLine } from '../meta-line';
 import { ProgressIndicator } from '../progress-indicator';
 import { useStyle } from './style';
 
@@ -143,7 +144,7 @@ export const MyProgressRow = ({ progress, libraryId }: MyProgressRowProps) => {
           )}
           <span className={styles.title}>{bookTitle}</span>
         </div>
-        <div className={styles.metadata}>{metadataList.join(' · ')}</div>
+        <MetaLine items={metadataList} className={styles.metadata} />
         {isUnresolved && (
           <Button type="link" onClick={() => setShowLinkModal(true)}>
             Link

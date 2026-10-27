@@ -1,6 +1,7 @@
 import { UnlinkBookLineageButton } from '~/control/unlink-book-lineage-button';
 import { formatTimestamp } from '~/utils';
 
+import { MetaLine } from '../meta-line';
 import { useStyle } from './style';
 
 export type BookLineageMergeRowProps = {
@@ -48,7 +49,7 @@ export const BookLineageMergeRow = ({
             />
           </span>
         </div>
-        <div className={styles.timestamp}>{formatTimestamp(timestamp).join(' · ')}</div>
+        <MetaLine items={formatTimestamp(timestamp)} className={styles.timestamp} />
       </div>
     </li>
   );

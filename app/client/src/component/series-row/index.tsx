@@ -1,4 +1,4 @@
-import { Fragment, useCallback, type ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
 import { graphql, useFragment, type FragmentType } from '~/gql';
@@ -7,6 +7,7 @@ import { path } from '~/router';
 import { toRatingValue } from '../book-row/to-rating-value';
 import { Card } from '../card';
 import { CoverStack } from '../cover-stack';
+import { MetaLine } from '../meta-line';
 import { RatingLabel } from '../rating-label';
 import { useStyle } from './style';
 
@@ -137,14 +138,7 @@ export function SeriesRow({ series }: SeriesRowProps) {
         <CoverStack books={coverBooks} layerWidth={44} layerHeight={66} />
         <div className={styles.info}>
           <div className={styles.name}>{unmasked.name}</div>
-          <div className={styles.meta}>
-            {meta.map((item, i) => (
-              <Fragment key={i}>
-                {i > 0 ? ' · ' : null}
-                {item}
-              </Fragment>
-            ))}
-          </div>
+          <MetaLine items={meta} className={styles.meta} />
         </div>
       </div>
     </Card>
