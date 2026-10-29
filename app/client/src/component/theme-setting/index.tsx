@@ -7,7 +7,7 @@ const OPTIONS = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
   { value: 'auto', label: 'Auto' },
-];
+] as const;
 
 export const ThemeSetting = () => {
   const [setting, setSetting] = useThemeSetting();
@@ -15,10 +15,10 @@ export const ThemeSetting = () => {
   return (
     <Card title="Appearance">
       <SegmentedControl
-        name="Appearance"
+        label="Appearance"
         value={setting}
         options={OPTIONS}
-        onChange={(value) => setSetting(value as typeof setting)}
+        onChange={setSetting}
       />
     </Card>
   );

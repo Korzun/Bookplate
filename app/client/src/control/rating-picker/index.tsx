@@ -1,6 +1,3 @@
-import cx from 'classnames';
-import { type CSSProperties, type KeyboardEvent, useRef } from 'react';
-
 import {
   HandLoveYouIcon,
   HandOkIcon,
@@ -10,7 +7,7 @@ import {
   ThumbDownIcon,
 } from '~/icon';
 
-import { useStyle } from './style';
+import { SegmentedControl, type SegmentedOption } from '../segmented-control';
 
 export type RatingValue = 1 | 2 | 3 | 4 | 5;
 
@@ -20,6 +17,7 @@ type RatingOption = {
   Icon: (props: IconProps) => React.JSX.Element;
 };
 
+/** The five values in order; the rating label and the search bar read names and icons from here too. */
 export const RATING_OPTIONS: ReadonlyArray<RatingOption> = [
   { value: 1, name: 'Bad', Icon: ThumbDownIcon },
   { value: 2, name: 'Okay', Icon: HandOkIcon },
@@ -28,7 +26,11 @@ export const RATING_OPTIONS: ReadonlyArray<RatingOption> = [
   { value: 5, name: 'Love', Icon: HandLoveYouIcon },
 ];
 
-const ICON_SIZE = 20;
+type RatingKey = `${RatingValue}`;
+
+const SEGMENTS: ReadonlyArray<SegmentedOption<RatingKey>> = RATING_OPTIONS.map(
+  ({ value, name, Icon }) => ({ value: `${value}` as RatingKey, label: name, Icon })
+);
 
 type RatingPickerProps = {
   value: RatingValue | null;
@@ -38,168 +40,32 @@ type RatingPickerProps = {
   label: string;
   /** Render each value's name under its icon, at every width. */
   showNames?: boolean;
-  /**
-   * What the picker sits on. `track` (default) paints its own `bg.track`
-   * rail, like `control/segmented-control`. `row` paints nothing: the shaded
-   * input row it sits in (`bg.cardHeader`, the same grey as the rail in light
-   * mode) is the track, and only the lens shows, the way the white field
-   * shows in a `TextInput` row.
-   */
-  surface?: 'track' | 'row';
+  /** See `SegmentedControl`'s `surface`. */
+  surface?: 'card' | 'row';
 };
 
 /**
- * A segmented control of five icon radios, Bad to Love, in the same
- * track-and-lens style as `control/segmented-control`. Unlike that control the
- * value can be empty — no lens — and clicking (or Space/Enter on) the checked
- * segment clears it, so `null` is always reachable.
- *
- * Keyboard, on the group: ArrowRight/ArrowUp and ArrowLeft/ArrowDown step one
- * value without wrapping (from no rating, "next" is Bad); Home and End jump to
- * Bad and Love; the digits 1–5 select directly; Backspace and Delete clear.
+ * A `SegmentedControl` of the five rating icons, Bad to Love, whose value can
+ * be empty and is cleared by clicking the checked segment, so `null` is
+ * always reachable. An out-of-range value (a bad row, a stale cache) reads as
+ * no rating.
  */
 export const RatingPicker = ({
   value,
   onChange,
   label,
   showNames = true,
-  surface = 'track',
-}: RatingPickerProps) => {
-  const style = useStyle();
-  const buttons = useRef<Array<HTMLButtonElement | null>>([]);
-  const readOnly = onChange === undefined;
-  // An out-of-range value (a bad row, a stale cache) reads as no rating.
-  const checkedIndex = RATING_OPTIONS.findIndex((option) => option.value === value);
-  const checked = checkedIndex === -1 ? null : RATING_OPTIONS[checkedIndex];
-
-  const select = (next: RatingValue | null) => {
-    if (!onChange) return;
-    onChange(next);
-    if (next !== null) buttons.current[next - 1]?.focus();
-  };
-
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (readOnly) return;
-    // Leave modified keys to the browser and OS: Cmd/Ctrl+digit switches tabs,
-    // Alt/Cmd+arrow walks history, Cmd+Backspace and so on.
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    // Position on the 1–5 scale, 0 for no rating.
-    const current = checked?.value ?? 0;
-    let next: RatingValue | null | undefined;
-    switch (event.key) {
-      case 'ArrowRight':
-      case 'ArrowUp':
-        if (current < 5) next = (current + 1) as RatingValue;
-        break;
-      case 'ArrowLeft':
-      case 'ArrowDown':
-        if (current > 1) next = (current - 1) as RatingValue;
-        break;
-      case 'Home':
-        next = 1;
-        break;
-      case 'End':
-        next = 5;
-        break;
-      case '1':
-      case '2':
-      case '3':
-      case '4':
-      case '5':
-        next = Number(event.key) as RatingValue;
-        break;
-      case 'Backspace':
-      case 'Delete':
-        next = null;
-        break;
-      default:
-        // Space and Enter fall through to the focused button's own click.
-        return;
+  surface = 'card',
+}: RatingPickerProps) => (
+  <SegmentedControl
+    label={label}
+    options={SEGMENTS}
+    value={value === null ? null : (`${value}` as RatingKey)}
+    clearable
+    showLabels={showNames}
+    surface={surface}
+    onChange={
+      onChange && ((next) => onChange(next === null ? null : (Number(next) as RatingValue)))
     }
-    // Every handled key is consumed, including an arrow at the end of the
-    // scale, so it never scrolls the page instead.
-    event.preventDefault();
-    if (next !== undefined) select(next);
-  };
-
-  // The lens is one segment wide and slides to the checked segment; the
-  // segments are equal columns, so its position is just the checked index.
-  const rootStyle = {
-    '--seg-count': RATING_OPTIONS.length,
-    '--seg-index': Math.max(0, checkedIndex),
-  } as CSSProperties;
-
-  return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      aria-disabled={readOnly ? 'true' : undefined}
-      title={checked?.name}
-      className={cx(style.root, style[surface], { [style.readOnly]: readOnly })}
-      style={rootStyle}
-      onKeyDown={handleKeyDown}
-    >
-      {checked !== null && <div className={style.lens} aria-hidden="true" />}
-      {RATING_OPTIONS.map(({ value: optionValue, name, Icon }, index) => {
-        const isChecked = checked?.value === optionValue;
-        const isTabStop = !readOnly && (checked ? isChecked : index === 0);
-        return (
-          <button
-            key={optionValue}
-            ref={(element) => {
-              buttons.current[index] = element;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={isChecked}
-            aria-label={name}
-            aria-disabled={readOnly ? 'true' : undefined}
-            tabIndex={isTabStop ? 0 : -1}
-            className={cx(style.segment, { [style.active]: isChecked })}
-            onClick={() => select(isChecked ? null : optionValue)}
-          >
-            <SegmentContent Icon={Icon} name={name} showNames={showNames} style={style} />
-          </button>
-        );
-      })}
-      {/* The brand colour is not on the checked segment but on this second
-          copy of the row, clipped to the lens's window. Both slide together,
-          so a segment the lens crosses on its way lights up as it passes and
-          dims again as it leaves — the mobile nav's reveal, and what a native
-          segmented control does — rather than only the destination switching
-          colour while the lens is still elsewhere. Same grid, same classes,
-          same content, so the copy sits on the real segments pixel for pixel. */}
-      {checked !== null && (
-        <div className={style.reveal} aria-hidden="true" data-testid="rating-reveal">
-          {RATING_OPTIONS.map(({ value: optionValue, name, Icon }) => (
-            <span key={optionValue} className={style.layerItem}>
-              <SegmentContent Icon={Icon} name={name} showNames={showNames} style={style} />
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/** One segment's icon-over-name, drawn once on the real segment and once in the reveal. */
-const SegmentContent = ({
-  Icon,
-  name,
-  showNames,
-  style,
-}: {
-  Icon: RatingOption['Icon'];
-  name: string;
-  showNames: boolean;
-  style: ReturnType<typeof useStyle>;
-}) => (
-  <>
-    <Icon aria-hidden width={ICON_SIZE} height={ICON_SIZE} />
-    {showNames && (
-      <span className={style.name} aria-hidden>
-        {name}
-      </span>
-    )}
-  </>
+  />
 );

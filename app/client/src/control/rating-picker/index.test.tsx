@@ -199,7 +199,7 @@ describe('RatingPicker', () => {
     const group = screen.getByRole('radiogroup');
     const lenses = () =>
       Array.from(group.children).filter(
-        (el) => el.tagName !== 'BUTTON' && el.getAttribute('data-testid') !== 'rating-reveal'
+        (el) => el.tagName !== 'BUTTON' && el.getAttribute('data-testid') !== 'segmented-reveal'
       );
     expect(lenses()).toHaveLength(1);
     expect(group.style.getPropertyValue('--seg-count')).toBe('5');
@@ -216,7 +216,7 @@ describe('RatingPicker', () => {
     const { rerender } = renderWithProviders(
       <RatingPicker label="Overall" value={3} onChange={vi.fn()} />
     );
-    const reveal = screen.getByTestId('rating-reveal');
+    const reveal = screen.getByTestId('segmented-reveal');
     expect(reveal).toHaveAttribute('aria-hidden', 'true');
     for (const name of NAMES) {
       expect(screen.getAllByText(name)).toHaveLength(2);
@@ -225,7 +225,7 @@ describe('RatingPicker', () => {
     expect(screen.getAllByRole('radio')).toHaveLength(5);
 
     rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
-    expect(screen.queryByTestId('rating-reveal')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('segmented-reveal')).not.toBeInTheDocument();
     for (const name of NAMES) {
       expect(screen.getAllByText(name)).toHaveLength(1);
     }
