@@ -158,15 +158,48 @@ export const RatingPicker = ({
             className={cx(style.segment, { [style.active]: isChecked })}
             onClick={() => select(isChecked ? null : optionValue)}
           >
-            <Icon aria-hidden width={ICON_SIZE} height={ICON_SIZE} />
-            {showNames && (
-              <span className={style.name} aria-hidden>
-                {name}
-              </span>
-            )}
+            <SegmentContent Icon={Icon} name={name} showNames={showNames} style={style} />
           </button>
         );
       })}
+      {/* The brand colour is not on the checked segment but on this second
+          copy of the row, clipped to the lens's window. Both slide together,
+          so a segment the lens crosses on its way lights up as it passes and
+          dims again as it leaves — the mobile nav's reveal, and what a native
+          segmented control does — rather than only the destination switching
+          colour while the lens is still elsewhere. Same grid, same classes,
+          same content, so the copy sits on the real segments pixel for pixel. */}
+      {checked !== null && (
+        <div className={style.reveal} aria-hidden="true" data-testid="rating-reveal">
+          {RATING_OPTIONS.map(({ value: optionValue, name, Icon }) => (
+            <span key={optionValue} className={style.layerItem}>
+              <SegmentContent Icon={Icon} name={name} showNames={showNames} style={style} />
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
+
+/** One segment's icon-over-name, drawn once on the real segment and once in the reveal. */
+const SegmentContent = ({
+  Icon,
+  name,
+  showNames,
+  style,
+}: {
+  Icon: RatingOption['Icon'];
+  name: string;
+  showNames: boolean;
+  style: ReturnType<typeof useStyle>;
+}) => (
+  <>
+    <Icon aria-hidden width={ICON_SIZE} height={ICON_SIZE} />
+    {showNames && (
+      <span className={style.name} aria-hidden>
+        {name}
+      </span>
+    )}
+  </>
+);
