@@ -37,16 +37,23 @@ const Subjects = () => {
   return <p>{library ? library.subjects.join(', ') : 'loading'}</p>;
 };
 
-// A finger landing at the top of the page and pulling well past the threshold,
-// then letting go.
+// A finger landing at the top of the page and pulling it well past the
+// threshold, then letting go. The pull is the scroller's rubber-band, which
+// iOS reports as a negative scroll position while it lasts.
 const pullToRefresh = () => {
   fireEvent.touchStart(document.body, { touches: [{ clientX: 100, clientY: 100 }] });
+  Object.defineProperty(window, 'scrollY', {
+    value: -(PULL_THRESHOLD + 20),
+    writable: true,
+    configurable: true,
+  });
   const move = new TouchEvent('touchmove', { bubbles: true, cancelable: true });
   Object.defineProperty(move, 'touches', {
     value: [{ clientX: 100, clientY: 100 + PULL_THRESHOLD * 4 }],
   });
   document.body.dispatchEvent(move);
   fireEvent.touchEnd(document.body, { touches: [] });
+  Object.defineProperty(window, 'scrollY', { value: 0, writable: true, configurable: true });
 };
 
 afterEach(() => {

@@ -4,38 +4,45 @@ export type PullPhase = 'idle' | 'pulling' | 'armed' | 'refreshing';
 
 export type PullState = { phase: PullPhase; offset: number };
 
-/** How far (in damped px) the indicator has to travel before a release refreshes. */
+/** How far past the top (in px of overscroll) the page has to be pulled before a release refreshes. */
 export const PULL_THRESHOLD = 70;
 
-// The raw finger travel is halved, so arming takes a deliberate pull rather than
-// a flick, and capped so the indicator stops short of the page's floating controls.
-const DAMPING = 0.5;
+// The indicator stops following the overscroll here, so a long pull does not
+// drag it down over the page's controls. (Fixed chrome does not ride the
+// rubber-band on iOS, so the indicator is moved by this number, not the page.)
 const MAX_OFFSET = PULL_THRESHOLD * 1.5;
-// A drag is treated as sideways (and left alone) once it has moved this far
-// before its vertical travel caught up.
-const DIRECTION_LOCK = 8;
 
 const IDLE: PullState = { phase: 'idle', offset: 0 };
+
+// iOS reports the rubber-band as a negative scroll position while the page is
+// pulled past its top; anywhere else, and on platforms that clamp, this is 0.
+const overscroll = () => Math.max(0, -window.scrollY);
 
 /**
  * A pull-down-to-refresh gesture for the installed (standalone) app, where the
  * browser's own pull-to-refresh is not available.
  *
- * Tracks a touch that lands while the window is scrolled to the very top and
- * reports how far the user has pulled, damped, so a caller can draw an
- * indicator following the finger. Past `PULL_THRESHOLD` the gesture is armed;
- * releasing then calls `onRefresh` and holds `refreshing` (with the offset
- * pinned at the threshold) until the returned promise settles, success or not.
+ * Rides the scroller's own overscroll rather than running a gesture of its own:
+ * while a finger is down, the page's rubber-band past the top IS the pull, and
+ * the hook reports how far it has gone so a caller can draw an indicator. Past
+ * `PULL_THRESHOLD` the pull is armed; lifting the finger then calls `onRefresh`
+ * and holds `refreshing` (with the offset pinned at the threshold) until the
+ * returned promise settles, success or not.
+ *
+ * Nothing here cancels a touch, so there is no gesture to claim and no way to
+ * lose one. An earlier version tracked touches itself and default-prevented
+ * the moves to keep the page from rubber-banding under its indicator — but the
+ * scroller decides on a touch's FIRST move whether it owns the gesture, and
+ * after that nothing can take it back. A pull that began as a scroll and
+ * carried on past the top, or that landed while the previous scroll was still
+ * settling, was the scroller's, and the same motion did two different things
+ * depending on what the finger had done a moment earlier. Letting the page
+ * bounce and measuring the bounce makes every pull past the top the same pull.
  *
  * Deliberately left alone: touches that start inside an open `<dialog>` (modals
- * scroll on their own), drags that commit sideways first, anything while the
- * page is scrolled, and anything while a refresh is already in flight.
- *
- * While a pull is being tracked the move events are default-prevented: at the
- * top of the page the only native behaviour left is the overscroll
- * rubber-band, which would otherwise drag the whole page down underneath the
- * indicator. The move listener is only attached for the duration of a gesture,
- * so the non-passive listener costs nothing the rest of the time.
+ * scroll on their own), overscroll with no finger on the screen (a fling that
+ * bounces off the top is not a request), and anything while a refresh is
+ * already in flight.
  */
 export function usePullToRefresh(
   onRefresh: () => Promise<unknown>,
@@ -51,44 +58,36 @@ export function usePullToRefresh(
   useEffect(() => {
     if (!enabled) return;
 
-    let startX = 0;
-    let startY = 0;
-    let direction: 'undecided' | 'vertical' = 'undecided';
     let armed = false;
+    let published: PullState = IDLE;
 
-    const onMove = (event: TouchEvent) => {
-      const point = event.touches[0];
-      if (!point) return;
-      const dx = point.clientX - startX;
-      const dy = point.clientY - startY;
+    const publish = (next: PullState) => {
+      if (next.phase === published.phase && next.offset === published.offset) return;
+      published = next;
+      setState(next);
+    };
 
-      if (direction === 'undecided') {
-        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > DIRECTION_LOCK) {
-          stopTracking();
-          return;
-        }
-        if (dy <= 0) return; // A normal scroll up the page; not ours.
-        direction = 'vertical';
-      }
-
-      event.preventDefault();
-      const offset = Math.min(Math.max(dy, 0) * DAMPING, MAX_OFFSET);
+    // Read on every move AND every scroll event while the finger is down: the
+    // finger keeps moving when the scroller is quiet, and the scroller keeps
+    // reporting when the finger pauses.
+    const track = () => {
+      const offset = Math.min(overscroll(), MAX_OFFSET);
       armed = offset >= PULL_THRESHOLD;
-      setState({ phase: armed ? 'armed' : 'pulling', offset });
+      publish(offset > 0 ? { phase: armed ? 'armed' : 'pulling', offset } : IDLE);
     };
 
     const onEnd = () => {
       stopTracking();
       if (!armed) {
-        setState(IDLE);
+        publish(IDLE);
         return;
       }
       armed = false;
       refreshingRef.current = true;
-      setState({ phase: 'refreshing', offset: PULL_THRESHOLD });
+      publish({ phase: 'refreshing', offset: PULL_THRESHOLD });
       const settle = () => {
         refreshingRef.current = false;
-        setState(IDLE);
+        publish(IDLE);
       };
       let result: Promise<unknown>;
       try {
@@ -102,27 +101,23 @@ export function usePullToRefresh(
 
     const onCancel = () => {
       stopTracking();
-      setState(IDLE);
+      publish(IDLE);
     };
 
     const stopTracking = () => {
-      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchmove', track);
+      window.removeEventListener('scroll', track);
       document.removeEventListener('touchend', onEnd);
       document.removeEventListener('touchcancel', onCancel);
     };
 
     const onStart = (event: TouchEvent) => {
       if (refreshingRef.current) return;
-      if (window.scrollY > 0) return;
-      const point = event.touches[0];
-      if (!point) return;
       if (event.target instanceof Element && event.target.closest('dialog[open]')) return;
 
-      startX = point.clientX;
-      startY = point.clientY;
-      direction = 'undecided';
       armed = false;
-      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchmove', track, { passive: true });
+      window.addEventListener('scroll', track, { passive: true });
       document.addEventListener('touchend', onEnd);
       document.addEventListener('touchcancel', onCancel);
     };

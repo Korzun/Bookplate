@@ -21,7 +21,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
   },
   // Starts tucked fully above the rail (under the status bar, which `TopFade`
-  // blurs) and is pulled down by `--pull-offset`, set from the hook's damped
+  // blurs) and is pulled down by `--pull-offset`, set from the hook's overscroll
   // distance. The same glass as the nav capsule, so it reads as chrome.
   disc: {
     ...theme.recipe.glass,
