@@ -4,8 +4,8 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 // The band's full height, which the page below it has to know in order to keep
 // the fixed mobile controls off it. Derived from the tokens the band is built
 // from rather than measured, so it tracks a change to the control instead of
-// drifting from it: `space.xxl` above and below the switcher row, plus the
-// band's own rule.
+// drifting from it: `bandTopGap` above and `space.xxl` below the switcher row,
+// plus the band's own rule.
 //
 // The row is `layout.controlHeight` FLAT. `index.html` sets `box-sizing:
 // border-box` on everything, so the `Select` trigger's padding and border are
@@ -13,7 +13,16 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 // many) puts the controls below a band that is shorter than the arithmetic
 // claims.
 const bandHeight = (theme: Theme) =>
-  `calc(env(safe-area-inset-top) + ${theme.space.xxl} * 2 + ${theme.layout.controlHeight} + 1px)`;
+  `calc(env(safe-area-inset-top) + ${bandTopGap(theme)} + ${theme.space.xxl} + ${theme.layout.controlHeight} + 1px)`;
+
+// The gap between the status-bar inset and the picker. Larger than the `space.xxl`
+// the band keeps between the picker and its rule, on purpose: in the installed app
+// `TopFade` blurs across the inset and the picker is the first thing under it, so it
+// sits a step further down than the symmetric rhythm would put it — the same
+// `space.xxxxl` the fixed controls keep from the inset
+// (`theme.layout.floatingControlTopBase`). In a browser tab the inset is zero and
+// the picker is simply this far from the top.
+const bandTopGap = (theme: Theme) => theme.space.xxxxl;
 
 export const useStyle = createUseStyles((theme: Theme) => ({
   // The band: full-bleed, carrying the rule that separates the global picker
@@ -25,7 +34,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // band rather than `component/page`'s `<main>` (which adds the same inset
     // for the pages that have nothing above them). Without it the picker sits
     // under the status bar in standalone, where `TopFade` blurs it.
-    paddingTop: `calc(env(safe-area-inset-top) + ${theme.space.xxl})`,
+    paddingTop: `calc(env(safe-area-inset-top) + ${bandTopGap(theme)})`,
     paddingBottom: theme.space.xxl,
     borderBottom: `1px solid ${theme.color.border.section}`,
     // The back button and the page actions menu are `position: fixed` against
