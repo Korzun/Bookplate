@@ -197,13 +197,38 @@ describe('RatingPicker', () => {
       <RatingPicker label="Overall" value={3} onChange={vi.fn()} />
     );
     const group = screen.getByRole('radiogroup');
-    const lenses = () => Array.from(group.children).filter((el) => el.tagName !== 'BUTTON');
+    const lenses = () =>
+      Array.from(group.children).filter(
+        (el) => el.tagName !== 'BUTTON' && el.getAttribute('data-testid') !== 'rating-reveal'
+      );
     expect(lenses()).toHaveLength(1);
     expect(group.style.getPropertyValue('--seg-count')).toBe('5');
     expect(group.style.getPropertyValue('--seg-index')).toBe('2');
 
     rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
     expect(lenses()).toHaveLength(0);
+  });
+
+  // The brand colour is not painted on the checked segment itself but on a
+  // second copy of the row, clipped to the lens, so a segment lights up as
+  // the lens passes over it — the mobile nav's reveal. No lens, no reveal.
+  it('draws a decorative copy of every segment to reveal under the lens', () => {
+    const { rerender } = renderWithProviders(
+      <RatingPicker label="Overall" value={3} onChange={vi.fn()} />
+    );
+    const reveal = screen.getByTestId('rating-reveal');
+    expect(reveal).toHaveAttribute('aria-hidden', 'true');
+    for (const name of NAMES) {
+      expect(screen.getAllByText(name)).toHaveLength(2);
+    }
+    // Only the real segments are radios; the copy adds nothing to the tree.
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
+
+    rerender(<RatingPicker label="Overall" value={null} onChange={vi.fn()} />);
+    expect(screen.queryByTestId('rating-reveal')).not.toBeInTheDocument();
+    for (const name of NAMES) {
+      expect(screen.getAllByText(name)).toHaveLength(1);
+    }
   });
 
   it('paints its own track by default and none on the row surface', () => {
