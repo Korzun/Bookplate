@@ -92,3 +92,23 @@ describe('Page', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });
 });
+
+describe('Page mobile controls row', () => {
+  it('puts the back button and the actions trigger in one row', () => {
+    renderWithProviders(
+      <Page back="/library" headerActions={[{ label: 'Edit', onClick: vi.fn(), primary: true }]}>
+        content
+      </Page>
+    );
+    const back = screen.getByRole('button', { name: 'Back' });
+    const actions = screen.getByRole('button', { name: 'More actions' });
+    expect(back.parentElement).toBe(actions.parentElement!.parentElement);
+  });
+
+  it('renders no row when the page has neither', () => {
+    renderWithProviders(<Page>content</Page>);
+    const main = screen.getByRole('main');
+    // The header row is the first thing in `<main>` on a page without controls.
+    expect(main.firstElementChild?.tagName).toBe('HEADER');
+  });
+});

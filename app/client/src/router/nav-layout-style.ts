@@ -1,25 +1,10 @@
-import { scrollOffsetProperty } from '~/lib/use-scroll-offset-property';
 import { createUseStyles, type Theme } from '~/provider/theme';
-
-// The band's full height, which the page below it has to know in order to keep
-// the fixed mobile controls off it. Derived from the tokens the band is built
-// from rather than measured, so it tracks a change to the control instead of
-// drifting from it: `bandTopGap` above and `space.xxl` below the switcher row,
-// plus the band's own rule.
-//
-// The row is `layout.controlHeight` FLAT. `index.html` sets `box-sizing:
-// border-box` on everything, so the `Select` trigger's padding and border are
-// already inside that number — adding them again (which this did, for 18px too
-// many) puts the controls below a band that is shorter than the arithmetic
-// claims.
-const bandHeight = (theme: Theme) =>
-  `calc(env(safe-area-inset-top) + ${bandTopGap(theme)} + ${theme.space.xxl} + ${theme.layout.controlHeight} + 1px)`;
 
 // The gap between the status-bar inset and the picker. Larger than the `space.xxl`
 // the band keeps between the picker and its rule, on purpose: in the installed app
 // `TopFade` blurs across the inset and the picker is the first thing under it, so it
 // sits a step further down than the symmetric rhythm would put it — the same
-// `space.xxxxl` the fixed controls keep from the inset
+// `space.xxxxl` the page's back / actions controls keep from the inset
 // (`theme.layout.floatingControlTopBase`). In a browser tab the inset is zero and
 // the picker is simply this far from the top.
 const bandTopGap = (theme: Theme) => theme.space.xxxxl;
@@ -37,38 +22,24 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     paddingTop: `calc(env(safe-area-inset-top) + ${bandTopGap(theme)})`,
     paddingBottom: theme.space.xxl,
     borderBottom: `1px solid ${theme.color.border.section}`,
-    // The back button and the page actions menu are `position: fixed` against
-    // the VIEWPORT, so they know nothing about this band and would sit on top
-    // of it — which is exactly what the "…" trigger did once the picker became
-    // global chrome. They read their `top` from `--floating-control-top`
-    // (`theme.layout.floatingControlTop`), so telling them is a matter of
-    // setting it on everything that follows the band: `<main>` is a sibling of
-    // it, and a custom property inherits from there to the controls inside.
-    //
-    // A sibling selector rather than a class on a wrapper, because it cannot
-    // fall out of step: the band styles itself and offsets the page in one
-    // place, and when the band is not rendered — every non-admin — the
-    // property is never set and the fallback position applies untouched.
-    //
-    // The controls sit one `space.xxl` below the band, mirroring the same
-    // `space.xxl` the band holds between the switcher row and its rule: picker,
-    // gap, rule, gap, control. (An earlier `space.lg` gap ON TOP of an
-    // overstated band height put them visibly too low.)
-    //
-    // Then they RIDE IT UP. The band scrolls away with the page while the
-    // controls, being fixed, do not, and an offset for chrome that is no
-    // longer on screen just leaves them stranded low. Subtracting how far the
-    // page has scrolled (`useScrollOffsetProperty`, which is what puts that
-    // property on the document element) moves them with the band, and the
-    // `max()` floor is the position they hold when there is no band at all —
-    // so they slide up, stop there, and from then on behave exactly as they do
-    // for a reader.
+    // What the page below needs to know about this band, told to everything
+    // that follows it: `<main>` is a sibling, and a custom property inherits
+    // from there into whatever inside it reads one. A sibling selector rather
+    // than a class on a wrapper, because it cannot fall out of step: the band
+    // styles itself and informs the page in one place, and when the band is
+    // not rendered — every non-admin — nothing is set and each `var()`
+    // fallback stands.
     '& ~ *': {
-      '--floating-control-top': `max(${theme.layout.floatingControlTopBase}, calc(${bandHeight(theme)} + ${theme.space.xxl} - var(${scrollOffsetProperty}, 0px)))`,
-      // And the page below starts flush under the rule: the inset is spent
-      // above the picker, so `<main>` must not add it a second time
+      // The page starts flush under the rule: the inset is spent above the
+      // picker, so `<main>` must not add it a second time
       // (`component/page/style`).
       '--page-top-inset': '0px',
+      // The page's back / actions row rests `space.xxl` below the rule,
+      // mirroring the `space.xxl` the band holds between the picker and its
+      // rule: picker, gap, rule, gap, control. The row is sticky, so from there
+      // it rides up with the band and pins at its own resting position
+      // (`component/page/style`).
+      '--floating-controls-gap': theme.space.xxl,
     },
   },
   // The inner box mirrors `component/page`'s `<main>` — same max width, same

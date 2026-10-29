@@ -1,13 +1,12 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
+  // Positioned by the row `component/page` puts it in (sticky, so it rides the
+  // page up and then holds), not by itself. `relative` anchors the popover;
+  // `auto` keeps it at the trailing end whether or not a back button leads.
   root: {
-    position: 'fixed',
-    // Shared with the back button, and shared with the library-switcher band that
-    // pushes both of them clear of itself — see `theme.layout.floatingControlTop`.
-    top: theme.layout.floatingControlTop,
-    right: theme.space.lg,
-    zIndex: theme.zIndex.sticky,
+    position: 'relative',
+    marginLeft: 'auto',
     [theme.breakpoint.normal]: {
       display: 'none',
     },

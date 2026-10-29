@@ -51,14 +51,17 @@ export const Page = ({
   }, [libraryName]);
 
   const hasHeaderActions = headerActions !== undefined && headerActions.length > 0;
-  const showTopInset = back !== undefined || hasHeaderActions;
+  const hasControls = back !== undefined || hasHeaderActions;
 
   return (
     <Fragment>
       <main className={styles[type]}>
-        {back !== undefined && <BackButton to={back} />}
-        {hasHeaderActions && <PageActionsMenu items={headerActions} />}
-        {showTopInset && <div className={styles.topInset} aria-hidden="true" />}
+        {hasControls && (
+          <div className={styles.controlsRow}>
+            {back !== undefined && <BackButton to={back} />}
+            {hasHeaderActions && <PageActionsMenu items={headerActions} />}
+          </div>
+        )}
         {/* Rendered for every default page, EMPTY INCLUDED — holding the row
             open is what keeps pages with and without actions starting their
             content at the same height. A minimal page (login, loading, the
