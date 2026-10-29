@@ -18,7 +18,15 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       margin: 0,
       // Top spacing the old static header used to provide (now that the desktop bar
       // is display:none on mobile); plus the notch inset, like the modal recipe.
-      paddingTop: `calc(${theme.space.xxxxxl} + env(safe-area-inset-top))`,
+      //
+      // The inset belongs to whatever is topmost. When that is this `<main>` the
+      // fallback applies; when the admin's library-switcher band sits above it
+      // (`router/nav-layout-style`), the band has already spent the inset and sets
+      // `--page-top-inset` to zero on everything after it. Counting it here as
+      // well left a status-bar-sized hole between the band's rule and the first
+      // row of content in the installed app — and nowhere else, because in a
+      // Safari tab the inset is zero, which is how it went unnoticed.
+      paddingTop: `calc(${theme.space.xxxxxl} + var(--page-top-inset, env(safe-area-inset-top)))`,
       // Clears the floating mobile nav plus slack so the last row can always be
       // scrolled above both the nav and Safari's expanded URL bar. Nav height is the
       // shared theme.layout token (tune there); the extra space is this page's slack.
