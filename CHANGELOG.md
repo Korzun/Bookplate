@@ -1,3 +1,10 @@
+## 0.13.1
+
+- style(client): match the request form's field spacing to the edit form
+- fix(client): wrap row meta lines by whole datum
+- fix(client): installed-app top chrome and pull-to-refresh
+- Light each segment as the lens passes over it; one SegmentedControl
+
 ## 0.13.0
 
 - feat(client): rating details stay collapsed even when detail ratings exist
