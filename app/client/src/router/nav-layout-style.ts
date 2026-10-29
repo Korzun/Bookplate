@@ -56,6 +56,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // for a reader.
     '& ~ *': {
       '--floating-control-top': `max(${theme.layout.floatingControlTopBase}, calc(${bandHeight(theme)} + ${theme.space.xxl} - var(${scrollOffsetProperty}, 0px)))`,
+      // And the page below starts flush under the rule: the inset is spent
+      // above the picker, so `<main>` must not add it a second time
+      // (`component/page/style`).
+      '--page-top-inset': '0px',
     },
   },
   // The inner box mirrors `component/page`'s `<main>` — same max width, same
