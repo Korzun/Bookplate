@@ -35,7 +35,7 @@
     "fast-xml-parser": "^5.7.1",
     "fflate": "^0.8.3",
     "graphql": "^16.14.2",
-    "graphql-scalars": "^1.25.0",
+    "graphql-scalars": "^2.0.1",
     "graphql-yoga": "^5.24.6",
     "jsonwebtoken": "^9.0.3",
     "mime-types": "^2.1.35",
@@ -45,7 +45,7 @@
     "smartcrop": "^2.0.5",
     "smartcrop-sharp": "^2.0.8",
     "web-push": "^3.6.7",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "optionalDependencies": {
     "@img/sharp-linux-arm64": "^0.34.5",
