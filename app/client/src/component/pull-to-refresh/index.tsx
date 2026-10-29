@@ -40,6 +40,11 @@ export const PullToRefresh = () => {
   const { phase, offset } = usePullToRefresh(refresh);
 
   const following = phase === 'pulling' || phase === 'armed';
+  // The disc is moved by hand, by the overscroll the hook reports: fixed chrome
+  // holds its place while the page rubber-bands on iOS (observed on-device,
+  // 2026-10-28 — a disc left to the page's own motion never came out from
+  // under the Dynamic Island), so the disc has to follow the pull itself, and
+  // then stay where it is while a refresh runs after the page has snapped back.
   const vars = {
     '--pull-offset': `${offset}px`,
     '--pull-opacity': Math.min(1, offset / PULL_THRESHOLD),
