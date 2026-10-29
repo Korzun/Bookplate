@@ -81,13 +81,44 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       },
     },
   },
-  // Mobile-only spacer so the fixed floating back/actions buttons don't overlap the
-  // first child, with breathing room below them. Height is tunable during verification.
-  topInset: {
-    display: 'none',
-    [theme.breakpoint.mobile]: {
-      display: 'block',
-      height: theme.space.xxxxxl,
+  // Mobile-only row holding the back button and the page actions menu. STICKY,
+  // not fixed: it starts in the page's flow — under the admin's library-switcher
+  // band when there is one — scrolls up with the page like everything else, and
+  // pins at `floatingControlTopBase` once it gets there. Both halves of that
+  // (riding up with the band, then holding) used to be done by hand: the
+  // controls were `position: fixed` and a scroll listener published the scroll
+  // offset for the stylesheet to subtract from their `top`. Fixed chrome whose
+  // `top` is rewritten from scroll events lags the compositor on iOS and jitters
+  // for the whole ride; sticky positioning is the same motion, done by the
+  // scroller itself.
+  //
+  // Where the row rests before it pins: `floatingControlsGap` below the top of
+  // whatever is above it — the status-bar inset on a page with nothing above,
+  // or the band's rule, which sets the gap smaller (`router/nav-layout-style`).
+  // `<main>`'s top padding is larger than either gap, so the margin pulls the
+  // row up into that padding by the difference; the content that follows keeps
+  // its own `gap` from the row.
+  controlsRow: {
+    position: 'sticky',
+    top: theme.layout.floatingControlTopBase,
+    zIndex: theme.zIndex.sticky,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginTop: `calc(var(--floating-controls-gap, ${theme.space.xxxxl}) - ${theme.space.xxxxxl})`,
+    // The buttons sit `space.lg` from the screen edge, inside a gutter of
+    // `space.xxl`, so the row reaches out past the gutter by the difference.
+    marginLeft: `calc(${theme.space.lg} - ${theme.space.xxl})`,
+    marginRight: `calc(${theme.space.lg} - ${theme.space.xxl})`,
+    // The row spans the width between the buttons; taps there must reach the
+    // content scrolling under it.
+    pointerEvents: 'none',
+    '& > *': {
+      pointerEvents: 'auto',
+    },
+    // Desktop has the actions bar in the header row and no back button.
+    [theme.breakpoint.normal]: {
+      display: 'none',
     },
   },
 }));

@@ -5,7 +5,6 @@ import { Nav } from '~/component/nav';
 import { PullToRefresh } from '~/component/pull-to-refresh';
 import { TopFade } from '~/component/top-fade';
 import { isStandalone } from '~/lib/is-standalone';
-import { useScrollOffsetProperty } from '~/lib/use-scroll-offset-property';
 import { useIsAdmin } from '~/provider/auth';
 
 import { useStyle } from './nav-layout-style';
@@ -40,13 +39,6 @@ import { useStyle } from './nav-layout-style';
 export const NavLayout = () => {
   const styles = useStyle();
   const [isAdmin] = useIsAdmin();
-
-  // Gated on the same condition as the band, because the two are one feature:
-  // the band pushes the fixed mobile controls down, and this lets them ride it
-  // back up as it scrolls away. With no band there is nothing above them to
-  // slide out from under, so the property stays unset and their own resting
-  // position stands.
-  useScrollOffsetProperty(isAdmin);
 
   return (
     <>
