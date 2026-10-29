@@ -423,8 +423,11 @@ function buildTheme(mode: ThemeMode): Theme {
   // display-mode query): a browser tab has no top safe-area inset, so env() ~ 0
   // and this resolves to the fixed floor (room for the frosted shadow); in
   // standalone the notch inset dominates and pushes the control below the
-  // status bar.
-  const floatingControlTopBase = `max(${space.xxxl}, calc(env(safe-area-inset-top) + ${space.lg}))`;
+  // status bar — by `space.xxxxl`, not the `space.lg` it used to be: `TopFade`
+  // blurs across the inset there and a control resting `space.lg` under it read
+  // as caught in the blur, so the controls (and the admin picker, which keeps the
+  // same gap — `router/nav-layout-style`) rest a clear step below where it ends.
+  const floatingControlTopBase = `max(${space.xxxl}, calc(env(safe-area-inset-top) + ${space.xxxxl}))`;
   const layout: Theme['layout'] = {
     navHeightMobile: '96px',
     modalWidth: '500px',
