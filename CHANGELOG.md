@@ -1,3 +1,7 @@
+## 0.14.0
+
+- feat(client): minimize the mobile nav on a fast scroll down
+
 ## 0.13.1
 
 - style(client): match the request form's field spacing to the edit form
