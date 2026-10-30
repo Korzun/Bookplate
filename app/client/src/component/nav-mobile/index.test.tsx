@@ -1,7 +1,8 @@
-import { screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BookIcon, SettingsIcon, UploadIcon } from '~/icon';
+import { MINIMIZE_SPEED } from '~/lib/use-minimize-on-scroll';
 import { renderWithProviders } from '~/test-utils';
 
 import type { NavItem } from '../nav/types';
@@ -204,6 +205,163 @@ describe('NavMobile badge placement', () => {
     expect(overlayCopies).toHaveLength(2);
     for (const copy of overlayCopies) {
       expect(copy.parentElement?.querySelector('svg')).toBeTruthy();
+    }
+  });
+});
+
+/**
+ * Minimize-on-scroll. The expanded side shrinks to a circle holding the active
+ * tab when the page is flicked down and comes back on the way up — the same
+ * morph as the route-driven collapse, with a different shape in the circle.
+ * The thresholds themselves are `use-minimize-on-scroll`'s to test; here it is
+ * what the bar OFFERS in each state.
+ */
+describe('NavMobile minimized by scrolling', () => {
+  const scrollTo = (y: number) =>
+    Object.defineProperty(window, 'scrollY', { value: y, writable: true, configurable: true });
+
+  // The hook measures speed against `performance.now()`, driven by hand here.
+  let now = 0;
+  const FRAME = 16;
+  const scrolledTo = (y: number) => {
+    now += FRAME;
+    scrollTo(y);
+    fireEvent.scroll(window);
+  };
+
+  // A user-driven flick: a finger touched the page and the next frame moved
+  // it down faster than the threshold.
+  const flickDown = () => {
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      value: 5000,
+      configurable: true,
+    });
+    act(() => {
+      fireEvent.touchStart(document.body, { touches: [{ clientX: 0, clientY: 0 }] });
+      scrolledTo(100);
+      scrolledTo(100 + Math.ceil(MINIMIZE_SPEED * FRAME) + 1);
+    });
+  };
+
+  const showNavigation = () => screen.getByRole('button', { name: 'Show navigation' });
+
+  beforeEach(() => {
+    now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+  });
+
+  afterEach(() => {
+    scrollTo(0);
+    vi.restoreAllMocks();
+  });
+
+  it('offers the destinations, not the minimized button, before any scroll', () => {
+    renderBar(items('Library'));
+    expect(screen.getByRole('link', { name: 'Library' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show navigation' })).not.toBeInTheDocument();
+  });
+
+  it('swaps the destinations for one button once the page scrolls down', () => {
+    renderBar(items('Upload'));
+    flickDown();
+
+    expect(screen.queryByRole('link', { name: 'Library' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Upload/ })).not.toBeInTheDocument();
+    expect(showNavigation()).toHaveAttribute('aria-expanded', 'false');
+    // The route-collapsed shape stays out of it: this side is minimized, not
+    // collapsed, and its circle is the active tab, not "Back to library".
+    expect(screen.queryByRole('link', { name: 'Back to library' })).not.toBeInTheDocument();
+  });
+
+  it('leaves the other side circle alone', () => {
+    renderBar(items('Library'));
+    flickDown();
+    expect(screen.getByRole('link', { name: 'Open settings' })).toBeInTheDocument();
+  });
+
+  it('brings the destinations back when the button is pressed', () => {
+    renderBar(items('Library'));
+    flickDown();
+    expect(showNavigation()).toBeInTheDocument();
+
+    fireEvent.click(showNavigation());
+
+    expect(screen.getByRole('link', { name: 'Library' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show navigation' })).not.toBeInTheDocument();
+  });
+
+  it('brings the destinations back when the page scrolls up', () => {
+    renderBar(items('Library'));
+    flickDown();
+    expect(showNavigation()).toBeInTheDocument();
+
+    act(() => scrolledTo(1));
+
+    expect(screen.getByRole('link', { name: 'Library' })).toBeInTheDocument();
+  });
+
+  it('carries the active tab badge into the minimized circle', () => {
+    renderBar([
+      { to: '/library', label: 'Library', Icon: BookIcon, active: false, badge: 'dot' },
+      { to: '/upload', label: 'Upload', Icon: UploadIcon, active: true, badge: 4 },
+    ]);
+    flickDown();
+    expect(within(showNavigation()).getByText('4')).toBeInTheDocument();
+  });
+
+  it('summarises hidden siblings as a dot when the active tab has no badge', () => {
+    renderBar([
+      { to: '/library', label: 'Library', Icon: BookIcon, active: true },
+      { to: '/upload', label: 'Upload', Icon: UploadIcon, active: false, badge: 4 },
+    ]);
+    flickDown();
+    const button = showNavigation();
+    expect(within(button).getByTestId('nav-badge-dot')).toBeInTheDocument();
+    expect(within(button).queryByText('4')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The circle is the selected tab carried over, so it wears the lens's
+   * surface — not the bare pill with a blue glyph in it.
+   */
+  it('paints the minimized circle with the selected tab surface', () => {
+    const { container } = renderBar(items('Library'));
+    flickDown();
+    const lens = container.querySelector<HTMLElement>('span[aria-hidden="true"]');
+    expect(lens).not.toBeNull();
+    const lensSurface = getComputedStyle(lens as HTMLElement);
+    const buttonSurface = getComputedStyle(showNavigation());
+    expect(buttonSurface.backgroundColor).toBe(lensSurface.backgroundColor);
+    expect(buttonSurface.backgroundColor).not.toBe('');
+    expect(buttonSurface.borderColor).toBe(lensSurface.borderColor);
+  });
+
+  /**
+   * A reader on Settings: the main group is still the expanded side but none
+   * of its tabs is selected (the gear circle is). Minimized, it shows its
+   * stand-in glyph — and that glyph is NOT lit, because nothing here is.
+   */
+  it('leaves the circle unlit when no tab in the group is selected', () => {
+    const { container } = renderBar(items(null));
+    flickDown();
+    const lens = container.querySelector<HTMLElement>('span[aria-hidden="true"]');
+    const lensSurface = getComputedStyle(lens as HTMLElement);
+    const button = showNavigation();
+    const buttonSurface = getComputedStyle(button);
+    expect(buttonSurface.backgroundColor).not.toBe(lensSurface.backgroundColor);
+    // Same colour as the other side's unselected circle, not the brand blue.
+    const gear = screen.getByRole('link', { name: 'Open settings' });
+    expect(buttonSurface.color).toBe(getComputedStyle(gear).color);
+    expect(buttonSurface.color).not.toBe('');
+  });
+
+  it('shows no badge on the button while the side is not minimized', () => {
+    renderBar(badgeItems(4));
+    // The hidden button is still mounted (it is what the pill morphs to), so
+    // a badge left on it would double-count the tab's own.
+    const buttons = document.querySelectorAll('button[aria-label="Show navigation"]');
+    for (const button of Array.from(buttons)) {
+      expect(button.textContent).not.toContain('4');
     }
   });
 });
