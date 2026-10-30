@@ -1,7 +1,8 @@
 import cx from 'classnames';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
+import { useMinimizeOnScroll } from '~/lib/use-minimize-on-scroll';
 import { useTheme } from '~/provider/theme';
 
 import type { NavItem } from '../nav/types';
@@ -63,13 +64,35 @@ const sameBox = (a: LensBox | null, b: LensBox | null): boolean =>
 // active tab is wrapped by a glass lens that slides between (equal-width) tabs. A blue
 // copy of the tab row, clipped to the lens, reveals the active color only where the lens
 // is. Hidden at and above the desktop breakpoint.
+//
+// Scrolling down MINIMIZES the expanded side to a circle holding the active
+// tab, the way the iOS tab bar gets out of the way of what you are reading;
+// scrolling up, reaching the top, tapping the circle or changing page brings it
+// back. It is the same morph the route-driven collapse uses — one width
+// animating — so the two never fight: a side is a circle when it is not the
+// expanded side OR the bar is minimized. The other side's circle is left as it
+// is, like the search button iOS keeps beside its minimized bar.
 export const NavMobile = ({ main, settings, expanded }: NavMobileProps) => {
   const styles = useStyle();
+  const { key } = useLocation();
+  const { minimized, expand } = useMinimizeOnScroll({ resetKey: key });
 
   return (
     <nav className={styles.root}>
-      <Pill pill={main} expanded={expanded === 'main'} styles={styles} />
-      <Pill pill={settings} expanded={expanded === 'settings'} styles={styles} />
+      <Pill
+        pill={main}
+        expanded={expanded === 'main'}
+        minimized={minimized}
+        onExpand={expand}
+        styles={styles}
+      />
+      <Pill
+        pill={settings}
+        expanded={expanded === 'settings'}
+        minimized={minimized}
+        onExpand={expand}
+        styles={styles}
+      />
     </nav>
   );
 };
@@ -77,10 +100,15 @@ export const NavMobile = ({ main, settings, expanded }: NavMobileProps) => {
 const Pill = ({
   pill,
   expanded,
+  minimized,
+  onExpand,
   styles,
 }: {
   pill: NavPill;
   expanded: boolean;
+  /** The bar has scrolled out of the way; an expanded side shows its active tab alone. */
+  minimized: boolean;
+  onExpand: () => void;
   styles: ReturnType<typeof useStyle>;
 }) => {
   const theme = useTheme();
@@ -91,8 +119,24 @@ const Pill = ({
   const [ready, setReady] = useState(false);
 
   const { items, collapsed } = pill;
-  const activeTo = items.find((item) => item.active)?.to;
+  const activeItem = items.find((item) => item.active);
+  const activeTo = activeItem?.to;
   const CollapsedIcon = collapsed.Icon;
+
+  // The three shapes, exactly one of them showing. `open` is the capsule;
+  // the two circles split the rest by WHY the side is a circle.
+  const open = expanded && !minimized;
+  const showMinimized = expanded && minimized;
+  // The minimized circle stands for the capsule it replaced, so it wears the
+  // tab you are on — where you are is the one thing worth keeping on screen.
+  // When the route maps to no tab it falls back to the side's own collapsed
+  // glyph rather than showing nothing.
+  const MinimizedIcon = activeItem?.Icon ?? CollapsedIcon;
+  // Its badge is the active tab's own when it has one — that tab's icon is
+  // what is showing, so its count is honest there — and otherwise a dot for
+  // whatever the hidden siblings want, the same claim a collapsed side makes.
+  const minimizedBadge: NavItem['badge'] =
+    activeItem?.badge ?? (items.some((item) => item.badge !== undefined) ? 'dot' : undefined);
 
   // Measure the active tab's horizontal box (its vertical extent is fixed in CSS) so
   // the lens can wrap and morph to it, plus the two sizes this pill animates between.
@@ -174,23 +218,23 @@ const Pill = ({
   // naturally is; collapsed, as wide as it is tall, which at `radius.pill` is a circle.
   // Left to CSS until the first measurement, so a pill never renders at a guessed width.
   const pillStyle: CSSProperties | undefined =
-    box === null ? undefined : { width: expanded ? box.capsuleWidth : box.pillHeight };
+    box === null ? undefined : { width: open ? box.capsuleWidth : box.pillHeight };
 
   return (
     <div
       ref={pillRef}
-      className={cx(styles.pill, { [styles.pillReady]: ready, [styles.pillCollapsed]: !expanded })}
+      className={cx(styles.pill, { [styles.pillReady]: ready, [styles.pillCollapsed]: !open })}
       style={pillStyle}
     >
       <div className={styles.glass} aria-hidden="true" />
       <div
         ref={containerRef}
-        className={cx(styles.capsule, { [styles.capsuleHidden]: !expanded })}
+        className={cx(styles.capsule, { [styles.capsuleHidden]: !open })}
         // A collapsed pill's destinations are behind a clip, not merely faded:
         // without these they stay in the accessibility tree and the tab order, and a
         // screen reader reads a navigation nobody can see.
-        aria-hidden={expanded ? undefined : true}
-        inert={expanded ? undefined : true}
+        aria-hidden={open ? undefined : true}
+        inert={open ? undefined : true}
       >
         <span
           className={cx(styles.lens, { [styles.lensReady]: ready })}
@@ -258,6 +302,33 @@ const Pill = ({
           styles={styles}
         />
       </Link>
+      {/* The scrolled-away shape. A BUTTON, not a link to the active tab: you
+          are already there, and what a tap on a minimized bar asks for is the
+          bar back, not a navigation (which would also push a history entry
+          and scroll the page to its top). Hidden by the same pair as the other
+          two shapes, so the bar offers one shape at a time. */}
+      <button
+        type="button"
+        className={cx(styles.minimizedButton, {
+          [styles.collapsedHidden]: !showMinimized,
+          // Lit only when a tab IS selected. Falling back to the stand-in
+          // glyph is not a selection, and a lit stand-in told a reader on
+          // Settings that something in the main group was.
+          [styles.minimizedActive]: activeItem !== undefined,
+        })}
+        aria-hidden={showMinimized ? undefined : true}
+        inert={showMinimized ? undefined : true}
+        aria-expanded={false}
+        aria-label="Show navigation"
+        onClick={onExpand}
+      >
+        <BadgedIcon
+          Icon={MinimizedIcon}
+          badge={showMinimized ? minimizedBadge : undefined}
+          size={18}
+          styles={styles}
+        />
+      </button>
     </div>
   );
 };

@@ -38,6 +38,27 @@ export const useStyle = createUseStyles((theme: Theme) => {
    */
   const bottomInset = `max(${theme.space.xxxl}, calc(env(safe-area-inset-bottom) - ${theme.space.xl}))`;
 
+  /**
+   * One of the pill's circle shapes: a single icon centred in whatever the
+   * pill's box currently is. Shared by the route-collapsed link and the
+   * scroll-minimized button so the two circles are the same circle.
+   */
+  const circle = {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 2,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    userSelect: 'none',
+    '-webkit-user-select': 'none',
+    transition: `opacity ${theme.transition.fast}`,
+  } as const;
+
   return {
     root: {
       position: 'fixed',
@@ -122,23 +143,50 @@ export const useStyle = createUseStyles((theme: Theme) => {
 
     /** The collapsed shape: one icon, centred, filling the circle. */
     collapsedLink: {
-      position: 'absolute',
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      zIndex: 2,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
+      ...circle,
       color: theme.color.text.primary,
       textDecoration: 'none',
-      cursor: 'pointer',
-      userSelect: 'none',
-      '-webkit-user-select': 'none',
-      transition: `opacity ${theme.transition.fast}`,
     },
     collapsedActive: {
+      color: theme.color.brand.default,
+    },
+    /**
+     * The minimized shape: the same circle, holding whatever the capsule had
+     * selected. Unlit by default — a plain glyph on the bare pill, like the
+     * route-collapsed circle — because a capsule with NO selected tab (a reader
+     * on Settings, whose main group is still the expanded side) minimizes to
+     * its stand-in glyph, and that must not claim to be selected. A button, so
+     * the native button chrome goes.
+     */
+    minimizedButton: {
+      ...circle,
+      boxSizing: 'border-box',
+      borderRadius: theme.radius.pill,
+      margin: 0,
+      padding: 0,
+      // Longhands, not `border`/`background` shorthands: `minimizedActive`
+      // below sets the matching longhands, and a shorthand here would reset
+      // the lot in environments that resolve the two in declaration order.
+      borderStyle: 'none',
+      backgroundColor: 'transparent',
+      font: 'inherit',
+      color: theme.color.text.primary,
+      '-webkit-tap-highlight-color': 'transparent',
+    },
+    /**
+     * …and lit when it IS the selected tab carried into the circle: the
+     * selected tab's surface — `glassHighlight`, the raised, lighter glass the
+     * lens paints over the pill — and the active colour for the glyph. Without
+     * the surface the circle read as an empty pill with a blue icon, a
+     * different thing from the lit tab it replaced.
+     *
+     * The highlight sits over the pill's own `glass` layer exactly as the lens
+     * does over the capsule; it is the pill's full box, so the whole circle is
+     * lens, not a smaller disc inside a plain one. Its own border follows the
+     * circle's radius, set above.
+     */
+    minimizedActive: {
+      ...theme.recipe.glassHighlight,
       color: theme.color.brand.default,
     },
     /**
