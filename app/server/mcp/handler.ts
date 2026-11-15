@@ -39,6 +39,7 @@ export const createMcpRequestHandler =
       prisma: deps.prisma,
       config: deps.config,
       replaceStaging: deps.replaceStaging,
+      uploadSlots: deps.uploadSlots,
       thumbnails: deps.thumbnails,
       editionsRoot: deps.editionsRoot,
       setupComplete: isSetupComplete(viewer),
