@@ -6,11 +6,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.sm,
   },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.space.md,
-  },
   message: {
     fontSize: theme.fontSize.md,
   },
