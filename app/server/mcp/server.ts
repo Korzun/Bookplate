@@ -7,6 +7,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { APP_VERSION } from '../utils/app-version';
+import { registerCreateUploadLink } from './tools/create-upload-link';
 import { registerDeleteBook } from './tools/delete-book';
 import type { ToolDeps } from './tools/deps';
 import { registerGetBook } from './tools/get-book';
@@ -62,6 +63,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
   registerDeleteBook(server, deps);
   registerRequestBook(server, deps);
   registerUpdateBookRequest(server, deps);
+  registerCreateUploadLink(server, deps);
   registerUploadBook(server, deps);
   registerStageReplacement(server, deps);
   registerReplaceBookFile(server, deps);
