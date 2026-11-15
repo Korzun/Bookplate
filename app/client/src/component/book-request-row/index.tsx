@@ -8,11 +8,13 @@ import type {
   BookRequestDeclineMutation,
   BookRequestFulfillMutation,
   BookRequestStatus,
+  BookRequestUpdateMutation,
 } from '~/gql/graphql';
 import {
   BookRequestDeclineDocument,
   BookRequestFulfillDocument,
   BookRequestRowFragment,
+  BookRequestUpdateDocument,
 } from '~/graphql/book-request';
 import { UserListDocument } from '~/graphql/user';
 import { invalidateRequestQueues, unwrapResult } from '~/provider/apollo';
@@ -20,6 +22,7 @@ import { useUploadQueue } from '~/provider/upload';
 import { path } from '~/router';
 import { relativeTime } from '~/utils';
 
+import { BookRequestForm, type BookRequestFormValues } from '../book-request-form';
 import { Card } from '../card';
 import { Tag } from '../tag';
 import { useStyle } from './style';
@@ -40,6 +43,10 @@ type BookRequestFulfillPayload = Extract<
 type BookRequestDeclinePayload = Extract<
   NonNullable<BookRequestDeclineMutation['bookRequestDecline']>,
   { __typename: 'BookRequestDeclinePayload' }
+>;
+type BookRequestUpdatePayload = Extract<
+  NonNullable<BookRequestUpdateMutation['bookRequestUpdate']>,
+  { __typename: 'BookRequestUpdatePayload' }
 >;
 
 interface BookRequestRowProps {
@@ -104,6 +111,20 @@ interface BookRequestRowProps {
  * `bookRequestDelete` — so the mutation itself, and its cache eviction, live
  * on the content component that owns the list (`BookRequestsContent`/
  * `UserRequestList`).
+ *
+ * **Edit (`!canResolve && status === 'PENDING'`)** swaps the card for a
+ * `BookRequestForm` prefilled with the request, so the reader can fix a typo
+ * in place instead of withdrawing and re-filing. Reader-only, because the
+ * request is the reader's own words and the admin resolves rather than
+ * rewrites; pending-only, because once answered the request is a record of
+ * what was asked (the server enforces this too, answering
+ * `BookRequestNotPendingError`, whose message the form shows). Save needs no
+ * refetch and no `invalidateRequestQueues`: the payload carries the row's
+ * own `BookRequestRowFragment` under the same `BookRequest:<id>`, so Apollo's
+ * normalized cache updates this row in place, and an edit changes neither
+ * the status nor any count a queue or badge is built from. The `editing`
+ * early return sits AFTER every hook, as `DeviceRow`'s does, so toggling it
+ * never changes the hook order.
  *
  * **Resolve actions (`canResolve && status === 'PENDING'`) — Approach B, end
  * to end:**
@@ -193,6 +214,9 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
 
   const [runFulfill] = useMutation(BookRequestFulfillDocument);
   const [runDecline] = useMutation(BookRequestDeclineDocument);
+  const [runUpdate] = useMutation(BookRequestUpdateDocument);
+
+  const [editing, setEditing] = useState(false);
 
   const [isPickerOpen, setPickerOpen] = useState(false);
   const [fulfillError, setFulfillError] = useState<string | undefined>();
@@ -299,6 +323,27 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
     }
   }, [runDecline, row.id, declineReason, client]);
 
+  const handleSave = useCallback(
+    async (values: BookRequestFormValues): Promise<string | undefined> => {
+      try {
+        const { data } = await runUpdate({ variables: { id: row.id, input: values } });
+        const outcome = unwrapResult<BookRequestUpdatePayload>(
+          data?.bookRequestUpdate,
+          'BookRequestUpdatePayload'
+        );
+        if (outcome.status === 'missing') return 'Failed to save changes';
+        if (outcome.status === 'error') return outcome.message;
+        setEditing(false);
+        return undefined;
+      } catch (err) {
+        return err instanceof Error ? err.message : 'Failed to save changes';
+      }
+    },
+    [runUpdate, row.id]
+  );
+  const handleStartEdit = useCallback(() => setEditing(true), []);
+  const handleCancelEdit = useCallback(() => setEditing(false), []);
+
   const suggestionCount = queueItem?.proposals?.length ?? 0;
   const uploadedButNotClosed = queueItem?.status === 'done' && row.status === 'PENDING';
 
@@ -309,7 +354,8 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
    * The two audiences get disjoint sets, which is the whole point — the admin
    * RESOLVES (upload / link / decline) and the reader DISPOSES (withdraw while
    * pending, clear once answered). Neither ever sees the other's controls, so
-   * the reader's single control takes the same left slot Decline occupies.
+   * the reader's dismissive control takes the same left slot Decline occupies,
+   * and Edit (pending only) takes the right.
    */
   const footer = canResolve ? (
     row.status === 'PENDING' ? (
@@ -354,8 +400,28 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
       <Button type="default" radius="card" danger onClick={handleDelete}>
         {row.status === 'PENDING' ? 'Withdraw' : 'Clear'}
       </Button>
+      {row.status === 'PENDING' && (
+        <div className={styles.footerRight}>
+          <Button type="default" radius="card" onClick={handleStartEdit}>
+            Edit
+          </Button>
+        </div>
+      )}
     </div>
   );
+
+  if (editing) {
+    return (
+      <Card>
+        <BookRequestForm
+          initial={{ title: row.title, author: row.author, note: row.note }}
+          submitLabel="Save"
+          onSubmit={handleSave}
+          onCancel={handleCancelEdit}
+        />
+      </Card>
+    );
+  }
 
   return (
     <>
