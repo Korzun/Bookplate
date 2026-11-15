@@ -33,8 +33,8 @@ export type UploadSlots = {
   create(userId: string, filename?: string | null): UploadSlotLink;
   /** Atomically moves an open slot to 'receiving'; null if token unknown/expired/not open. */
   beginReceive(token: string): { uploadId: string; destPath: string } | null;
-  /** 'receiving' → 'filled'. */
-  completeReceive(uploadId: string, size: number): void;
+  /** 'receiving' → 'filled'; false if the slot is no longer receiving (e.g. swept mid-PUT). */
+  completeReceive(uploadId: string, size: number): boolean;
   /** 'receiving' → burned; deletes destPath if present. */
   failReceive(uploadId: string): void;
   /** 'filled' and owned by userId → removed from registry, file ownership passes to caller. */
@@ -89,6 +89,16 @@ export function createUploadSlots(deps: {
     }
   }
 
+  // A restart forgets every slot, so any `mcp-link-*.epub` already on disk is
+  // an orphan no slot will ever claim.
+  try {
+    for (const name of fs.readdirSync(stagingDir)) {
+      if (/^mcp-link-.*\.epub$/.test(name)) unlinkQuiet(path.join(stagingDir, name));
+    }
+  } catch {
+    /* staging dir does not exist yet */
+  }
+
   function remove(entry: Entry): void {
     byId.delete(entry.uploadId);
     idByToken.delete(entry.token);
@@ -130,17 +140,20 @@ export function createUploadSlots(deps: {
     const uploadId = idByToken.get(token);
     const entry = uploadId === undefined ? undefined : byId.get(uploadId);
     if (entry === undefined || entry.state !== 'open') return null;
+    // mkdir BEFORE the state change: if it throws, the slot stays open
+    // instead of being stranded in 'receiving' with no one to finish it.
+    fs.mkdirSync(stagingDir, { recursive: true });
     // Synchronous check-and-set: two racing PUTs cannot both pass.
     entry.state = 'receiving';
-    fs.mkdirSync(stagingDir, { recursive: true });
     return { uploadId: entry.uploadId, destPath: entry.destPath };
   }
 
-  function completeReceive(uploadId: string, size: number): void {
+  function completeReceive(uploadId: string, size: number): boolean {
     const entry = byId.get(uploadId);
-    if (entry === undefined || entry.state !== 'receiving') return;
+    if (entry === undefined || entry.state !== 'receiving') return false;
     entry.state = 'filled';
     entry.size = size;
+    return true;
   }
 
   function failReceive(uploadId: string): void {

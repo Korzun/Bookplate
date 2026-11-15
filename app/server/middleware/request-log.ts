@@ -5,6 +5,13 @@ import { logger } from '../logger';
 const log = logger('Request');
 
 /**
+ * The one-time upload link's path segment is a bearer secret, so it must
+ * never reach a log line: `/mcp/uploads/<token>?x` → `/mcp/uploads/[redacted]?x`.
+ */
+export const redactUploadToken = (url: string): string =>
+  url.replace(/\/mcp\/uploads\/[^?]*/, '/mcp/uploads/[redacted]');
+
+/**
  * Logs every request once its response finishes: method, path, status, and
  * duration. Diagnostic visibility into which requests arrive and how they
  * resolve — a 4xx/5xx that a handler returns without logging is otherwise
@@ -18,7 +25,7 @@ export function requestLog() {
     const start = Date.now();
     res.on('finish', () => {
       const ms = Date.now() - start;
-      const line = `${req.method} ${req.originalUrl} → ${res.statusCode} (${ms}ms)`;
+      const line = `${req.method} ${redactUploadToken(req.originalUrl)} → ${res.statusCode} (${ms}ms)`;
       const isRead = req.method === 'GET' || req.method === 'HEAD';
       if (res.statusCode < 400 && isRead) {
         log.debug(line);
