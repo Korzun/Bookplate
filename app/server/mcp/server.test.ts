@@ -2,10 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { seedEditableBook } from '../graphql/schema/book/mutation/test-helpers';
+import { encodeBookGlobalId } from '../graphql/schema/node-scope';
 import { createHarness, type Harness } from '../graphql/test-util';
 import { saveThumbnail } from '../services/book-assets';
+import { getStagingDir } from '../services/book-paths';
 import { resetPassword } from '../services/password';
 import { upsertPendingFix } from '../services/pending-fix';
+import { createUploadSlots, type UploadSlots } from '../services/upload-slots';
 import { deleteUser } from '../services/user';
 import {
   buildMcpApp,
@@ -60,6 +63,15 @@ const BOB_ID = 'c'.repeat(32);
 let harness: Harness;
 let app: ReturnType<typeof buildMcpApp>;
 let mcp: McpTestClient | null = null;
+let slots: UploadSlots;
+
+const arrive = (userId: string, bytes: Buffer, filename?: string): string => {
+  const link = slots.create(userId, filename);
+  const r = slots.beginReceive(link.token)!;
+  fs.writeFileSync(r.destPath, bytes);
+  slots.completeReceive(r.uploadId, bytes.length);
+  return link.uploadId;
+};
 
 type Entry = { kind: string; id: string; title?: string; name?: string };
 type SearchOut = { entries: Entry[]; nextCursor: string | null };
@@ -115,7 +127,8 @@ beforeEach(async () => {
     Buffer.from('ffd8ffe0', 'hex'),
     'image/jpeg'
   );
-  app = buildMcpApp(harness);
+  slots = createUploadSlots({ stagingDir: getStagingDir(harness.config.booksDir) });
+  app = buildMcpApp(harness, slots);
 });
 
 afterEach(async () => {
@@ -841,7 +854,77 @@ describe('upload and replace tools', () => {
       filename: 'again.epub',
     });
     expect(dup.isError).toBe(true);
-    expect(textOf(dup)).toContain('already in the library');
+    expect(textOf(dup)).toContain('already in the library (id ');
+    expect(textOf(dup)).toContain(encodeBookGlobalId(harness.aliceOwner.userId, row!.id));
+  });
+
+  it('upload_book imports a file PUT through an upload link', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const uploadId = arrive(harness.aliceOwner.userId, fixtureEpub('Linked Book'), 'linked.epub');
+    const result = await mcp.call('upload_book', { uploadId });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    expect(textOf(result)).toContain('Imported "');
+  });
+
+  it('upload_book reports a link whose file has not arrived', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const link = slots.create(harness.aliceOwner.userId);
+    const pending = await mcp.call('upload_book', { uploadId: link.uploadId });
+    expect(pending.isError).toBe(true);
+    expect(textOf(pending)).toBe("The file hasn't arrived yet — run the curl command first");
+    const r = slots.beginReceive(link.token)!;
+    const bytes = fixtureEpub('Late Book');
+    fs.writeFileSync(r.destPath, bytes);
+    slots.completeReceive(r.uploadId, bytes.length);
+    const retry = await mcp.call('upload_book', { uploadId: link.uploadId });
+    expect(retry.isError, textOf(retry)).toBeFalsy();
+  });
+
+  it("upload_book refuses another reader's uploadId", async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const uploadId = arrive(harness.bobOwner.userId, fixtureEpub('Bob Linked'));
+    const result = await mcp.call('upload_book', { uploadId });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(
+      'That upload was not found or has expired; create a new link with create_upload_link'
+    );
+  });
+
+  it('upload_book refuses a reused uploadId', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const uploadId = arrive(harness.aliceOwner.userId, fixtureEpub('Once Only'));
+    const first = await mcp.call('upload_book', { uploadId });
+    expect(first.isError, textOf(first)).toBeFalsy();
+    const second = await mcp.call('upload_book', { uploadId });
+    expect(second.isError).toBe(true);
+    expect(textOf(second)).toBe(
+      'That upload was not found or has expired; create a new link with create_upload_link'
+    );
+  });
+
+  it('upload_book refuses two inputs at once', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const result = await mcp.call('upload_book', {
+      uploadId: 'x',
+      url: 'https://books.example/a.epub',
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe('Pass exactly one of url, contentBase64 or uploadId');
+  });
+
+  it('stage_replacement accepts an uploadId', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const uploadId = arrive(
+      harness.aliceOwner.userId,
+      fixtureEpub('Alpha Book Linked', 'Seed Author'),
+      'alpha-linked.epub'
+    );
+    const staged = await mcp.call('stage_replacement', { bookId: alphaId, uploadId });
+    expect(staged.isError, textOf(staged)).toBeFalsy();
+    expect(typeof (staged.structuredContent as { stagedUploadId: string }).stagedUploadId).toBe(
+      'string'
+    );
   });
 
   it('upload_book fetches a URL through the guarded downloader', async () => {

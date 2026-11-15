@@ -13,15 +13,20 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import type { Harness } from '../graphql/test-util';
-import { getStagingDir } from '../services/book-paths';
-import { createUploadSlots } from '../services/upload-slots';
 import { createServer } from '../server';
+import { getStagingDir } from '../services/book-paths';
+import { createUploadSlots, type UploadSlots } from '../services/upload-slots';
 import { createMcpRouter } from './index';
 import { issueTokens, upsertGrant, type McpScope } from './tokens';
 
 export const TEST_BASE_URL = new URL('https://books.example');
 
-export function buildMcpApp(harness: Harness) {
+export function buildMcpApp(
+  harness: Harness,
+  uploadSlots: UploadSlots = createUploadSlots({
+    stagingDir: getStagingDir(harness.config.booksDir),
+  })
+) {
   const mcpRouter = createMcpRouter({
     baseUrl: TEST_BASE_URL,
     prisma: harness.prisma,
@@ -29,7 +34,7 @@ export function buildMcpApp(harness: Harness) {
     contextDeps: harness.contextDeps,
     thumbnails: harness.thumbnails,
     replaceStaging: harness.replaceStaging,
-    uploadSlots: createUploadSlots({ stagingDir: getStagingDir(harness.config.booksDir) }),
+    uploadSlots,
     editionsRoot: harness.editionsRoot,
   });
   return createServer({

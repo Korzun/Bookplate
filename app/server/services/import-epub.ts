@@ -52,7 +52,7 @@ export type ImportEpubResult =
       kind: 'invalid';
       validation: Pick<ValidationReport, 'messages' | 'counts' | 'threshold'>;
     }
-  | { kind: 'duplicate' };
+  | { kind: 'duplicate'; existingBookId: string };
 
 const unlinkQuiet = (filePath: string): void => {
   try {
@@ -128,7 +128,8 @@ export async function importEpub(
     await addBook(prisma, config.booksDir, owner, id, savedPath, { ...meta, title: titleFallback });
   } catch (err: unknown) {
     unlinkQuiet(savedPath);
-    if (err instanceof BookAlreadyExistsError) return { kind: 'duplicate' };
+    if (err instanceof BookAlreadyExistsError)
+      return { kind: 'duplicate', existingBookId: err.existingId };
     throw err;
   }
   await saveValidation(prisma, owner, id, analysis.report);

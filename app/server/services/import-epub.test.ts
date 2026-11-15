@@ -115,7 +115,10 @@ describe('importEpub', () => {
       originalName: 'b.epub',
       size: bytes.length,
     });
-    expect(second).toEqual({ kind: 'duplicate' });
+    expect(second).toEqual({
+      kind: 'duplicate',
+      existingBookId: (first as { bookId: string }).bookId,
+    });
     expect(fs.existsSync(file)).toBe(false);
   });
 
