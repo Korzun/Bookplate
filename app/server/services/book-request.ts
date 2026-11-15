@@ -241,6 +241,66 @@ export async function declineBookRequest(
   });
 }
 
+export type UpdateBookRequestOutcome =
+  | { kind: 'updated' }
+  | { kind: 'missing' }
+  | { kind: 'notPending'; status: BookRequestStatus }
+  | { kind: 'duplicate'; existingId: string };
+
+/**
+ * Lets a reader correct a request that is still pending. Omitted fields keep
+ * their stored value; supplied ones are trimmed, as `createBookRequest` trims.
+ *
+ * Only `pending` rows are editable: once the admin has fulfilled or declined a
+ * request, its title and author are what that decision was made against, so
+ * rewriting them would misrepresent the outcome.
+ *
+ * IN A TRANSACTION for the same reason `createBookRequest` is: the duplicate
+ * check and the write have to be atomic, or a concurrent create could slip in a
+ * row with the new key between them. The duplicate check excludes the row
+ * itself (so a case or spacing fix is not a collision with its own key) and,
+ * like `createBookRequest`, only counts OPEN requests. It is skipped when the
+ * key has not changed, since the row already holds that key legitimately.
+ *
+ * NO NOTIFICATION: an edit is not an event the admin needs to be told about.
+ * The admin's queue reads the request's current values, so the corrected text
+ * is what they see when they get to it.
+ */
+export async function updateBookRequest(
+  prisma: PrismaClient,
+  args: { userId: string; id: string; title?: string; author?: string; note?: string }
+): Promise<UpdateBookRequestOutcome> {
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.bookRequest.findUnique({
+      where: { userId_id: { userId: args.userId, id: args.id } },
+      select: { status: true, title: true, author: true, note: true, dedupeKey: true },
+    });
+    if (row === null) return { kind: 'missing' };
+    if (row.status !== 'pending') {
+      return { kind: 'notPending', status: row.status as BookRequestStatus };
+    }
+
+    const title = (args.title ?? row.title).trim();
+    const author = (args.author ?? row.author).trim();
+    const note = (args.note ?? row.note).trim();
+    const key = dedupeKey(title, author);
+
+    if (key !== row.dedupeKey) {
+      const duplicate = await tx.bookRequest.findFirst({
+        where: { userId: args.userId, dedupeKey: key, status: 'pending', NOT: { id: args.id } },
+        select: { id: true },
+      });
+      if (duplicate !== null) return { kind: 'duplicate', existingId: duplicate.id };
+    }
+
+    await tx.bookRequest.update({
+      where: { userId_id: { userId: args.userId, id: args.id } },
+      data: { title, author, note, dedupeKey: key },
+    });
+    return { kind: 'updated' };
+  });
+}
+
 /**
  * Deletes a request whatever its status — the reader withdrawing a pending one
  * and either party clearing a resolved one are the same operation. Returns
