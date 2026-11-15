@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 
 import type { Context, Viewer } from '../../graphql/context';
 import type { ReplaceStaging } from '../../services/replace-staging';
+import type { UploadSlots } from '../../services/upload-slots';
 import type { ThumbnailQueue } from '../../services/thumbnail-queue';
 import type { AppConfig } from '../../types';
 
@@ -21,6 +22,7 @@ export type ToolDeps = {
   prisma: PrismaClient;
   config: AppConfig;
   replaceStaging: ReplaceStaging;
+  uploadSlots: UploadSlots;
   thumbnails: ThumbnailQueue;
   editionsRoot: string;
   /** `isSetupComplete(viewer)` — false makes every tool answer the setup message. */

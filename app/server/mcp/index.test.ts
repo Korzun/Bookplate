@@ -4,6 +4,8 @@ import request from 'supertest';
 
 import { createHarness, type Harness } from '../graphql/test-util';
 import { createServer } from '../server';
+import { getStagingDir } from '../services/book-paths';
+import { createUploadSlots } from '../services/upload-slots';
 import { createMcpRouter } from './index';
 import { issueTokens, upsertGrant } from './tokens';
 
@@ -23,6 +25,7 @@ beforeEach(async () => {
     contextDeps: harness.contextDeps,
     thumbnails: harness.thumbnails,
     replaceStaging: harness.replaceStaging,
+    uploadSlots: createUploadSlots({ stagingDir: getStagingDir(harness.config.booksDir) }),
     editionsRoot: harness.editionsRoot,
   });
   app = createServer({

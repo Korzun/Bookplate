@@ -24,6 +24,7 @@ import express, { type NextFunction, type Request, type Response, Router } from 
 
 import type { ContextDeps } from '../graphql/context';
 import type { ReplaceStaging } from '../services/replace-staging';
+import type { UploadSlots } from '../services/upload-slots';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
 import { resolveLoginClientIp } from '../utils/client-ip';
@@ -42,6 +43,7 @@ export type McpRouterDeps = {
   contextDeps: ContextDeps;
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
+  uploadSlots: UploadSlots;
   editionsRoot: string;
   /** Overrides `createMcpRequestHandler(deps)` — tests only. */
   handleMcp?: (req: Request, res: Response) => Promise<void>;

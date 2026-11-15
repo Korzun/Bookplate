@@ -1,4 +1,6 @@
 import { createHarness, type Harness } from '../../graphql/test-util';
+import { getStagingDir } from '../../services/book-paths';
+import { createUploadSlots } from '../../services/upload-slots';
 import type { ToolDeps } from './deps';
 import { executeDocument, guarded, INTERNAL_ERROR_MESSAGE, ToolError } from './execute';
 
@@ -22,6 +24,7 @@ const depsFor = (): ToolDeps => ({
   prisma: harness.prisma,
   config: harness.config,
   replaceStaging: harness.replaceStaging,
+  uploadSlots: createUploadSlots({ stagingDir: getStagingDir(harness.config.booksDir) }),
   thumbnails: harness.thumbnails,
   editionsRoot: harness.editionsRoot,
   setupComplete: true,

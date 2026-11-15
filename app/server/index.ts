@@ -19,6 +19,7 @@ import { createPushChannelDriver, PUSH_CONTACT } from './services/notification-c
 import { NotificationQueue } from './services/notification-queue';
 import { getOrCreateVapidKeys } from './services/push-keys';
 import { createReplaceStaging } from './services/replace-staging';
+import { createUploadSlots } from './services/upload-slots';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { getOrCreateJwtSecret } from './services/token';
 import { startBookplate } from './startup';
@@ -59,6 +60,9 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   // replaceStaging` doc comment for why a second instance would never see
   // the first one's staged files.
   const replaceStaging = createReplaceStaging({ stagingDir: getStagingDir(config.booksDir) });
+  // One instance for the MCP upload links; the PUT route (a later task) and
+  // the tools must share it.
+  const uploadSlots = createUploadSlots({ stagingDir: getStagingDir(config.booksDir) });
   // One instance, constructed here and shared by GraphQL and `routes/ui.ts` —
   // never one per request. The Cloudflare driver latches its misconfiguration
   // warning per instance, so a per-request mailer would log that line on
@@ -135,6 +139,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
           contextDeps,
           thumbnails: thumbnailQueue,
           replaceStaging,
+          uploadSlots,
           editionsRoot,
         });
 

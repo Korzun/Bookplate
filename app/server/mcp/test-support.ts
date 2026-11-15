@@ -13,6 +13,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import type { Harness } from '../graphql/test-util';
+import { getStagingDir } from '../services/book-paths';
+import { createUploadSlots } from '../services/upload-slots';
 import { createServer } from '../server';
 import { createMcpRouter } from './index';
 import { issueTokens, upsertGrant, type McpScope } from './tokens';
@@ -27,6 +29,7 @@ export function buildMcpApp(harness: Harness) {
     contextDeps: harness.contextDeps,
     thumbnails: harness.thumbnails,
     replaceStaging: harness.replaceStaging,
+    uploadSlots: createUploadSlots({ stagingDir: getStagingDir(harness.config.booksDir) }),
     editionsRoot: harness.editionsRoot,
   });
   return createServer({
