@@ -13,6 +13,7 @@ import {
   deleteBookRequest,
   fulfillBookRequest,
   MAX_OPEN_BOOK_REQUESTS,
+  updateBookRequest,
 } from './book-request';
 import { enqueueNotification, parsePayload } from './notification';
 
@@ -304,6 +305,123 @@ describe('deleteBookRequest', () => {
 
   it('reports false for a row that is not there', async () => {
     expect(await deleteBookRequest(prisma, { userId: ALICE, id: 'nope' })).toBe(false);
+  });
+});
+
+describe('updateBookRequest', () => {
+  const seed = async () => {
+    const created = await createBookRequest(prisma, input({ author: 'Frank Hebert' }));
+    if (created.kind !== 'created') throw new Error('setup failed');
+    return created.id;
+  };
+
+  it('rewrites the supplied fields, recomputes the dedupe key, and leaves the rest', async () => {
+    const id = await seed();
+    const outcome = await updateBookRequest(prisma, { userId: ALICE, id, author: 'Frank Herbert' });
+    expect(outcome).toEqual({ kind: 'updated' });
+    const row = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(row).toMatchObject({
+      title: 'Dune',
+      author: 'Frank Herbert',
+      note: '',
+      status: 'pending',
+      dedupeKey: 'dune\0frank herbert',
+    });
+  });
+
+  it('trims the supplied strings', async () => {
+    const id = await seed();
+    await updateBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      title: '  Dune Messiah ',
+      note: ' the sequel ',
+    });
+    const row = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(row.title).toBe('Dune Messiah');
+    expect(row.note).toBe('the sequel');
+  });
+
+  it('does not collide with itself', async () => {
+    const id = await seed();
+    const outcome = await updateBookRequest(prisma, { userId: ALICE, id, author: 'FRANK  HEBERT' });
+    expect(outcome).toEqual({ kind: 'updated' });
+  });
+
+  it('refuses an edit that duplicates another open request', async () => {
+    const id = await seed();
+    const other = await createBookRequest(prisma, input({ title: 'Dune Messiah' }));
+    if (other.kind !== 'created') throw new Error('setup failed');
+    const outcome = await updateBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      title: 'dune messiah',
+      author: 'Frank Herbert',
+    });
+    expect(outcome).toEqual({ kind: 'duplicate', existingId: other.id });
+    const row = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(row.title).toBe('Dune');
+  });
+
+  it('ignores resolved requests when checking for duplicates', async () => {
+    const id = await seed();
+    const other = await createBookRequest(prisma, input({ title: 'Dune Messiah' }));
+    if (other.kind !== 'created') throw new Error('setup failed');
+    await prisma.bookRequest.update({
+      where: { userId_id: { userId: ALICE, id: other.id } },
+      data: { status: 'declined' },
+    });
+    const outcome = await updateBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      title: 'Dune Messiah',
+      author: 'Frank Herbert',
+    });
+    expect(outcome).toEqual({ kind: 'updated' });
+  });
+
+  it('reports a missing request', async () => {
+    expect(await updateBookRequest(prisma, { userId: ALICE, id: 'gone', title: 'x' })).toEqual({
+      kind: 'missing',
+    });
+  });
+
+  it('refuses to edit a resolved request', async () => {
+    const id = await seed();
+    await prisma.bookRequest.update({
+      where: { userId_id: { userId: ALICE, id } },
+      data: { status: 'fulfilled' },
+    });
+    expect(await updateBookRequest(prisma, { userId: ALICE, id, title: 'x' })).toEqual({
+      kind: 'notPending',
+      status: 'fulfilled',
+    });
+  });
+
+  it('leaves createdAt and id alone', async () => {
+    const id = await seed();
+    const before = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    await updateBookRequest(prisma, { userId: ALICE, id, title: 'Dune Messiah' });
+    const after = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(after.createdAt).toBe(before.createdAt);
+    expect(after.id).toBe(before.id);
+  });
+
+  it('enqueues no notification', async () => {
+    const id = await seed();
+    vi.mocked(enqueueNotification).mockClear();
+    await updateBookRequest(prisma, { userId: ALICE, id, author: 'Frank Herbert' });
+    expect(enqueueNotification).not.toHaveBeenCalled();
   });
 });
 
