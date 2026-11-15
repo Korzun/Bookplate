@@ -19,9 +19,9 @@ import { createPushChannelDriver, PUSH_CONTACT } from './services/notification-c
 import { NotificationQueue } from './services/notification-queue';
 import { getOrCreateVapidKeys } from './services/push-keys';
 import { createReplaceStaging } from './services/replace-staging';
-import { createUploadSlots } from './services/upload-slots';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { getOrCreateJwtSecret } from './services/token';
+import { createUploadSlots } from './services/upload-slots';
 import { startBookplate } from './startup';
 import { APP_VERSION } from './utils/app-version';
 
