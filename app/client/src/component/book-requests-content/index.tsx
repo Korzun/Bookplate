@@ -2,8 +2,9 @@ import { useApolloClient, useMutation } from '@apollo/client/react';
 import cx from 'classnames';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 
+import { BookRequestForm, type BookRequestFormValues } from '~/component/book-request-form';
 import { BookRequestRow } from '~/component/book-request-row';
-import { Button, ConfirmModal, TextArea, TextInput, type PageActionItem } from '~/control';
+import { Button, ConfirmModal, type PageActionItem } from '~/control';
 import { useFragment } from '~/gql';
 import type { BookRequestCreateMutation } from '~/gql/graphql';
 import {
@@ -16,7 +17,6 @@ import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 import { unwrapResult } from '~/provider/apollo';
 
 import { Card } from '../card';
-import { CardDivider } from '../card-divider';
 import { EmptyState } from '../empty-state';
 import { useStyle } from './style';
 
@@ -59,12 +59,11 @@ interface BookRequestsContentProps {
  * modelled on `MyProgressContent` — read that component's own doc comment
  * first, this is its closest sibling.
  *
- * **The form validates title/author client-side** (non-empty after
- * trimming) — the same rule the server's zod schema in
- * `bookRequestCreate`'s resolver applies — so an obviously-invalid request
- * never spends a round trip. `note` is sent trimmed but is allowed to be
- * empty; the server defaults it to `''` when omitted, matching this
- * component's own empty-string default.
+ * **The fields and their validation are `BookRequestForm`'s**
+ * (`component/book-request-form`), shared with a pending row's edit mode so
+ * the two cannot drift: it validates title/author client-side before calling
+ * `handleCreate` with trimmed values, and shows whatever message
+ * `handleCreate` answers with under the fields.
  *
  * **On success, the form clears and this component imperatively refetches
  * `MyBookRequestListDocument`** via `client.refetchQueries({ include: [...] })`.
@@ -96,8 +95,8 @@ interface BookRequestsContentProps {
  * mechanism `useDeleteProgress` documents for `Library.progress` — so the
  * list refetch here is belt-and-suspenders. A REJECTED `runDelete` (e.g. a
  * dropped connection) is caught into `deleteError` state and rendered above
- * the list, the same house pattern `handleSubmit` above uses for
- * `formError`.
+ * the list, the same house pattern `handleCreate` above uses for the
+ * form's error message.
  *
  * **Loading, first-page error, and empty states follow `MyProgressContent`'s
  * three-branch shape exactly** — but only for the LIST region below the
@@ -122,13 +121,9 @@ interface BookRequestsContentProps {
 export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsContentProps) => {
   const styles = useStyle();
   const client = useApolloClient();
-  const [runCreate, { loading: creating }] = useMutation(BookRequestCreateDocument);
+  const [runCreate] = useMutation(BookRequestCreateDocument);
   const [runDelete] = useMutation(BookRequestDeleteDocument);
 
-  const [title, setTitle] = useState<string>('');
-  const [author, setAuthor] = useState<string>('');
-  const [note, setNote] = useState<string>('');
-  const [formError, setFormError] = useState<string | undefined>(undefined);
   const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
   const [isClearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -159,63 +154,30 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
     .filter((_, index) => unmasked[index].status !== 'PENDING')
     .map((row) => row.id);
 
-  const handleTitleChange = useCallback(
-    (newValue: string | undefined) => setTitle(newValue ?? ''),
-    []
-  );
-  const handleAuthorChange = useCallback(
-    (newValue: string | undefined) => setAuthor(newValue ?? ''),
-    []
-  );
-  const handleNoteChange = useCallback(
-    (newValue: string | undefined) => setNote(newValue ?? ''),
-    []
-  );
-
-  const handleSubmit = useCallback(
-    async (event: React.FormEvent) => {
-      event.preventDefault();
-      setFormError(undefined);
-
-      const trimmedTitle = title.trim();
-      const trimmedAuthor = author.trim();
-      const missing: string[] = [];
-      if (trimmedTitle === '') missing.push('Title');
-      if (trimmedAuthor === '') missing.push('Author');
-      if (missing.length > 0) {
-        setFormError(`${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} required`);
-        return;
-      }
-
+  // Resolves to the message `BookRequestForm` shows under the fields, or
+  // `undefined` once the request exists and the list has been refetched — the
+  // form clears itself on that `undefined`.
+  const handleCreate = useCallback(
+    async (input: BookRequestFormValues): Promise<string | undefined> => {
       try {
-        const { data } = await runCreate({
-          variables: { input: { title: trimmedTitle, author: trimmedAuthor, note: note.trim() } },
-        });
+        const { data } = await runCreate({ variables: { input } });
 
         const result = unwrapResult<BookRequestCreatePayload>(
           data?.bookRequestCreate,
           'BookRequestCreatePayload'
         );
-        if (result.status === 'missing') {
-          setFormError('Failed to submit request');
-          return;
-        }
-        if (result.status === 'error') {
-          setFormError(result.message);
-          return;
-        }
+        if (result.status === 'missing') return 'Failed to submit request';
+        if (result.status === 'error') return result.message;
 
-        setTitle('');
-        setAuthor('');
-        setNote('');
         await client.refetchQueries({
           include: [MyBookRequestListDocument],
         });
+        return undefined;
       } catch (err) {
-        setFormError(err instanceof Error ? err.message : 'Failed to submit request');
+        return err instanceof Error ? err.message : 'Failed to submit request';
       }
     },
-    [title, author, note, runCreate, client]
+    [runCreate, client]
   );
 
   // The mutation and its cache eviction, once, for both the per-row Clear/
@@ -345,16 +307,7 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
   return (
     <div className={styles.root}>
       <Card title="New request">
-        <form className={styles.form} onSubmit={handleSubmit}>
-          <TextInput name="title" label="Title" value={title} onChange={handleTitleChange} />
-          <TextInput name="author" label="Author" value={author} onChange={handleAuthorChange} />
-          <TextArea name="note" label="Note" value={note} onChange={handleNoteChange} />
-          {formError && <div className={cx(styles.message, styles.error)}>{formError}</div>}
-          <CardDivider />
-          <Button type="primary" radius="card" submit loading={creating}>
-            Request
-          </Button>
-        </form>
+        <BookRequestForm submitLabel="Request" onSubmit={handleCreate} />
       </Card>
       {deleteError && <div className={cx(styles.message, styles.error)}>{deleteError}</div>}
       {list}

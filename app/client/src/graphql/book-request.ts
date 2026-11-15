@@ -139,6 +139,43 @@ export const BookRequestCreateDocument = graphql(`
   }
 `);
 
+/**
+ * The reader's edit of their own PENDING request (`component/book-request-row`'s
+ * edit mode). Re-selecting the full `BookRequestRowFragment` on the returned
+ * `bookRequest` is what updates the card in place: Apollo normalizes it over
+ * the already-cached `BookRequest:<id>` entity. No refetch and no
+ * `invalidateRequestQueues` are needed — an edit changes neither which
+ * requests a list holds nor their order.
+ */
+export const BookRequestUpdateDocument = graphql(`
+  mutation BookRequestUpdate($id: ID!, $input: BookRequestUpdateInput!) {
+    bookRequestUpdate(id: $id, input: $input) {
+      __typename
+      ... on BookRequestUpdatePayload {
+        bookRequest {
+          id
+          ...BookRequestRowFragment
+        }
+      }
+      ... on InvalidInputError {
+        message
+        issues {
+          path
+          message
+        }
+      }
+      ... on DuplicateBookRequestError {
+        message
+        existingRequestId
+      }
+      ... on BookRequestNotPendingError {
+        message
+        status
+      }
+    }
+  }
+`);
+
 export const BookRequestDeleteDocument = graphql(`
   mutation BookRequestDelete($id: ID!) {
     bookRequestDelete(id: $id) {
