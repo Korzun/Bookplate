@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
-import { screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -12,6 +12,8 @@ import type {
   BookRequestFulfillMutationVariables,
   BookRequestRowFragmentFragment,
   BookRequestStatus,
+  BookRequestUpdateMutation,
+  BookRequestUpdateMutationVariables,
   LinkPickerBooksQuery,
   LinkPickerBooksQueryVariables,
 } from '~/gql/graphql';
@@ -19,6 +21,7 @@ import {
   BookRequestDeclineDocument,
   BookRequestFulfillDocument,
   BookRequestRowFragment,
+  BookRequestUpdateDocument,
 } from '~/graphql/book-request';
 import { LinkPickerBooksDocument } from '~/graphql/progress';
 import { UserListDocument } from '~/graphql/user';
@@ -138,6 +141,10 @@ const renderRow = (
      * `UserListDocument` mock — opt-in, only the refetch-assertion tests
      * (finding 1 of the final review) need it. */
     watchUserList?: boolean;
+    /** Replaces the default `BookRequestUpdatePayload` result — lets a test
+     * answer Save with a union error member such as
+     * `BookRequestNotPendingError`. */
+    updateResult?: BookRequestUpdateMutation['bookRequestUpdate'];
   } = {}
 ) => {
   const onDelete = props.onDelete ?? vi.fn();
@@ -150,6 +157,7 @@ const renderRow = (
 
   const fulfillCallsArr: { id: string; bookId: string }[] = [];
   const declineCallsArr: { id: string; reason?: string }[] = [];
+  const updateCallsArr: { id: string; input: unknown }[] = [];
   let userListCallCount = 0;
 
   const mocks: MockedResponse[] = [
@@ -194,6 +202,27 @@ const renderRow = (
           },
         },
       } satisfies { data: BookRequestDeclineMutation },
+    },
+    {
+      request: {
+        query: BookRequestUpdateDocument,
+        variables: (vars: BookRequestUpdateMutationVariables) => {
+          updateCallsArr.push({ id: String(vars.id), input: vars.input });
+          return true;
+        },
+      },
+      result: {
+        data: {
+          __typename: 'Mutation',
+          bookRequestUpdate: props.updateResult ?? {
+            __typename: 'BookRequestUpdatePayload',
+            bookRequest: {
+              ...requestRow({ ...overrides, author: 'Frank Herbert' }),
+              id: request.id,
+            },
+          },
+        },
+      } satisfies { data: BookRequestUpdateMutation },
     },
   ];
 
@@ -284,6 +313,7 @@ const renderRow = (
     fulfillCalls: () => fulfillCallsArr,
     userListCalls: () => userListCallCount,
     declineCalls: () => declineCallsArr,
+    updateCalls: () => updateCallsArr,
   };
 };
 
@@ -640,5 +670,64 @@ describe('admin queue coherence', () => {
     await waitFor(() => expect(fulfillCalls()).toHaveLength(1));
 
     await waitFor(() => expect(readRequestQueue(client.cache, queue)).toBeNull());
+  });
+});
+
+describe('BookRequestRow — editing', () => {
+  const authorInput = (c: HTMLElement) =>
+    c.querySelector('input[name="author"]') as HTMLInputElement;
+
+  it('offers Edit to the reader while pending, and nowhere else', () => {
+    renderRow({ status: 'PENDING' }, { canResolve: false });
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument();
+    cleanup();
+    renderRow({ status: 'DECLINED' }, { canResolve: false });
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
+    cleanup();
+    renderRow({ status: 'PENDING' }, { canResolve: true, libraryId: 'lib-1' });
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
+  });
+
+  it('prefills the form, saves the corrected author, and returns to the card', async () => {
+    const { user, container, updateCalls } = renderRow({ id: 'req-1', author: 'Frank Hebert' });
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    expect(authorInput(container)).toHaveValue('Frank Hebert');
+    await user.clear(authorInput(container));
+    await user.type(authorInput(container), 'Frank Herbert');
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(updateCalls()).toHaveLength(1));
+    expect(updateCalls()[0]).toEqual({
+      id: 'req-1',
+      input: { title: 'Dune', author: 'Frank Herbert', note: '' },
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+    );
+    expect(screen.getByRole('button', { name: /withdraw/i })).toBeInTheDocument();
+  });
+
+  it('cancels back to the card without saving', async () => {
+    const { user, updateCalls } = renderRow();
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    await user.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(updateCalls()).toHaveLength(0);
+    expect(screen.getByText('Dune')).toBeInTheDocument();
+  });
+
+  it('keeps the form open and shows the message when the request is no longer pending', async () => {
+    const { user } = renderRow(
+      {},
+      {
+        updateResult: {
+          __typename: 'BookRequestNotPendingError',
+          message: 'This request has already been fulfilled.',
+          status: 'FULFILLED',
+        },
+      }
+    );
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByText(/already been fulfilled/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
   });
 });
