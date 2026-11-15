@@ -2,8 +2,8 @@ import type { PrismaClient } from '@prisma/client';
 
 import type { Context, Viewer } from '../../graphql/context';
 import type { ReplaceStaging } from '../../services/replace-staging';
-import type { UploadSlots } from '../../services/upload-slots';
 import type { ThumbnailQueue } from '../../services/thumbnail-queue';
+import type { UploadSlots } from '../../services/upload-slots';
 import type { AppConfig } from '../../types';
 
 /**
