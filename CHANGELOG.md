@@ -1,6 +1,9 @@
 ## Unreleased
 
 - feat: edit a pending book request in place (title, author, note), in the web UI and over MCP (`update_book_request`)
+- feat(mcp): add create_upload_link for one-time PUT uploads up to 50 MB, and an uploadId input on upload_book and stage_replacement
+- feat(mcp): add fulfill_book_request and an optional requestId on upload_book
+- feat(requests): let readers close their own requests and notify the admin ("Request closed by reader")
 
 ## 0.14.0
 
