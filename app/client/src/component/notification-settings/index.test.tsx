@@ -540,6 +540,23 @@ describe('NotificationSettings', () => {
     }
   });
 
+  it('labels the closed-by-requester event for an admin and shows nothing for a reader', () => {
+    const { unmount } = renderCard({
+      preferences: [
+        preference({ event: 'BOOK_REQUEST_CLOSED_BY_REQUESTER', channel: 'EMAIL' }),
+      ].map((row) => makeFragmentData(row, NotificationPreferenceFragment)),
+    });
+    expect(screen.getByText('Request closed by reader')).toBeInTheDocument();
+    unmount();
+
+    renderCard({
+      preferences: [preference({ event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL' })].map((row) =>
+        makeFragmentData(row, NotificationPreferenceFragment)
+      ),
+    });
+    expect(screen.queryByText('Request closed by reader')).not.toBeInTheDocument();
+  });
+
   it('renders a single column on an install with only one channel', async () => {
     // A mail-less install gets `['push']` from the server, and must show one
     // column rather than an empty Email column.

@@ -73,11 +73,13 @@ function body(parts: readonly string[]): string {
  * REDELIVERY: the outbox retries the exact same payload byte-for-byte, so a
  * redelivered `book_request.created` carries the identical
  * `requesterUsername` and produces the identical tag, exactly as before.
- * `fulfilled`/`declined` are per-subject (one specific reader's own request)
+ * `closed_by_requester` fans out to the admin the same way, so it folds the
+ * requester in too. `fulfilled`/`declined` are per-subject (one specific
+ * reader's own request)
  * and left alone — there is no cross-reader collision to fix there.
  */
 function tagFor(event: NotificationEvent, payload: NotificationPayload): string {
-  if (event === 'book_request.created') {
+  if (event === 'book_request.created' || event === 'book_request.closed_by_requester') {
     return `${event}:${payload.title}:${payload.requesterUsername}`;
   }
   return `${event}:${payload.title}`;
@@ -89,6 +91,15 @@ export const PUSH_TEMPLATES: Record<NotificationEvent, (args: PushNoticeArgs) =>
     body: body([payload.title, payload.author, payload.note]),
     url: REQUESTS_PATH,
     tag: tagFor('book_request.created', payload),
+  }),
+  'book_request.closed_by_requester': ({ payload }) => ({
+    title: `${payload.requesterUsername} closed their request for ${payload.title}`,
+    body: body([
+      payload.author,
+      'They added it to their library themselves — nothing left for you to do.',
+    ]),
+    url: REQUESTS_PATH,
+    tag: tagFor('book_request.closed_by_requester', payload),
   }),
   'book_request.fulfilled': ({ libraryName, payload }) => ({
     title: `${payload.title} was added to your library`,

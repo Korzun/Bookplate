@@ -3,6 +3,7 @@ import { builder } from '../builder';
 
 const values = {
   BOOK_REQUEST_CREATED: { value: 'book_request.created' },
+  BOOK_REQUEST_CLOSED_BY_REQUESTER: { value: 'book_request.closed_by_requester' },
   BOOK_REQUEST_FULFILLED: { value: 'book_request.fulfilled' },
   BOOK_REQUEST_DECLINED: { value: 'book_request.declined' },
 } as const satisfies Record<string, { value: NotificationEvent }>;

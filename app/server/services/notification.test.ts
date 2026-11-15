@@ -108,8 +108,21 @@ describe('setNotificationPreference', () => {
 });
 
 describe('eventsForRole', () => {
-  it('gives the admin only the created event', () => {
-    expect(eventsForRole('admin')).toEqual(['book_request.created']);
+  it('gives the admin the created and closed-by-requester events', () => {
+    expect(eventsForRole('admin')).toEqual([
+      'book_request.created',
+      'book_request.closed_by_requester',
+    ]);
+  });
+
+  it('enables the closed-by-requester event by default for the admin', async () => {
+    expect(
+      await isNotificationEnabled(prisma, {
+        userId: 'user-admin',
+        event: 'book_request.closed_by_requester',
+        channel: 'email',
+      })
+    ).toBe(true);
   });
 
   it('gives a reader only the two outcome events', () => {

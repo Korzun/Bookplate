@@ -106,7 +106,7 @@ describe('Mutation.bookRequestFulfill', () => {
     });
   });
 
-  it('refuses a non-admin, even the request owner', async () => {
+  it('lets the request owner fulfil their own request with their own book', async () => {
     const alice = harness.aliceOwner.userId;
     const requestGid = await seedRequest(alice);
     const bookGid = await seedBook(alice, BOOK_ID);
@@ -116,7 +116,45 @@ describe('Mutation.bookRequestFulfill', () => {
       variables: { id: requestGid, bookId: bookGid },
     });
 
-    expect(result.errors).toBeDefined();
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookRequestFulfill).toEqual({
+      __typename: 'BookRequestFulfillPayload',
+      bookRequest: { status: 'FULFILLED', book: { title: 'Dune' } },
+    });
+    const row = await harness.prisma.bookRequest.findFirstOrThrow();
+    expect(row.status).toBe('fulfilled');
+    expect(row.bookId).toBe(BOOK_ID);
+  });
+
+  it("returns null for a reader fulfilling someone else's request", async () => {
+    const alice = harness.aliceOwner.userId;
+    const requestGid = await seedRequest(alice);
+    const bookGid = await seedBook(alice, BOOK_ID);
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.bobViewer,
+      variables: { id: requestGid, bookId: bookGid },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookRequestFulfill ?? null).toBeNull();
+    const row = await harness.prisma.bookRequest.findFirstOrThrow();
+    expect(row.status).toBe('pending');
+  });
+
+  it("refuses an owner's book from another library", async () => {
+    const alice = harness.aliceOwner.userId;
+    const requestGid = await seedRequest(alice);
+    const bobBookGid = await seedBook(harness.bobOwner.userId, 'b'.repeat(32));
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { id: requestGid, bookId: bobBookGid },
+    });
+
+    expect((result.data?.bookRequestFulfill as { __typename: string }).__typename).toBe(
+      'InvalidInputError'
+    );
     const row = await harness.prisma.bookRequest.findFirstOrThrow();
     expect(row.status).toBe('pending');
   });

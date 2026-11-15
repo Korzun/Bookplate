@@ -28,6 +28,7 @@ const log = logger('Notification');
  */
 export type NotificationEvent =
   | 'book_request.created'
+  | 'book_request.closed_by_requester'
   | 'book_request.fulfilled'
   | 'book_request.declined';
 
@@ -46,6 +47,7 @@ export type NotificationAudience = 'admin' | 'subject';
 
 export const NOTIFICATION_EVENTS: Record<NotificationEvent, { audience: NotificationAudience }> = {
   'book_request.created': { audience: 'admin' },
+  'book_request.closed_by_requester': { audience: 'admin' },
   'book_request.fulfilled': { audience: 'subject' },
   'book_request.declined': { audience: 'subject' },
 };

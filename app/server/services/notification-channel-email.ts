@@ -11,6 +11,7 @@
  */
 import {
   bookRequestedMessage,
+  requestClosedByRequesterMessage,
   requestDeclinedMessage,
   requestFulfilledMessage,
   type NoticeArgs,
@@ -20,6 +21,7 @@ import type { ChannelDriver, NotificationEvent } from './notification';
 
 const TEMPLATES: Record<NotificationEvent, (args: NoticeArgs) => MailMessage> = {
   'book_request.created': bookRequestedMessage,
+  'book_request.closed_by_requester': requestClosedByRequesterMessage,
   'book_request.fulfilled': requestFulfilledMessage,
   'book_request.declined': requestDeclinedMessage,
 };
