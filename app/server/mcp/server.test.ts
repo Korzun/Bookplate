@@ -534,6 +534,7 @@ const WRITE_TOOLS = [
   'regenerate_chapters',
   'delete_book',
   'request_book',
+  'update_book_request',
   'rate_book',
 ];
 
@@ -659,6 +660,45 @@ describe('write tools', () => {
     const dup = await mcp.call('request_book', { title: 'Dune', author: 'Frank Herbert' });
     expect(dup.isError).toBe(true);
     expect(textOf(dup)).toContain('DuplicateBookRequestError');
+  });
+
+  it('update_book_request corrects a pending request', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const created = await mcp.call('request_book', { title: 'Dune', author: 'Frank Hebert' });
+    const id = (created.structuredContent as { id: string }).id;
+
+    const result = await mcp.call('update_book_request', { id, author: 'Frank Herbert' });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      id,
+      title: 'Dune',
+      author: 'Frank Herbert',
+      status: 'PENDING',
+    });
+    expect(textOf(result)).toMatch(/^Updated: /);
+
+    await mcp.call('request_book', { title: 'Dune Messiah', author: 'Frank Herbert' });
+    const dup = await mcp.call('update_book_request', { id, title: 'Dune Messiah' });
+    expect(dup.isError).toBe(true);
+    expect(textOf(dup)).toContain('DuplicateBookRequestError');
+  });
+
+  it('update_book_request refuses a resolved request and an unknown id', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const created = await mcp.call('request_book', { title: 'Dune', author: 'Frank Herbert' });
+    const id = (created.structuredContent as { id: string }).id;
+    await harness.prisma.bookRequest.updateMany({ data: { status: 'declined' } });
+
+    const resolved = await mcp.call('update_book_request', { id, note: 'x' });
+    expect(resolved.isError).toBe(true);
+    expect(textOf(resolved)).toContain('BookRequestNotPendingError');
+
+    const unknown = await mcp.call('update_book_request', {
+      id: 'bm90LWEtcmVhbC1pZA==',
+      note: 'x',
+    });
+    expect(unknown.isError).toBe(true);
+    expect(textOf(unknown)).toContain('No book request');
   });
 
   it('rate_book sets ratings and returns the detail with names', async () => {

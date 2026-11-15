@@ -27,6 +27,7 @@ import { registerResolveMetadataFixes } from './tools/resolve-metadata-fixes';
 import { registerSearchLibrary } from './tools/search-library';
 import { registerStageReplacement } from './tools/stage-replacement';
 import { registerUpdateBookMetadata } from './tools/update-book-metadata';
+import { registerUpdateBookRequest } from './tools/update-book-request';
 import { registerUploadBook } from './tools/upload-book';
 import { registerValidateBook } from './tools/validate-book';
 
@@ -60,6 +61,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
   registerRegenerateChapters(server, deps);
   registerDeleteBook(server, deps);
   registerRequestBook(server, deps);
+  registerUpdateBookRequest(server, deps);
   registerUploadBook(server, deps);
   registerStageReplacement(server, deps);
   registerReplaceBookFile(server, deps);
