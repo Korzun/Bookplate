@@ -7,7 +7,9 @@ import { importEpub } from '../../services/import-epub';
 import { bytesInputShape, resolveEpubFile } from './bytes-input';
 import type { ToolDeps } from './deps';
 import { guarded, ok, ToolError } from './execute';
+import { fulfillRequest } from './fulfill-book-request';
 import { bookDetailSchema, describeBookDetail, fetchBookDetail } from './get-book';
+import { bookRequestSchema, type toBookRequest } from './list-book-requests';
 import { describeFix, metadataFixSchema, toFixOut } from './shared';
 
 const describeCounts = (counts: Record<string, number>): string =>
@@ -26,9 +28,24 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
         'Adds an EPUB to the library — the same import the web uploader runs: repair, validation, ' +
         'fingerprinting, metadata detection. High-confidence metadata fixes are applied; the rest are ' +
         'returned as proposals you can act on with resolve_metadata_fixes. Give the file as `uploadId`, `url` or `contentBase64`.',
-      inputSchema: bytesInputShape,
+      inputSchema: {
+        ...bytesInputShape,
+        requestId: z
+          .string()
+          .optional()
+          .describe(
+            'A pending request from list_book_requests that this book fulfils; closed after a successful import'
+          ),
+      },
       outputSchema: {
         book: z.object(bookDetailSchema),
+        request: bookRequestSchema
+          .nullable()
+          .describe('The request closed by this upload, if requestId was given and it closed'),
+        requestError: z
+          .string()
+          .nullable()
+          .describe('Why requestId could not be closed; the book was imported anyway'),
         applied: z.array(metadataFixSchema).describe('Fixes applied automatically'),
         proposals: z.array(metadataFixSchema).describe('Fixes left for you to accept or dismiss'),
       },
@@ -81,9 +98,23 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
         const proposals = outcome.proposals.map((f) =>
           toFixOut({ ...f, reason: f.reason ?? null })
         );
+        let request: ReturnType<typeof toBookRequest> | null = null;
+        let requestError: string | null = null;
+        if (args.requestId !== undefined) {
+          try {
+            request = await fulfillRequest(deps, args.requestId, book.id);
+          } catch (err) {
+            if (!(err instanceof ToolError)) throw err;
+            requestError = err.message;
+          }
+        }
         const text = [
           `Imported "${book.title}".`,
           describeBookDetail(book),
+          ...(request ? [`Request "${request.title}" marked fulfilled.`] : []),
+          ...(requestError !== null
+            ? [`Imported, but the request was not closed: ${requestError}`]
+            : []),
           ...(applied.length > 0
             ? ['Applied automatically:', ...applied.map((f) => `  - ${describeFix(f)}`)]
             : []),
@@ -94,7 +125,7 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
               ]
             : []),
         ].join('\n');
-        return ok(text, { book, applied, proposals });
+        return ok(text, { book, request, requestError, applied, proposals });
       })
   );
 }

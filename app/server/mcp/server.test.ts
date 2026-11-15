@@ -548,6 +548,7 @@ const WRITE_TOOLS = [
   'delete_book',
   'request_book',
   'update_book_request',
+  'fulfill_book_request',
   'rate_book',
   'create_upload_link',
 ];
@@ -713,6 +714,105 @@ describe('write tools', () => {
     });
     expect(unknown.isError).toBe(true);
     expect(textOf(unknown)).toContain('No book request');
+  });
+
+  it("fulfill_book_request closes the reader's own request", async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const filed = await mcp.call('request_book', { title: 'Dune', author: 'Frank Herbert' });
+    const requestId = (filed.structuredContent as { id: string }).id;
+    const bookId = await findId(mcp, 'Alpha Book');
+    const result = await mcp.call('fulfill_book_request', { requestId, bookId });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const request = (result.structuredContent as { request: { status: string; bookId: string } })
+      .request;
+    expect(request.status).toBe('FULFILLED');
+    expect(request.bookId).toBe(bookId);
+  });
+
+  it('fulfill_book_request reports an already-fulfilled request', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const filed = await mcp.call('request_book', { title: 'Dune', author: 'Frank Herbert' });
+    const requestId = (filed.structuredContent as { id: string }).id;
+    const bookId = await findId(mcp, 'Alpha Book');
+    await mcp.call('fulfill_book_request', { requestId, bookId });
+    const again = await mcp.call('fulfill_book_request', { requestId, bookId });
+    expect(again.isError).toBe(true);
+    expect(textOf(again)).toBe('That request is already fulfilled');
+  });
+
+  it("fulfill_book_request cannot touch another reader's request", async () => {
+    const bobMcp = await connectMcpClient(app, await mintToken(harness, harness.bobOwner.userId));
+    try {
+      const filed = await bobMcp.call('request_book', { title: 'Dune', author: 'Frank Herbert' });
+      const requestId = (filed.structuredContent as { id: string }).id;
+      mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+      const bookId = await findId(mcp, 'Alpha Book');
+      const result = await mcp.call('fulfill_book_request', { requestId, bookId });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toBe('No pending request with that id');
+    } finally {
+      await bobMcp.close();
+    }
+  });
+
+  it('upload_book with requestId imports and closes the request', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const filed = await mcp.call('request_book', { title: 'Wanted Book', author: 'Someone' });
+    const requestId = (filed.structuredContent as { id: string }).id;
+    const result = await mcp.call('upload_book', {
+      contentBase64: fixtureEpub('Wanted Book').toString('base64'),
+      requestId,
+    });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const out = result.structuredContent as {
+      book: { id: string };
+      request: { status: string; bookId: string } | null;
+      requestError: string | null;
+    };
+    expect(out.request?.status).toBe('FULFILLED');
+    expect(out.request?.bookId).toBe(out.book.id);
+    expect(out.requestError).toBeNull();
+    expect(textOf(result)).toContain('Request "Wanted Book" marked fulfilled.');
+  });
+
+  it('upload_book with a non-pending requestId keeps the book and reports requestError', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const filed = await mcp.call('request_book', { title: 'Closed One', author: 'Someone' });
+    const requestId = (filed.structuredContent as { id: string }).id;
+    await mcp.call('fulfill_book_request', {
+      requestId,
+      bookId: await findId(mcp, 'Alpha Book'),
+    });
+    const result = await mcp.call('upload_book', {
+      contentBase64: fixtureEpub('Kept Anyway').toString('base64'),
+      requestId,
+    });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const out = result.structuredContent as { request: unknown; requestError: string | null };
+    expect(out.request).toBeNull();
+    expect(out.requestError).toBe('That request is already fulfilled');
+    expect(textOf(result)).toContain(
+      'Imported, but the request was not closed: That request is already fulfilled'
+    );
+    const row = await harness.prisma.book.findFirst({
+      where: { userId: harness.aliceOwner.userId, title: 'Kept Anyway' },
+    });
+    expect(row).not.toBeNull();
+  });
+
+  it('upload_book duplicate with requestId leaves the request pending', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const bytes = fixtureEpub('Twice Over').toString('base64');
+    const first = await mcp.call('upload_book', { contentBase64: bytes });
+    expect(first.isError, textOf(first)).toBeFalsy();
+    const filed = await mcp.call('request_book', { title: 'Twice Over', author: 'Someone' });
+    const requestId = (filed.structuredContent as { id: string }).id;
+    const dup = await mcp.call('upload_book', { contentBase64: bytes, requestId });
+    expect(dup.isError).toBe(true);
+    expect(textOf(dup)).toContain('already in the library (id ');
+    const list = JSON.stringify((await mcp.call('list_book_requests', {})).structuredContent);
+    expect(list).toContain('PENDING');
+    expect(list).not.toContain('FULFILLED');
   });
 
   it('rate_book sets ratings and returns the detail with names', async () => {
