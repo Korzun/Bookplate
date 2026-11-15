@@ -24,9 +24,9 @@ the agent pushes the file there with `curl`.
 
 ## Goals
 
-- An agent with a shell uploads an EPUB of any size up to the existing 200 MB
-  cap by: calling a tool to get a one-time upload link, `curl -T`-ing the file
-  to it, then calling `upload_book` with the returned upload id.
+- An agent with a shell uploads an EPUB of up to **50 MB** by: calling a tool
+  to get a one-time upload link, `curl -T`-ing the file to it, then calling
+  `upload_book` with the returned upload id.
 - The same upload id works for `stage_replacement`.
 - A reader can fulfil their **own pending** request with a book in their **own**
   library — from MCP via a new tool, and in one step via an optional
@@ -78,8 +78,21 @@ the agent pushes the file there with `curl`.
   `fulfillBookRequest` in `services/book-request.ts`, which already refuses a
   book from a different library (`noSuchBook`) and a non-pending request.
   `node-scope.ts` exports `isOwnerOrAdmin`, which `bookRequestDelete` uses.
-- `book_request.fulfilled` notifications go to the request's subject (the
-  requester) — `services/notification.ts`.
+- `server.ts:57` runs `requestTimeout(90_000)` on every request ahead of the
+  MCP router, and the documented deployment sits behind Cloudflare Tunnel
+  (which itself limits body size and request duration). The upload route
+  **keeps** the global 90 s limit; that is why the link cap is 50 MB rather
+  than the 200 MB `fetch-epub` allows for server-side downloads.
+- Notification events are declared in `services/notification.ts`
+  (`NotificationEvent` union + `NOTIFICATION_EVENTS` audience map: `created` →
+  admin, `fulfilled`/`declined` → subject). Each event also needs a mail
+  template (`services/mail-template.ts`), a push template
+  (`services/push-template.ts`), a member of the `NotificationEvent` GraphQL
+  enum (`graphql/schema/notification-event/model.ts`, regenerate
+  `schema.generated.graphql` and `app/client/src/gql/graphql.ts`), and a label
+  in the client's `component/notification-settings/index.tsx`, which already
+  shows each user only the events whose audience they are in. Event names are
+  plain strings in the DB — no migration needed for a new one.
 - A parallel change today (`2026-11-15-book-request-edit-design.md`) adds a
   reader-side edit for pending requests; same owner-or-admin pattern. No
   conflict, but expect to touch neighbouring files.
@@ -115,7 +128,8 @@ requests** over "reader withdraws instead" (inaccurate record) and
 - Creates an entry in a new in-memory **upload-slot registry**: `{ id, userId,
   tokenHash or token, createdAt, expiresAt, state: 'open' | 'filled' | 'used',
   path?, size? }`.
-- Returns `{ uploadId, uploadUrl, expiresAt, maxBytes, curl }`, where
+- Returns `{ uploadId, uploadUrl, expiresAt, maxBytes, curl }` (`maxBytes` =
+  50 MB), where
   `uploadUrl = <public_url origin>/mcp/uploads/<token>` and `curl` is a
   ready-to-run example: `curl --fail -T "<file>" "<uploadUrl>"`. The text
   output tells the agent the next step (call `upload_book` with `uploadId`).
@@ -132,9 +146,11 @@ requests** over "reader withdraws instead" (inaccurate record) and
 - Unknown, expired or already-filled token → **404** with no detail (don't
   distinguish).
 - Streams the body to a fresh file in the staging dir with the same safeguards
-  as `fetch-epub.ts`: 200 MB cap enforced as chunks arrive (and early-reject on
-  a `Content-Length` over the cap → 413), wall-clock timeout, partial file
-  removed on any failure, nothing thrown from stream listeners.
+  as `fetch-epub.ts`: **50 MB** cap enforced as chunks arrive (and early-reject
+  on a `Content-Length` over the cap → 413), partial file removed on any
+  failure (including the client disconnecting or the global 90 s timeout
+  firing), nothing thrown from stream listeners. The global `requestTimeout`
+  stays in force; no separate route timeout is needed.
 - On success, verifies the file looks like an EPUB (same sniff `fetch-epub`
   uses) — failure → 415, file removed, slot burned.
 - Marks the slot `filled`; any second PUT → 404. Responds **201** with small
@@ -163,10 +179,19 @@ requests** over "reader withdraws instead" (inaccurate record) and
   `bookRequestDelete` does. A non-owner non-admin gets the same `null` ("no
   such request") a miss gets. `fulfillBookRequest` already rejects a book
   outside the request owner's library and non-pending requests.
-- **Notification:** when the requester fulfils their own request, **skip**
-  the `book_request.fulfilled` notification (it would only tell them about
-  their own action). Admin-initiated fulfilment notifies as today.
-  Implemented by passing who acted into `fulfillBookRequest`.
+- **Notifications:** `fulfillBookRequest` learns who acted (owner or admin).
+  - Admin fulfils → `book_request.fulfilled` to the requester, as today.
+  - Requester fulfils their own → **no** `book_request.fulfilled` (it would
+    only tell them about their own action); instead a **new event
+    `book_request.closed_by_requester`, audience `admin`**, so the admin
+    doesn't go hunting for a book that's already in. Enqueued in the same
+    transaction as the status change, like the others.
+  - Wording (mail subject / push title): "*{requesterUsername}* closed their
+    request for *{title}*"; body: "They added it to their library themselves
+    — nothing left for you to do." Settings label: "Request closed by reader".
+    Uses the existing `NotificationPayload`; no new payload fields.
+  - The new event is on by default for the admin, like `book_request.created`
+    (builder to match however default preferences are decided today).
 - **New MCP tool `fulfill_book_request`**: input `{ requestId, bookId }` (ids
   as `list_book_requests` and the book tools return them); runs the mutation
   through `executeDocument`; returns the updated request (`bookRequestSchema`).
@@ -204,6 +229,24 @@ resolve_metadata_fixes(...)                → as today
 - Test layout, following `server.test.ts`, `fetch-epub.test.ts`,
   `fulfill.test.ts` and `book-request.test.ts` patterns. Cover: token
   single-use, expiry, cross-user `uploadId` refusal, cap/timeout/partial-file
-  cleanup, non-EPUB body, owner-vs-non-owner fulfil, notification skipped on
-  self-fulfil, import-succeeds-but-fulfil-fails.
+  cleanup, non-EPUB body, owner-vs-non-owner fulfil, self-fulfil sends
+  `closed_by_requester` to the admin and nothing to the requester,
+  import-succeeds-but-fulfil-fails.
 - CHANGELOG entry.
+
+## Calls made during design (check these)
+
+These weren't discussed; they're my defaults and easy to change:
+
+- Upload link TTL is 15 minutes; once the file has arrived it stays claimable
+  until that same expiry.
+- The secret link token is separate from the `uploadId` the tools take, so the
+  token never has to go back through a tool call. The token must be redacted
+  from the request log.
+- A second concurrent PUT to the same link loses (first writer wins; the other
+  gets 404).
+- The upload registry is in memory, like `replace-staging`; a server restart
+  drops open links, which is fine at a 15-minute lifetime.
+- `upload_book` with `requestId` never rolls back the import if closing the
+  request fails; it reports the failure alongside the imported book.
+- The reader-side web UI gets no "close my request" button in this work.
