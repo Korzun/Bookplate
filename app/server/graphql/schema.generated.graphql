@@ -233,6 +233,18 @@ enum BookRequestStatus {
   PENDING
 }
 
+input BookRequestUpdateInput {
+  author: String
+  note: String
+  title: String
+}
+
+type BookRequestUpdatePayload {
+  bookRequest: BookRequest!
+}
+
+union BookRequestUpdateResult = BookRequestNotPendingError | BookRequestUpdatePayload | DuplicateBookRequestError | InvalidInputError
+
 input BookResolvePendingFixInput {
   action: PendingFixResolution!
 
@@ -733,6 +745,9 @@ type Mutation {
 
   """Marks a request fulfilled by a book in that reader library."""
   bookRequestFulfill(bookId: ID!, id: ID!): BookRequestFulfillResult
+
+  """Corrects the title, author or note of a pending request."""
+  bookRequestUpdate(id: ID!, input: BookRequestUpdateInput!): BookRequestUpdateResult
 
   """
   Resolves a book’s pending metadata-fix proposals: ACCEPT applies them (arming an undo), DISMISS clears them (arming an undo), UNDO reverts whichever of those two an armed undo snapshot recorded, or CLEAR deletes the pending-fix row outright. ACCEPT and DISMISS accept an optional `fixes` list to act on a named subset of the row’s proposals instead of all of them; omitting `fixes` means every proposal, which is this mutation’s original behaviour. UNDO and CLEAR ignore `fixes` — both always act on the whole row. Resolves to null when the book does not exist for the resolved owner.
