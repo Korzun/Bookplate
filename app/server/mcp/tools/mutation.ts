@@ -16,6 +16,7 @@ type UserErrorMember = {
   collidingBook?: { id: string; title: string } | null;
   limit?: number;
   existingRequestId?: string;
+  status?: string;
 };
 
 export const renderUserError = (member: UserErrorMember): string => {
@@ -36,6 +37,9 @@ export const renderUserError = (member: UserErrorMember): string => {
   }
   if (member.existingRequestId !== undefined) {
     lines.push(`  Existing request id=${member.existingRequestId}`);
+  }
+  if (member.status !== undefined) {
+    lines.push(`  Status: ${member.status}`);
   }
   return lines.join('\n');
 };
@@ -60,6 +64,7 @@ const ERROR_FRAGMENTS: Record<string, string> = {
   BookHashCollisionError: '... on BookHashCollisionError { collidingBook { id title } }',
   DuplicateBookRequestError: '... on DuplicateBookRequestError { existingRequestId }',
   BookRequestLimitExceededError: '... on BookRequestLimitExceededError { limit }',
+  BookRequestNotPendingError: '... on BookRequestNotPendingError { status }',
 };
 
 /**
