@@ -76,7 +76,7 @@ export function uploadRoute(deps: { uploadSlots: UploadSlots; maxBytes?: number 
       return;
     }
     if (slot === null) {
-      res.status(404).json(NOT_FOUND);
+      res.status(404).set('Connection', 'close').json(NOT_FOUND);
       return;
     }
     const { uploadId, destPath } = slot;
@@ -90,7 +90,6 @@ export function uploadRoute(deps: { uploadSlots: UploadSlots; maxBytes?: number 
       if (settled) return;
       settled = true;
       try {
-        req.unpipe();
         out.destroy();
         uploadSlots.failReceive(uploadId);
         // `destroy()` may land before the async open created the file.
@@ -143,8 +142,17 @@ export function uploadRoute(deps: { uploadSlots: UploadSlots; maxBytes?: number 
             lostSlot();
             return;
           }
-          res.status(201).json({ uploadId, size: bytes });
+          // Settle first so the 'finish' handler's fail() is a no-op.
           settled = true;
+          try {
+            res.status(201).json({ uploadId, size: bytes });
+          } catch (err) {
+            // Headers already sent (e.g. app-wide timeout): undo the receive.
+            log.error(`upload answer failed: ${err instanceof Error ? err.message : String(err)}`);
+            out.destroy();
+            uploadSlots.failReceive(uploadId);
+            unlinkQuiet(destPath);
+          }
         } catch (err) {
           log.error(`upload finalize failed: ${err instanceof Error ? err.message : String(err)}`);
           fail(500, { error: 'Upload failed' });
@@ -193,7 +201,11 @@ export function uploadRoute(deps: { uploadSlots: UploadSlots; maxBytes?: number 
 
   router.put('/mcp/uploads/:token', receive);
   router.all('/mcp/uploads/:token', (_req, res) => {
-    res.set('Allow', 'PUT').status(405).json({ error: 'Method not allowed' });
+    res
+      .set('Allow', 'PUT')
+      .status(405)
+      .set('Connection', 'close')
+      .json({ error: 'Method not allowed' });
   });
 
   return router;

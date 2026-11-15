@@ -56,7 +56,7 @@ Add-on options (set in the **Configuration** tab):
 | `password`               | string | `changeme`  | Admin account password. **Change this before starting.**          |
 | `max_concurrent_uploads` | int    | `3`         | Maximum number of simultaneous uploads processed by the server.   |
 | `validation_threshold`   | list   | `Error`     | Strictness of EPUB upload validation. `Fatal` rejects only unreadable files; `Error` (default) also rejects structural errors; `Warning` and `Info` reject progressively more. |
-| `trust_proxy_hops`       | int    | `0`         | Reverse-proxy hops to trust when resolving a client's real IP for the login rate limiter (`POST /api/login`'s 10-attempts-per-minute-per-IP guard). Leave at `0` unless you sit behind a reverse proxy or **Cloudflare Tunnel** (see "Usage" below) — set to `1` for a single such hop. Trusting a hop you don't actually run behind lets a client bypass the limiter, so don't set this higher than your real proxy count. |
+| `trust_proxy_hops`       | int    | `0`         | Reverse-proxy hops to trust when resolving a client's real IP for the login rate limiter (`POST /api/login`'s 10-attempts-per-minute-per-IP guard) and the MCP upload-link limiter (30 PUTs per 15 minutes per client). With the default `0` behind a proxy or Cloudflare Tunnel, every client shares one bucket. Leave at `0` unless you sit behind a reverse proxy or **Cloudflare Tunnel** (see "Usage" below) — set to `1` for a single such hop. Trusting a hop you don't actually run behind lets a client bypass the limiter, so don't set this higher than your real proxy count. |
 | `email_cloudflare_account_id` | string | *(none)* | Cloudflare account ID for Email Sending. Required together with `email_cloudflare_api_token` and `email_from_address` — email stays switched off unless all three are set. |
 | `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
 | `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
@@ -242,8 +242,8 @@ Tools: `search_library`, `get_book`, `get_series`, `list_series`,
 `create_upload_link`, `upload_book`, `stage_replacement` and
 `replace_book_file`. Uploads take an upload link (`create_upload_link`, then PUT
 the file to it with `curl --fail -T file <link>`: up to 50 MB, works once, valid
-for 15 minutes), a public https URL, or inline base64 (about 6 MB); URL
-downloads refuse private and LAN addresses. Readers can also close their own
+for 15 minutes; pass its `uploadId` to `upload_book` or `stage_replacement`), a public https URL, or inline base64 (about 6 MB); URL
+downloads refuse private and LAN addresses. `upload_book` also takes an optional `requestId` to close a pending request with the import. Readers can also close their own
 requests, and the admin is notified when they do.
 
 ## Running with Docker

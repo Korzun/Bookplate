@@ -82,7 +82,10 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
             throw new ToolError(outcome.message);
           case 'duplicate':
             throw new ToolError(
-              `A book with the same fingerprint is already in the library (id ${encodeBookGlobalId(owner.userId, outcome.existingBookId)}).`
+              `A book with the same fingerprint is already in the library (id ${encodeBookGlobalId(owner.userId, outcome.existingBookId)}).` +
+                (args.requestId !== undefined
+                  ? ' The request was not closed; call fulfill_book_request with this book id.'
+                  : '')
             );
           case 'invalid': {
             const lines = [

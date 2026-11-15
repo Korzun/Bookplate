@@ -83,6 +83,7 @@ describe('PUT /mcp/uploads/:token', () => {
       .send(ZIP);
     expect(res.status).toBe(404);
     expect(res.body).toEqual(NOT_FOUND);
+    expect(res.headers.connection).toBe('close');
   });
 
   it('rejects Content-Length over the cap with 413 before reading, leaving the link open', async () => {
@@ -116,8 +117,7 @@ describe('PUT /mcp/uploads/:token', () => {
       req.end();
     });
     expect(status).toBe(413);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(stagingFiles()).toEqual([]);
+    await waitFor(() => stagingFiles().length === 0);
     expect(slots.claim(link.uploadId, 'u1')).toEqual({ kind: 'missing' });
   });
 
@@ -135,7 +135,7 @@ describe('PUT /mcp/uploads/:token', () => {
     const link = slots.create('u1');
     const srv = await start();
     const { port } = srv.address() as AddressInfo;
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const req = http.request({
         port,
         host: '127.0.0.1',
@@ -144,14 +144,14 @@ describe('PUT /mcp/uploads/:token', () => {
         headers: { 'Content-Length': String(ZIP.length + 5000) },
       });
       req.on('error', () => undefined);
-      req.write(ZIP, () => {
-        setTimeout(() => {
-          req.destroy();
-          resolve();
-        }, 50);
-      });
+      req.write(ZIP);
+      // The server has begun receiving once the staging file exists.
+      void waitFor(() => stagingFiles().length === 1).then(() => {
+        req.destroy();
+        resolve();
+      }, reject);
     });
-    await new Promise((r) => setTimeout(r, 150));
+    await waitFor(() => stagingFiles().length === 0);
     expect(stagingFiles()).toEqual([]);
     expect(slots.claim(link.uploadId, 'u1')).toEqual({ kind: 'missing' });
   });
@@ -217,13 +217,13 @@ describe('PUT /mcp/uploads/:token', () => {
         (res) => {
           res.resume();
           resolve(res.statusCode ?? 0);
+          // Finish only after the 503 is out (best effort: the route may already
+          // have torn the connection down, which is the desired outcome too).
+          req.end();
         }
       );
       req.on('error', () => undefined);
       req.write(ZIP);
-      // Finish only after the 503 is out (best effort: the route may already
-      // have torn the connection down, which is the desired outcome too).
-      setTimeout(() => req.end(), 600);
     });
     expect(status).toBe(503);
     await waitFor(() => stagingFiles().length === 0);
