@@ -38,6 +38,29 @@ it('renders the fulfilled and declined notices', () => {
   ).toContain('already own it');
 });
 
+it('renders the closed-by-requester notice for the admin', () => {
+  const message = PUSH_TEMPLATES['book_request.closed_by_requester']({
+    libraryName: 'Bookplate',
+    payload: payload({ title: 'Shards of Earth' }),
+  });
+
+  expect(message.title).toBe('alice closed their request for Shards of Earth');
+  expect(message.body).toContain(
+    'They added it to their library themselves — nothing left for you to do.'
+  );
+  expect(message.url).toBe('/request');
+});
+
+it('keeps two readers closing the same title on distinct tags', () => {
+  const tag = (requesterUsername: string) =>
+    PUSH_TEMPLATES['book_request.closed_by_requester']({
+      libraryName: 'Bookplate',
+      payload: payload({ requesterUsername }),
+    }).tag;
+
+  expect(tag('alice')).not.toBe(tag('bob'));
+});
+
 it('collapses a redelivered duplicate onto the same tag', () => {
   const args = { libraryName: 'Bookplate', payload: payload() };
   const first = PUSH_TEMPLATES['book_request.fulfilled'](args);

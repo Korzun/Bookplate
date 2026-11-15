@@ -203,6 +203,7 @@ describe('fulfillBookRequest', () => {
       id,
       bookUserId: ALICE,
       bookId: 'a'.repeat(32),
+      actor: 'admin',
     });
 
     expect(outcome).toEqual({ kind: 'resolved' });
@@ -224,6 +225,7 @@ describe('fulfillBookRequest', () => {
       id,
       bookUserId: BOB,
       bookId: 'b'.repeat(32),
+      actor: 'admin',
     });
 
     expect(outcome).toEqual({ kind: 'noSuchBook' });
@@ -240,6 +242,7 @@ describe('fulfillBookRequest', () => {
       id,
       bookUserId: ALICE,
       bookId: 'c'.repeat(32),
+      actor: 'admin',
     });
     expect(outcome).toEqual({ kind: 'noSuchBook' });
   });
@@ -250,6 +253,7 @@ describe('fulfillBookRequest', () => {
       id: 'no-such-request',
       bookUserId: ALICE,
       bookId: 'a'.repeat(32),
+      actor: 'admin',
     });
     expect(outcome).toEqual({ kind: 'missing' });
   });
@@ -262,6 +266,7 @@ describe('fulfillBookRequest', () => {
       id,
       bookUserId: ALICE,
       bookId: 'a'.repeat(32),
+      actor: 'admin',
     });
 
     const again = await declineBookRequest(prisma, {
@@ -492,6 +497,7 @@ describe('notification enqueue', () => {
       id: created.kind === 'created' ? created.id : '',
       bookUserId: ALICE,
       bookId: 'book-1',
+      actor: 'admin',
     });
 
     expect(outcome.kind).toBe('resolved');
@@ -501,6 +507,60 @@ describe('notification enqueue', () => {
     for (const row of rows) {
       expect(row).toMatchObject({ userId: ALICE, event: 'book_request.fulfilled' });
       expect(parsePayload(row.payload).title).toBe('Dune');
+    }
+  });
+
+  it('owner fulfilment enqueues closed_by_requester for the admin and nothing for the requester', async () => {
+    await makeAdmin();
+    const created = await createBookRequest(prisma, input());
+    expect(created.kind).toBe('created');
+    await prisma.notificationOutbox.deleteMany();
+    await prisma.book.create({
+      data: { userId: ALICE, id: 'book-1', title: 'Dune', size: 1, mtime: 0, addedAt: 0 },
+    });
+
+    const outcome = await fulfillBookRequest(prisma, {
+      userId: ALICE,
+      id: created.kind === 'created' ? created.id : '',
+      bookUserId: ALICE,
+      bookId: 'book-1',
+      actor: 'owner',
+    });
+
+    expect(outcome.kind).toBe('resolved');
+    const rows = await outbox();
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row).toMatchObject({ userId: ADMIN, event: 'book_request.closed_by_requester' });
+      expect(parsePayload(row.payload)).toMatchObject({
+        requesterUsername: 'alice',
+        title: 'Dune',
+      });
+    }
+    expect(rows.some((row) => row.userId === ALICE)).toBe(false);
+  });
+
+  it('admin fulfilment still enqueues book_request.fulfilled', async () => {
+    await makeAdmin();
+    const created = await createBookRequest(prisma, input());
+    expect(created.kind).toBe('created');
+    await prisma.notificationOutbox.deleteMany();
+    await prisma.book.create({
+      data: { userId: ALICE, id: 'book-1', title: 'Dune', size: 1, mtime: 0, addedAt: 0 },
+    });
+
+    await fulfillBookRequest(prisma, {
+      userId: ALICE,
+      id: created.kind === 'created' ? created.id : '',
+      bookUserId: ALICE,
+      bookId: 'book-1',
+      actor: 'admin',
+    });
+
+    const rows = await outbox();
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row).toMatchObject({ userId: ALICE, event: 'book_request.fulfilled' });
     }
   });
 
@@ -568,7 +628,13 @@ describe('transactional enqueue', () => {
     vi.mocked(enqueueNotification).mockRejectedValueOnce(new Error('enqueue boom'));
 
     await expect(
-      fulfillBookRequest(prisma, { userId: ALICE, id, bookUserId: ALICE, bookId: 'a'.repeat(32) })
+      fulfillBookRequest(prisma, {
+        userId: ALICE,
+        id,
+        bookUserId: ALICE,
+        bookId: 'a'.repeat(32),
+        actor: 'admin',
+      })
     ).rejects.toThrow('enqueue boom');
 
     const row = await prisma.bookRequest.findUniqueOrThrow({

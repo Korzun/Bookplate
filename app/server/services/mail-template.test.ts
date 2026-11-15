@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bookRequestedMessage,
   passwordResetMessage,
+  requestClosedByRequesterMessage,
   requestDeclinedMessage,
   requestFulfilledMessage,
   verificationMessage,
@@ -150,5 +151,36 @@ describe('notification messages', () => {
     expect(message.html).not.toContain('<b>x</b>');
     expect(message.html).toContain('&lt;b&gt;x&lt;/b&gt;');
     expect(message.html).toContain('&quot;quoted&quot;');
+  });
+});
+
+describe('requestClosedByRequesterMessage', () => {
+  const base = {
+    to: 'admin@example.com',
+    libraryName: 'Bookplate',
+    publicUrl: 'https://books.example.com',
+    payload: {
+      requesterUsername: 'alice',
+      title: 'Shards of Earth',
+      author: 'Adrian Tchaikovsky',
+      note: '',
+      declineReason: '',
+    },
+  };
+
+  it('tells the admin the reader closed their own request', () => {
+    const message = requestClosedByRequesterMessage(base);
+
+    expect(message.to).toBe('admin@example.com');
+    expect(message.subject).toBe('alice closed their request for Shards of Earth');
+    expect(message.text).toContain(
+      'They added it to their library themselves — nothing left for you to do.'
+    );
+    expect(message.text).toContain('https://books.example.com/request');
+  });
+
+  it('omits the link when publicUrl is null', () => {
+    const message = requestClosedByRequesterMessage({ ...base, publicUrl: null });
+    expect(message.text).not.toContain('http');
   });
 });

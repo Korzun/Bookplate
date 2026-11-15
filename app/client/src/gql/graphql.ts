@@ -142,6 +142,7 @@ export type NotificationChannel =
   | 'PUSH';
 
 export type NotificationEvent =
+  | 'BOOK_REQUEST_CLOSED_BY_REQUESTER'
   | 'BOOK_REQUEST_CREATED'
   | 'BOOK_REQUEST_DECLINED'
   | 'BOOK_REQUEST_FULFILLED';

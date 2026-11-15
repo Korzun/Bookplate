@@ -8,7 +8,7 @@ import {
   invalidInputIssue,
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
-import { decodeCompoundGlobalId } from '../../node-scope';
+import { decodeCompoundGlobalId, isOwnerOrAdmin } from '../../node-scope';
 import { model as bookRequestModel } from '../model';
 
 type BookRequestFulfillPayloadShape = {
@@ -41,6 +41,13 @@ const result = builder.unionType('BookRequestFulfillResult', {
  * on its own when an item bound to a request finishes, and the one the admin's
  * "link an existing book" picker calls by hand. Two entry points, one mutation.
  *
+ * OWNER-OR-ADMIN: the request's owner may close their own request with a book
+ * in their own library, and the admin may close anyone's. The owner rides
+ * inside the global id, so the check runs after decoding, and a caller who is
+ * neither gets `null` — the same answer a missing request gets. The viewer's
+ * role picks `actor`: an admin fulfilment notifies the requester, an owner's
+ * notifies the admin (`book_request.closed_by_requester`).
+ *
  * BOTH `id` ARGS ARE GLOBAL IDS. A `BookRequest` global id decodes to
  * `[userId, id]` and a `Book` global id to `[userId, id]` too, through
  * `parseCompoundId` — the same helper `ownerScopedFindUnique` uses. `bookId` is
@@ -66,7 +73,8 @@ builder.mutationField('bookRequestFulfill', (t) =>
       id: t.arg.id({ required: true }),
       bookId: t.arg.id({ required: true }),
     },
-    authScopes: { admin: true },
+    // No field-level `authScopes`: the owner rides inside the global id, so the
+    // owner-or-admin check happens after decoding — see `bookRequestDelete`.
     resolve: async (_parent, args, context) => {
       const request = decodeCompoundGlobalId(String(args.id), 'BookRequest');
       if (request === null) return null;
@@ -77,6 +85,7 @@ builder.mutationField('bookRequestFulfill', (t) =>
       }
 
       const [userId, requestId] = request;
+      if (!isOwnerOrAdmin(context.viewer, userId)) return null;
       const [bookUserId, bookId] = book;
 
       const outcome = await fulfillBookRequest(context.prisma, {
@@ -84,6 +93,7 @@ builder.mutationField('bookRequestFulfill', (t) =>
         id: requestId,
         bookUserId,
         bookId,
+        actor: context.viewer?.isAdmin ? 'admin' : 'owner',
       });
 
       switch (outcome.kind) {

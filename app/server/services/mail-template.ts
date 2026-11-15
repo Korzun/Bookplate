@@ -193,6 +193,21 @@ export function bookRequestedMessage(args: NoticeArgs): MailMessage {
   });
 }
 
+export function requestClosedByRequesterMessage(args: NoticeArgs): MailMessage {
+  return notice({
+    to: args.to,
+    subject: `${args.payload.requesterUsername} closed their request for ${args.payload.title}`,
+    lead: 'They added it to their library themselves — nothing left for you to do.',
+    lines: [
+      { label: 'Title', value: args.payload.title },
+      { label: 'Author', value: args.payload.author },
+    ],
+    href: requestsLink(args.publicUrl),
+    linkLabel: 'View requests',
+    closing: `You're receiving this because you're the ${args.libraryName} admin. You can turn these off on your account page.`,
+  });
+}
+
 export function requestFulfilledMessage(args: NoticeArgs): MailMessage {
   return notice({
     to: args.to,

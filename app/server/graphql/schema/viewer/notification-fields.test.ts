@@ -55,7 +55,7 @@ describe('Viewer.notificationPreferences', () => {
     });
   });
 
-  it('gives the config admin only the created event', async () => {
+  it('gives the config admin the created and closed-by-requester events, on by default', async () => {
     harness = await createHarness({ mail: MAIL_CONFIG });
     await ensureAdminUser(harness.prisma, 'admin');
 
@@ -67,6 +67,8 @@ describe('Viewer.notificationPreferences', () => {
         notificationPreferences: [
           { event: 'BOOK_REQUEST_CREATED', channel: 'EMAIL', enabled: true },
           { event: 'BOOK_REQUEST_CREATED', channel: 'PUSH', enabled: true },
+          { event: 'BOOK_REQUEST_CLOSED_BY_REQUESTER', channel: 'EMAIL', enabled: true },
+          { event: 'BOOK_REQUEST_CLOSED_BY_REQUESTER', channel: 'PUSH', enabled: true },
         ],
       },
     });

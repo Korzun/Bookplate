@@ -25,6 +25,7 @@ import { usePushDevice } from './use-push-device';
  */
 const EVENT_LABEL: Record<NotificationEvent, string> = {
   BOOK_REQUEST_CREATED: 'Request received',
+  BOOK_REQUEST_CLOSED_BY_REQUESTER: 'Request closed by reader',
   BOOK_REQUEST_FULFILLED: 'Request fulfilled',
   BOOK_REQUEST_DECLINED: 'Request declined',
 };

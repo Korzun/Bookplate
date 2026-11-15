@@ -135,10 +135,20 @@ export type FulfillOutcome = ResolveOutcome | { kind: 'noSuchBook' };
  * `bookUserId !== args.userId` is `noSuchBook`, not a distinct outcome: an
  * admin must not fulfil alice's request with a book off bob's shelf, and
  * saying so in more detail would confirm that bob has that book.
+ *
+ * `actor` decides who hears about it: an admin fulfilment tells the requester
+ * (`book_request.fulfilled`), while the requester closing their own request
+ * tells the admin (`book_request.closed_by_requester`) and nobody else.
  */
 export async function fulfillBookRequest(
   prisma: PrismaClient,
-  args: { userId: string; id: string; bookUserId: string; bookId: string }
+  args: {
+    userId: string;
+    id: string;
+    bookUserId: string;
+    bookId: string;
+    actor: 'owner' | 'admin';
+  }
 ): Promise<FulfillOutcome> {
   return prisma.$transaction(async (tx) => {
     const request = await tx.bookRequest.findUnique({
@@ -173,7 +183,7 @@ export async function fulfillBookRequest(
       },
     });
     await enqueueNotification(tx, {
-      event: 'book_request.fulfilled',
+      event: args.actor === 'admin' ? 'book_request.fulfilled' : 'book_request.closed_by_requester',
       subjectUserId: args.userId,
       payload: {
         requesterUsername: request.user.username,
