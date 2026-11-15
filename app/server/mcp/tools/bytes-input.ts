@@ -1,5 +1,6 @@
 /**
- * The two ways an assistant can hand this server an EPUB: inline base64 (for
+ * The three ways an assistant can hand this server an EPUB: an `uploadId` for a
+ * file it PUT to a one-time link, inline base64 (for
  * a file the assistant already holds, bounded by `/mcp`'s 8 MB body limit)
  * or a public https URL this server downloads through `fetchEpub`'s guard.
  * Exactly one must be given. Either way the bytes end up as a fresh file in
@@ -12,6 +13,7 @@ import * as path from 'path';
 
 import { z } from 'zod';
 
+import type { UploadSlots } from '../../services/upload-slots';
 import { fetchEpub, FetchEpubError, type FetchEpubOptions } from '../fetch-epub';
 import { ToolError } from './execute';
 
@@ -34,12 +36,18 @@ export const bytesInputShape = {
     .max(255)
     .optional()
     .describe('Original file name; used for the title when the EPUB has none'),
+  uploadId: z
+    .string()
+    .max(64)
+    .optional()
+    .describe('An uploadId from create_upload_link, after the file was PUT to its link'),
 };
 
 export type BytesInput = {
   url?: string | undefined;
   contentBase64?: string | undefined;
   filename?: string | undefined;
+  uploadId?: string | undefined;
 };
 
 export type EpubFile = { path: string; filename: string; size: number };
@@ -62,15 +70,35 @@ const epubName = (name: string | undefined, fallback: string): string => {
 export async function resolveEpubFile(
   input: BytesInput,
   destDir: string,
-  fetchOptions?: FetchEpubOptions
+  opts: { uploadSlots: UploadSlots; userId: string; fetchOptions?: FetchEpubOptions }
 ): Promise<EpubFile> {
   const hasUrl = input.url !== undefined && input.url !== '';
   const hasInline = input.contentBase64 !== undefined && input.contentBase64 !== '';
-  if (hasUrl === hasInline) throw new ToolError('Pass exactly one of url or contentBase64');
+  const hasUpload = input.uploadId !== undefined && input.uploadId !== '';
+  if (Number(hasUrl) + Number(hasInline) + Number(hasUpload) !== 1) {
+    throw new ToolError('Pass exactly one of url, contentBase64 or uploadId');
+  }
+
+  if (hasUpload) {
+    const claim = opts.uploadSlots.claim(input.uploadId!, opts.userId);
+    if (claim.kind === 'missing') {
+      throw new ToolError(
+        'That upload was not found or has expired; create a new link with create_upload_link'
+      );
+    }
+    if (claim.kind === 'pending') {
+      throw new ToolError("The file hasn't arrived yet — run the curl command first");
+    }
+    return {
+      path: claim.file.path,
+      size: claim.file.size,
+      filename: epubName(input.filename, claim.file.filename ?? 'upload.epub'),
+    };
+  }
 
   if (hasUrl) {
     try {
-      const fetched = await fetchEpub(input.url!, destDir, fetchOptions);
+      const fetched = await fetchEpub(input.url!, destDir, opts.fetchOptions);
       return {
         path: fetched.path,
         size: fetched.size,

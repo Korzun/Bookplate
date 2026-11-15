@@ -22,9 +22,10 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
     {
       title: 'Upload a book',
       description:
+        'From a machine with a shell, prefer create_upload_link and pass uploadId. ' +
         'Adds an EPUB to the library — the same import the web uploader runs: repair, validation, ' +
         'fingerprinting, metadata detection. High-confidence metadata fixes are applied; the rest are ' +
-        'returned as proposals you can act on with resolve_metadata_fixes. Give the file as `url` or `contentBase64`.',
+        'returned as proposals you can act on with resolve_metadata_fixes. Give the file as `uploadId`, `url` or `contentBase64`.',
       inputSchema: bytesInputShape,
       outputSchema: {
         book: z.object(bookDetailSchema),
@@ -40,7 +41,10 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
     },
     (args) =>
       guarded(deps, { write: true }, async () => {
-        const file = await resolveEpubFile(args, getStagingDir(deps.config.booksDir));
+        const file = await resolveEpubFile(args, getStagingDir(deps.config.booksDir), {
+          uploadSlots: deps.uploadSlots,
+          userId: deps.viewer.userId,
+        });
         const owner = { userId: deps.viewer.userId, username: deps.viewer.username };
         const outcome = await importEpub(
           {
@@ -57,7 +61,9 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
           case 'fingerprint_failed':
             throw new ToolError(outcome.message);
           case 'duplicate':
-            throw new ToolError('A book with the same fingerprint is already in the library.');
+            throw new ToolError(
+              `A book with the same fingerprint is already in the library (id ${encodeBookGlobalId(owner.userId, outcome.existingBookId)}).`
+            );
           case 'invalid': {
             const lines = [
               `EPUB failed validation at threshold ${outcome.validation.threshold} (${describeCounts(outcome.validation.counts)})`,

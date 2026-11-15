@@ -43,6 +43,7 @@ export function registerStageReplacement(server: McpServer, deps: ToolDeps): voi
     {
       title: 'Stage a replacement file',
       description:
+        'From a machine with a shell, prefer create_upload_link and pass uploadId. ' +
         'Step 1 of replacing a book’s EPUB with a new file: stores the candidate for 30 minutes and ' +
         'analyzes it (validity, epubcheck findings, metadata fixes it would apply or propose) without ' +
         'changing anything. Then call replace_book_file with the returned stagedUploadId.',
@@ -73,7 +74,10 @@ export function registerStageReplacement(server: McpServer, deps: ToolDeps): voi
     (args) =>
       guarded(deps, { write: true }, async () => {
         if (decodeBookId(deps, args.bookId) === null) throw new ToolError(NOT_FOUND_BOOK);
-        const file = await resolveEpubFile(args, getStagingDir(deps.config.booksDir));
+        const file = await resolveEpubFile(args, getStagingDir(deps.config.booksDir), {
+          uploadSlots: deps.uploadSlots,
+          userId: deps.viewer.userId,
+        });
         const stagedUploadId = deps.replaceStaging.stageFile(
           file.path,
           deps.viewer.userId,
