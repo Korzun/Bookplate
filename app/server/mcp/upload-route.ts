@@ -17,7 +17,9 @@
  * a stream listener may throw (a throw there is an `uncaughtException` that
  * takes the process down, not a rejected promise), so every listener body is
  * wrapped, same discipline as `fetch-epub.ts`. No route-specific timeout: the
- * app-wide `requestTimeout` in `server.ts` already bounds a stalled upload.
+ * app-wide `requestTimeout` in `server.ts` sends a 503 at 90 s, and this route
+ * treats any response it did not send itself as terminal (`res` 'finish' →
+ * burn the link, destroy the request), so a stalled upload is released then.
  */
 import * as fs from 'fs';
 
@@ -95,29 +97,54 @@ export function uploadRoute(deps: { uploadSlots: UploadSlots; maxBytes?: number 
         out.once('close', () => unlinkQuiet(destPath));
         if (status !== null && !res.headersSent) {
           res.status(status).set('Connection', 'close').json(body);
+        } else if (status === null) {
+          // Nobody to answer (client gone) or already answered (app-wide
+          // timeout's 503): stop the inbound body and release the socket.
+          req.destroy();
         }
       } catch (err) {
         log.error(`upload cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     };
 
+    /** The slot vanished under us (expiry sweep mid-PUT): drop the file, answer 404. */
+    const lostSlot = (): void => {
+      settled = true;
+      unlinkQuiet(destPath);
+      if (!res.headersSent) res.status(404).json(NOT_FOUND);
+    };
+
     const onFinished = (): void => {
       void (async () => {
         try {
-          if (!(await startsWithZipMagic(destPath))) {
+          let isZip: boolean;
+          try {
+            isZip = await startsWithZipMagic(destPath);
+          } catch (err) {
+            // `sweep()` unlinks the file when it expires the slot: not an I/O fault.
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT' && !settled) {
+              lostSlot();
+              return;
+            }
+            throw err;
+          }
+          if (settled) return;
+          if (!isZip) {
             fail(415, { error: 'Upload is not an EPUB (zip) file' });
             return;
           }
-          if (settled) return;
-          if (!uploadSlots.completeReceive(uploadId, bytes)) {
-            // Swept by expiry mid-PUT: the slot is gone, so is our claim on the file.
-            unlinkQuiet(destPath);
-            settled = true;
-            res.status(404).json(NOT_FOUND);
+          // Someone else (the app-wide timeout's 503) already answered: this
+          // upload must not end up `filled` for a client that was told it failed.
+          if (res.headersSent) {
+            fail(null);
             return;
           }
-          settled = true;
+          if (!uploadSlots.completeReceive(uploadId, bytes)) {
+            lostSlot();
+            return;
+          }
           res.status(201).json({ uploadId, size: bytes });
+          settled = true;
         } catch (err) {
           log.error(`upload finalize failed: ${err instanceof Error ? err.message : String(err)}`);
           fail(500, { error: 'Upload failed' });
@@ -154,10 +181,14 @@ export function uploadRoute(deps: { uploadSlots: UploadSlots; maxBytes?: number 
     out.on('finish', () => {
       if (!settled) onFinished();
     });
-    // Connection gone before we answered (client abort, app-wide timeout).
+    // Connection gone before we answered (client abort)...
     res.on('close', () => {
       if (!res.writableFinished) fail(null);
     });
+    // ...or someone else answered first: the app-wide `requestTimeout` sends a
+    // 503 at 90 s without touching the socket, which would otherwise leave a
+    // stalled client holding the write stream and a growing partial file.
+    res.on('finish', () => fail(null));
   }
 
   router.put('/mcp/uploads/:token', receive);

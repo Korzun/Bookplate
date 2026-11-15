@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 import { logger } from '../logger';
+import { redactUploadToken } from './request-log';
 
 const log = logger('Timeout');
 
@@ -15,7 +16,9 @@ export function requestTimeout(ms: number) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const timer = setTimeout(() => {
       if (res.headersSent) return;
-      log.warn(`Request exceeded ${ms}ms — responding 503: ${req.method} ${req.path}`);
+      log.warn(
+        `Request exceeded ${ms}ms — responding 503: ${req.method} ${redactUploadToken(req.path)}`
+      );
       res.status(503).json({ error: 'Request timed out' });
     }, ms);
     const clear = (): void => clearTimeout(timer);
