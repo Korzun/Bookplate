@@ -97,4 +97,39 @@ describe('upload slots', () => {
     expect(slots.beginReceive(link.token)).toBeNull();
     expect(slots.claim(link.uploadId, 'u1')).toEqual({ kind: 'missing' });
   });
+
+  it('completeReceive returns true on a receiving slot, false once swept mid-receive', () => {
+    const slots = make();
+    const a = slots.create('u1');
+    expect(slots.beginReceive(a.token)).not.toBeNull();
+    expect(slots.completeReceive(a.uploadId, 3)).toBe(true);
+    expect(slots.completeReceive(a.uploadId, 3)).toBe(false);
+
+    const b = slots.create('u1');
+    slots.beginReceive(b.token);
+    clock += UPLOAD_SLOT_TTL_MS + 1;
+    slots.sweep();
+    expect(slots.completeReceive(b.uploadId, 3)).toBe(false);
+  });
+
+  it('beginReceive leaves the slot open when the staging dir cannot be created', () => {
+    const blocker = path.join(dir, 'blocker');
+    fs.writeFileSync(blocker, 'x');
+    const slots = createUploadSlots({ stagingDir: path.join(blocker, 'sub'), now });
+    const link = slots.create('u1');
+    expect(() => slots.beginReceive(link.token)).toThrow();
+    fs.rmSync(blocker);
+    expect(slots.beginReceive(link.token)).not.toBeNull();
+  });
+
+  it('construction removes orphaned mcp-link files but leaves other files', () => {
+    fs.writeFileSync(path.join(dir, 'mcp-link-old.epub'), 'x');
+    fs.writeFileSync(path.join(dir, 'other.epub'), 'x');
+    make();
+    expect(fs.readdirSync(dir).sort()).toEqual(['other.epub']);
+  });
+
+  it('construction tolerates a missing staging dir', () => {
+    expect(() => createUploadSlots({ stagingDir: path.join(dir, 'nope'), now })).not.toThrow();
+  });
 });

@@ -23,9 +23,10 @@ import type { PrismaClient } from '@prisma/client';
 import express, { type NextFunction, type Request, type Response, Router } from 'express';
 
 import type { ContextDeps } from '../graphql/context';
+import { createIpRateLimit } from '../routes/ui';
 import type { ReplaceStaging } from '../services/replace-staging';
-import type { UploadSlots } from '../services/upload-slots';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
+import type { UploadSlots } from '../services/upload-slots';
 import type { AppConfig } from '../types';
 import { resolveLoginClientIp } from '../utils/client-ip';
 import { mcpEndpointUrl } from './base-url';
@@ -33,6 +34,7 @@ import { createMcpRequestHandler } from './handler';
 import { buildOAuthMetadata, OAUTH_PATHS } from './oauth-metadata';
 import { createOAuthProvider } from './oauth-provider';
 import { SCOPES } from './tokens';
+import { uploadRoute } from './upload-route';
 
 export const MCP_BODY_LIMIT = '8mb';
 
@@ -109,6 +111,20 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     }
     next(err);
   };
+
+  // One-time upload links: unauthenticated by design (the token in the path is
+  // the credential), so they get their own per-IP limiter from the same
+  // factory the login route uses.
+  router.use(
+    '/mcp/uploads',
+    createIpRateLimit({
+      maxAttempts: 30,
+      windowMs: 15 * 60 * 1000,
+      label: 'mcp-upload',
+      trustProxyHops: config.trustProxyHops ?? 0,
+    })
+  );
+  router.use(uploadRoute({ uploadSlots: deps.uploadSlots }));
 
   // Bearer auth FIRST: it reads only the header, so an unauthenticated
   // caller is turned away before this route buffers up to 8 MB of body.
