@@ -4,3 +4,4 @@ import './mutation/create';
 import './mutation/decline';
 import './mutation/delete';
 import './mutation/fulfill';
+import './mutation/update';
