@@ -536,6 +536,7 @@ const WRITE_TOOLS = [
   'request_book',
   'update_book_request',
   'rate_book',
+  'create_upload_link',
 ];
 
 describe('write tools', () => {
@@ -783,6 +784,35 @@ describe('write tools', () => {
 });
 
 describe('upload and replace tools', () => {
+  it('create_upload_link returns a link on the public origin', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const result = await mcp.call('create_upload_link', {});
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const out = result.structuredContent as {
+      uploadId: string;
+      uploadUrl: string;
+      expiresAt: string;
+      maxBytes: number;
+      curl: string;
+    };
+    expect(out.uploadUrl.startsWith('https://books.example/mcp/uploads/')).toBe(true);
+    expect(out.maxBytes).toBe(52428800);
+    expect(out.curl).toContain(out.uploadUrl);
+    expect(out.uploadUrl).not.toContain(out.uploadId);
+    expect(new Date(out.expiresAt).toISOString()).toBe(out.expiresAt);
+    expect(textOf(result)).toContain(`Then call upload_book with uploadId "${out.uploadId}".`);
+  });
+
+  it('create_upload_link is refused on a read-only connection', async () => {
+    mcp = await connectMcpClient(
+      app,
+      await mintToken(harness, harness.aliceOwner.userId, ['library:read'])
+    );
+    const result = await mcp.call('create_upload_link', {});
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe('This connection is read only');
+  });
+
   it('upload_book imports a base64 EPUB, then refuses the same bytes as a duplicate', async () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
     // No author on purpose: an author triggers an automatic sort-name fix
