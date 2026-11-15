@@ -43,8 +43,13 @@ vi.mock('./fetch-epub', async (importOriginal) => {
   return { ...actual, fetchEpub: vi.fn() };
 });
 
+vi.mock('./tools/fulfill-book-request', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./tools/fulfill-book-request')>();
+  return { ...actual, fulfillRequest: vi.fn(actual.fulfillRequest) };
+});
 import { fixtureEpub } from '../graphql/schema/book/mutation/test-helpers';
 import { fetchEpub, FetchEpubError } from './fetch-epub';
+import { fulfillRequest } from './tools/fulfill-book-request';
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -800,16 +805,39 @@ describe('write tools', () => {
     expect(row).not.toBeNull();
   });
 
+  it('upload_book reports an unexpected request-closing failure alongside the book', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const filed = await mcp.call('request_book', { title: 'Boom Book', author: 'Someone' });
+    const requestId = (filed.structuredContent as { id: string }).id;
+    vi.mocked(fulfillRequest).mockRejectedValueOnce(new Error('db exploded'));
+    const result = await mcp.call('upload_book', {
+      contentBase64: fixtureEpub('Boom Book').toString('base64'),
+      requestId,
+    });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const out = result.structuredContent as {
+      book: { id: string } | null;
+      request: unknown;
+      requestError: string | null;
+    };
+    expect(out.book).toBeTruthy();
+    expect(out.request).toBeNull();
+    expect(out.requestError).toBe(
+      'The book was imported, but closing the request failed unexpectedly'
+    );
+  });
+
   it('upload_book duplicate with requestId leaves the request pending', async () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
     const bytes = fixtureEpub('Twice Over').toString('base64');
     const first = await mcp.call('upload_book', { contentBase64: bytes });
     expect(first.isError, textOf(first)).toBeFalsy();
+    const firstBookId = (first.structuredContent as { book: { id: string } }).book.id;
     const filed = await mcp.call('request_book', { title: 'Twice Over', author: 'Someone' });
     const requestId = (filed.structuredContent as { id: string }).id;
     const dup = await mcp.call('upload_book', { contentBase64: bytes, requestId });
     expect(dup.isError).toBe(true);
-    expect(textOf(dup)).toContain('already in the library (id ');
+    expect(textOf(dup)).toContain(`already in the library (id ${firstBookId}`);
     const list = JSON.stringify((await mcp.call('list_book_requests', {})).structuredContent);
     expect(list).toContain('PENDING');
     expect(list).not.toContain('FULFILLED');
