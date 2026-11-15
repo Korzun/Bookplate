@@ -10,6 +10,7 @@ import { APP_VERSION } from '../utils/app-version';
 import { registerCreateUploadLink } from './tools/create-upload-link';
 import { registerDeleteBook } from './tools/delete-book';
 import type { ToolDeps } from './tools/deps';
+import { registerFulfillBookRequest } from './tools/fulfill-book-request';
 import { registerGetBook } from './tools/get-book';
 import { registerGetBookCover } from './tools/get-book-cover';
 import { registerGetSeries } from './tools/get-series';
@@ -63,6 +64,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
   registerDeleteBook(server, deps);
   registerRequestBook(server, deps);
   registerUpdateBookRequest(server, deps);
+  registerFulfillBookRequest(server, deps);
   registerCreateUploadLink(server, deps);
   registerUploadBook(server, deps);
   registerStageReplacement(server, deps);
