@@ -78,9 +78,7 @@ describe('Mutation.bookRequestFulfill', () => {
       variables: { id: requestGid, bookId: bobBookGid },
     });
 
-    expect((result.data?.bookRequestFulfill as { __typename: string }).__typename).toBe(
-      'InvalidInputError'
-    );
+    expect(result.data?.bookRequestFulfill).toMatchObject({ __typename: 'InvalidInputError' });
     const row = await harness.prisma.bookRequest.findFirstOrThrow();
     expect(row.status).toBe('pending');
   });
@@ -152,9 +150,7 @@ describe('Mutation.bookRequestFulfill', () => {
       variables: { id: requestGid, bookId: bobBookGid },
     });
 
-    expect((result.data?.bookRequestFulfill as { __typename: string }).__typename).toBe(
-      'InvalidInputError'
-    );
+    expect(result.data?.bookRequestFulfill).toMatchObject({ __typename: 'InvalidInputError' });
     const row = await harness.prisma.bookRequest.findFirstOrThrow();
     expect(row.status).toBe('pending');
   });
@@ -205,8 +201,6 @@ describe('Mutation.bookRequestFulfill', () => {
       variables: { id: requestGid, bookId: 'not-a-valid-global-id' },
     });
 
-    expect((result.data?.bookRequestFulfill as { __typename: string }).__typename).toBe(
-      'InvalidInputError'
-    );
+    expect(result.data?.bookRequestFulfill).toMatchObject({ __typename: 'InvalidInputError' });
   });
 });

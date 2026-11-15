@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { encodeBookGlobalId } from '../../graphql/schema/node-scope';
+import { logger } from '../../logger';
 import { getStagingDir } from '../../services/book-paths';
 import { importEpub } from '../../services/import-epub';
 import { bytesInputShape, resolveEpubFile } from './bytes-input';
@@ -11,6 +12,8 @@ import { fulfillRequest } from './fulfill-book-request';
 import { bookDetailSchema, describeBookDetail, fetchBookDetail } from './get-book';
 import { bookRequestSchema, type toBookRequest } from './list-book-requests';
 import { describeFix, metadataFixSchema, toFixOut } from './shared';
+
+const log = logger('MCP');
 
 const describeCounts = (counts: Record<string, number>): string =>
   Object.entries(counts)
@@ -104,8 +107,14 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
           try {
             request = await fulfillRequest(deps, args.requestId, book.id);
           } catch (err) {
-            if (!(err instanceof ToolError)) throw err;
-            requestError = err.message;
+            if (err instanceof ToolError) {
+              requestError = err.message;
+            } else {
+              log.error(
+                `Closing the request after upload failed: ${err instanceof Error ? err.message : String(err)}`
+              );
+              requestError = 'The book was imported, but closing the request failed unexpectedly';
+            }
           }
         }
         const text = [
