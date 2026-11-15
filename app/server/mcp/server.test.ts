@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import supertest from 'supertest';
+
 import { seedEditableBook } from '../graphql/schema/book/mutation/test-helpers';
 import { encodeBookGlobalId } from '../graphql/schema/node-scope';
 import { createHarness, type Harness } from '../graphql/test-util';
@@ -838,6 +840,9 @@ describe('write tools', () => {
     const dup = await mcp.call('upload_book', { contentBase64: bytes, requestId });
     expect(dup.isError).toBe(true);
     expect(textOf(dup)).toContain(`already in the library (id ${firstBookId}`);
+    expect(textOf(dup)).toContain(
+      'The request was not closed; call fulfill_book_request with this book id.'
+    );
     const list = JSON.stringify((await mcp.call('list_book_requests', {})).structuredContent);
     expect(list).toContain('PENDING');
     expect(list).not.toContain('FULFILLED');
@@ -992,6 +997,33 @@ describe('upload and replace tools', () => {
     const result = await mcp.call('upload_book', { uploadId });
     expect(result.isError, textOf(result)).toBeFalsy();
     expect(textOf(result)).toContain('Imported "');
+  });
+
+  it('closes a request through the composed app: link, PUT, replayed PUT, upload_book', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const filed = await mcp.call('request_book', { title: 'Journey Book', author: 'Someone' });
+    const requestId = (filed.structuredContent as { id: string }).id;
+    const link = await mcp.call('create_upload_link', {});
+    const { uploadId, uploadUrl } = link.structuredContent as {
+      uploadId: string;
+      uploadUrl: string;
+    };
+    const putPath = new URL(uploadUrl).pathname;
+    const epub = fixtureEpub('Journey Book');
+    await supertest(app)
+      .put(putPath)
+      .set('Content-Type', 'application/epub+zip')
+      .send(epub)
+      .expect(201);
+    await supertest(app).put(putPath).send(epub).expect(404);
+    const result = await mcp.call('upload_book', { uploadId, requestId });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const out = result.structuredContent as {
+      request: { status: string } | null;
+      requestError: string | null;
+    };
+    expect(out.request?.status).toBe('FULFILLED');
+    expect(out.requestError).toBeNull();
   });
 
   it('upload_book reports a link whose file has not arrived', async () => {

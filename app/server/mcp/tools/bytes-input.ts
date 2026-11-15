@@ -115,7 +115,9 @@ export async function resolveEpubFile(
   const bytes = Buffer.from(input.contentBase64!, 'base64');
   if (bytes.length === 0) throw new ToolError('contentBase64 did not decode to any bytes');
   if (bytes.length > MAX_INLINE_BYTES) {
-    throw new ToolError('Inline content is limited to about 6 MB; pass a url instead');
+    throw new ToolError(
+      'Inline content is limited to about 6 MB; use create_upload_link (or a url) instead'
+    );
   }
   fs.mkdirSync(destDir, { recursive: true });
   const file = path.join(destDir, `mcp-inline-${randomUUID()}.epub`);
