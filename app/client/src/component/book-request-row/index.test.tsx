@@ -730,4 +730,34 @@ describe('BookRequestRow — editing', () => {
     expect(await screen.findByText(/already been fulfilled/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
   });
+
+  // The card here reads a static `makeFragmentData` prop, not the cache, so a
+  // re-rendered Fulfilled card after Cancel cannot be observed in this setup.
+  // What the list's own row reads in production is the cached entity, so that
+  // is what this asserts.
+  it('writes the answered status into the cached row when the request is no longer pending', async () => {
+    const { user, client } = renderRow(
+      { id: 'req-1' },
+      {
+        updateResult: {
+          __typename: 'BookRequestNotPendingError',
+          message: 'This request has already been fulfilled.',
+          status: 'FULFILLED',
+        },
+      }
+    );
+    const id = client.cache.identify({ __typename: 'BookRequest', id: 'req-1' });
+    client.cache.writeFragment({
+      id,
+      fragment: BookRequestRowFragment,
+      data: requestRow({ id: 'req-1' }),
+    });
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByText(/already been fulfilled/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(client.cache.readFragment({ id, fragment: BookRequestRowFragment })?.status).toBe(
+      'FULFILLED'
+    );
+  });
 });

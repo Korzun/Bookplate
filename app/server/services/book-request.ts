@@ -257,10 +257,12 @@ export type UpdateBookRequestOutcome =
  *
  * IN A TRANSACTION for the same reason `createBookRequest` is: the duplicate
  * check and the write have to be atomic, or a concurrent create could slip in a
- * row with the new key between them. The duplicate check excludes the row
- * itself (so a case or spacing fix is not a collision with its own key) and,
- * like `createBookRequest`, only counts OPEN requests. It is skipped when the
- * key has not changed, since the row already holds that key legitimately.
+ * row with the new key between them. The duplicate check is skipped when the
+ * key has not changed, since the row already holds that key legitimately: that
+ * skip is what keeps a case or spacing fix from colliding with the row's own
+ * key. Past it, the key differs from the row's, so the row cannot match its
+ * own lookup; `NOT: { id }` stays as a defensive guard, not the thing doing
+ * that work. Like `createBookRequest`, the check only counts OPEN requests.
  *
  * NO NOTIFICATION: an edit is not an event the admin needs to be told about.
  * The admin's queue reads the request's current values, so the corrected text

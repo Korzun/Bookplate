@@ -118,7 +118,9 @@ interface BookRequestRowProps {
  * request is the reader's own words and the admin resolves rather than
  * rewrites; pending-only, because once answered the request is a record of
  * what was asked (the server enforces this too, answering
- * `BookRequestNotPendingError`, whose message the form shows). Save needs no
+ * `BookRequestNotPendingError`, whose message the form shows, and whose
+ * `status` is written into the cached row so the card is right after
+ * Cancel). Save needs no
  * refetch and no `invalidateRequestQueues`: the payload carries the row's
  * own `BookRequestRowFragment` under the same `BookRequest:<id>`, so Apollo's
  * normalized cache updates this row in place, and an edit changes neither
@@ -326,12 +328,25 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
   const handleSave = useCallback(
     async (values: BookRequestFormValues): Promise<string | undefined> => {
       try {
-        const { data } = await runUpdate({ variables: { id: row.id, input: values } });
+        const { data } = await runUpdate({
+          variables: { id: row.id, input: values },
+          update: (cache, { data: mutationData }) => {
+            // The error carries no `BookRequest` to normalize, so without this
+            // the cached row still says PENDING and, after Cancel, offers Edit
+            // and Withdraw on a request that has already been answered.
+            const answer = mutationData?.bookRequestUpdate;
+            if (answer?.__typename !== 'BookRequestNotPendingError') return;
+            cache.modify({
+              id: cache.identify({ __typename: 'BookRequest', id: row.id }),
+              fields: { status: () => answer.status },
+            });
+          },
+        });
         const outcome = unwrapResult<BookRequestUpdatePayload>(
           data?.bookRequestUpdate,
           'BookRequestUpdatePayload'
         );
-        if (outcome.status === 'missing') return 'Failed to save changes';
+        if (outcome.status === 'missing') return 'This request no longer exists';
         if (outcome.status === 'error') return outcome.message;
         setEditing(false);
         return undefined;

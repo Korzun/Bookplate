@@ -65,9 +65,14 @@ interface BookRequestsContentProps {
  * `handleCreate` with trimmed values, and shows whatever message
  * `handleCreate` answers with under the fields.
  *
- * **On success, the form clears and this component imperatively refetches
- * `MyBookRequestListDocument`** via `client.refetchQueries({ include: [...] })`.
- * Plain normalization is NOT enough on its own: `BookRequestCreateDocument`
+ * **Once the create is confirmed, the form clears and this component
+ * imperatively refetches `MyBookRequestListDocument`** via
+ * `client.refetchQueries({ include: [...] })`. The refetch follows the
+ * confirmation in its own try: whatever it does, `handleCreate` answers
+ * success, and a failed refetch is reported separately on the `listError`
+ * line above the list rather than under the fields — the request exists, so
+ * keeping the values up would only invite a resubmit the server refuses as a
+ * duplicate. Plain normalization is NOT enough on its own: `BookRequestCreateDocument`
  * re-selects the full `BookRequestRowFragment` on the returned
  * `bookRequest`, which would keep an ALREADY-cached `BookRequest:<id>`
  * entity in sync, but a brand-new request has no existing connection edge
@@ -94,7 +99,7 @@ interface BookRequestsContentProps {
  * now-dangling edge the next time the connection is read — the same
  * mechanism `useDeleteProgress` documents for `Library.progress` — so the
  * list refetch here is belt-and-suspenders. A REJECTED `runDelete` (e.g. a
- * dropped connection) is caught into `deleteError` state and rendered above
+ * dropped connection) is caught into `listError` state and rendered above
  * the list, the same house pattern `handleCreate` above uses for the
  * form's error message.
  *
@@ -124,7 +129,7 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
   const [runCreate] = useMutation(BookRequestCreateDocument);
   const [runDelete] = useMutation(BookRequestDeleteDocument);
 
-  const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
+  const [listError, setListError] = useState<string | undefined>(undefined);
   const [isClearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
 
@@ -155,8 +160,8 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
     .map((row) => row.id);
 
   // Resolves to the message `BookRequestForm` shows under the fields, or
-  // `undefined` once the request exists and the list has been refetched — the
-  // form clears itself on that `undefined`.
+  // `undefined` once the server has confirmed the request, however the list
+  // refetch after it goes — the form clears itself on that `undefined`.
   const handleCreate = useCallback(
     async (input: BookRequestFormValues): Promise<string | undefined> => {
       try {
@@ -168,14 +173,22 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
         );
         if (result.status === 'missing') return 'Failed to submit request';
         if (result.status === 'error') return result.message;
-
-        await client.refetchQueries({
-          include: [MyBookRequestListDocument],
-        });
-        return undefined;
       } catch (err) {
         return err instanceof Error ? err.message : 'Failed to submit request';
       }
+
+      // The request exists from here on, so the form is told to clear
+      // whatever the refetch does: answering an error would keep the values
+      // up, and resubmitting them would only earn "already requested".
+      setListError(undefined);
+      try {
+        await client.refetchQueries({
+          include: [MyBookRequestListDocument],
+        });
+      } catch {
+        setListError('Request submitted, but the list could not be refreshed');
+      }
+      return undefined;
     },
     [runCreate, client]
   );
@@ -203,7 +216,7 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
 
   const handleDelete = useCallback(
     (id: string) => {
-      setDeleteError(undefined);
+      setListError(undefined);
       void (async () => {
         try {
           if (await deleteRequest(id)) {
@@ -212,7 +225,7 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
             });
           }
         } catch (err) {
-          setDeleteError(err instanceof Error ? err.message : 'Failed to delete request');
+          setListError(err instanceof Error ? err.message : 'Failed to delete request');
         }
       })();
     },
@@ -220,14 +233,14 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
   );
 
   const handleOpenClear = useCallback(() => {
-    setDeleteError(undefined);
+    setListError(undefined);
     setClearOpen(true);
   }, []);
   const handleCancelClear = useCallback(() => setClearOpen(false), []);
 
   const handleConfirmClear = useCallback(async () => {
     setClearing(true);
-    setDeleteError(undefined);
+    setListError(undefined);
     try {
       // SEQUENTIAL, stopping at the first failure, the same shape "Decline
       // all" uses: what is left simply stays in the list, which is a state the
@@ -239,7 +252,7 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
       setClearOpen(false);
       await client.refetchQueries({ include: [MyBookRequestListDocument] });
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Failed to clear requests');
+      setListError(err instanceof Error ? err.message : 'Failed to clear requests');
     } finally {
       setClearing(false);
     }
@@ -309,7 +322,7 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
       <Card title="New request">
         <BookRequestForm submitLabel="Request" onSubmit={handleCreate} />
       </Card>
-      {deleteError && <div className={cx(styles.message, styles.error)}>{deleteError}</div>}
+      {listError && <div className={cx(styles.message, styles.error)}>{listError}</div>}
       {list}
       {/* The per-row Clear fires straight away; a whole page of them asks
           first. One request is a decision the reader can see the shape of —
