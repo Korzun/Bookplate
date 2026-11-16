@@ -120,7 +120,7 @@ jobs:
         run: docker build -t bookplate:smoke .
       - name: Run and verify startup
         run: |
-          docker run -d --name smoke-test -p 3000:3000 bookplate:smoke
+          docker run -d --name smoke-test --health-interval=2s -p 3000:3000 bookplate:smoke
           for i in $(seq 1 15); do
             if curl -sf http://localhost:3000/login -o /dev/null; then
               echo "Server ready after ${i}s"
@@ -175,5 +175,40 @@ jobs:
             exit 1
           fi
           echo "Introspection check passed (refused)"
+          # Image HEALTHCHECK: --health-interval=2s on the run line makes it fire
+          # quickly instead of waiting out the 30s production interval.
+          for i in $(seq 1 30); do
+            HEALTH=$(docker inspect -f '{{.State.Health.Status}}' smoke-test)
+            if [ "$HEALTH" = "healthy" ]; then
+              echo "Container healthy after ~$((i * 2))s"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Container did not become healthy (status: ${HEALTH}). Logs:"
+              docker logs smoke-test
+              docker rm -f smoke-test
+              exit 1
+            fi
+            sleep 2
+          done
+          HEALTH_BODY=$(curl -sf http://localhost:3000/api/health || true)
+          if [ "$HEALTH_BODY" != '{"ok":true}' ]; then
+            echo "Health endpoint check failed: got '${HEALTH_BODY}'. Logs:"
+            docker logs smoke-test
+            docker rm -f smoke-test
+            exit 1
+          fi
+          echo "Health endpoint check passed"
+          # Brand assets are served unauthenticated by express.static.
+          FAVICON_TYPE=$(curl -sf -o /dev/null -w '%{content_type}' http://localhost:3000/favicon.ico || true)
+          case "$FAVICON_TYPE" in
+            image/*) echo "Favicon check passed (${FAVICON_TYPE})" ;;
+            *)
+              echo "Favicon check failed: content type '${FAVICON_TYPE}'. Logs:"
+              docker logs smoke-test
+              docker rm -f smoke-test
+              exit 1
+              ;;
+          esac
           docker stop smoke-test
           docker rm smoke-test
