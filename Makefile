@@ -30,7 +30,7 @@ clean:
 	docker rmi $(IMAGE) 2>/dev/null || true
 
 dev-clean:
-	docker compose down --rmi all -v 2>/dev/null || true
+	docker compose -f docker-compose.dev.yml down --rmi all -v 2>/dev/null || true
 
 # Dev: live-reload via docker compose, auto-selecting a free host port per
 # worktree (server 3000-3099, client 5173-5272) with a per-worktree project name.
