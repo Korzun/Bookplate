@@ -523,6 +523,23 @@ describe('GET /api/public-config', () => {
   });
 });
 
+describe('GET /api/health', () => {
+  it('answers 200 ok without a session when the database responds', async () => {
+    const res = await request(buildApp()).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('answers 503 when the database query fails', async () => {
+    const spy = vi.spyOn(prisma, '$queryRaw').mockRejectedValueOnce(new Error('db gone'));
+    const res = await request(buildApp()).get('/api/health');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ ok: false });
+    spy.mockRestore();
+  });
+});
+
 describe('POST /api/login', () => {
   it('returns 200 on correct admin credentials', async () => {
     const res = await request(app)
