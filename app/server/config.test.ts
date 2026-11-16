@@ -204,3 +204,40 @@ describe('mail config', () => {
     expect(loadConfig().publicUrl ?? null).toBeNull();
   });
 });
+
+describe('loadConfig blank env vars', () => {
+  it('falls back to the add-on option when ADMIN_PASS is blank', () => {
+    writeOptions({ password: 'from-options' });
+    process.env.ADMIN_PASS = '';
+    expect(loadConfig().password).toBe('from-options');
+  });
+  it('falls back to the default when ADMIN_USER / ADMIN_PASS are whitespace', () => {
+    process.env.ADMIN_USER = '  ';
+    process.env.ADMIN_PASS = ' ';
+    const c = loadConfig();
+    expect(c.username).toBe('admin');
+    expect(c.password).toBe('changeme');
+  });
+  it('keeps a non-blank ADMIN_PASS exactly, spaces included', () => {
+    process.env.ADMIN_PASS = ' s3cret ';
+    expect(loadConfig().password).toBe(' s3cret ');
+  });
+  it('defaults PORT to 3000 when blank', () => {
+    process.env.PORT = '';
+    expect(loadConfig().port).toBe(3000);
+  });
+  it('defaults DATA_DIR to /data when blank', () => {
+    process.env.DATA_DIR = '';
+    expect(loadConfig().dataDir).toBe('/data');
+  });
+  it('resolves library_dir when BOOKS_DIR is blank', () => {
+    writeOptions({ library_dir: 'fiction' });
+    process.env.BOOKS_DIR = '';
+    expect(loadConfig().booksDir).toBe('/media/fiction');
+  });
+  it('uses the option when VALIDATION_THRESHOLD is blank', () => {
+    writeOptions({ validation_threshold: 'Warning' });
+    process.env.VALIDATION_THRESHOLD = '';
+    expect(loadConfig().validationThreshold).toBe('WARNING');
+  });
+});
