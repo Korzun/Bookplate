@@ -1,0 +1,51 @@
+name: bookplate-dev
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./app/server:/bookplate/app/server
+      # Keep the image's install for app/server; the bind mount above would
+      # otherwise shadow it with the host's node_modules, hiding any dependency
+      # that isn't hoisted to the root /bookplate/node_modules (e.g. smartcrop-sharp).
+      - /bookplate/app/server/node_modules
+      - ${BOOKS:-./dev-books}:/media/books
+      - ./dev-data:/data
+    environment:
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-changeme}
+      BOOKS_DIR: /media/books
+      # Optional: `PUBLIC_URL=http://localhost:<client port> make dev` turns on
+      # the MCP server (app/server/mcp/) for a local end-to-end connect flow.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+
+  client:
+    build:
+      context: ./app/client
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./app/client/src:/app/src
+      # Without this, NOTHING in `public/` reaches the dev container — the
+      # image copies only the config files above — and vite answers every
+      # request for one with its SPA fallback, i.e. `index.html` under a
+      # `text/html` content type. That was invisible while `public/` held
+      # only cosmetic assets (favicon, manifest, splash screens), but
+      # `sw.js` is load-bearing: a service worker served as html fails
+      # registration outright (`SecurityError: script load failed`), so push
+      # cannot be enabled in dev at all without this mount.
+      - ./app/client/public:/app/public
+      - ./app/client/index.html:/app/index.html
+      - ./app/client/vite.config.ts:/app/vite.config.ts
+      - ./app/client/tsconfig.json:/app/tsconfig.json
+    environment:
+      API_URL: http://server:3000
+      DOCKER: "true"
+    ports:
+      - "${CLIENT_PORT:-5173}:5173"
+    depends_on:
+      - server
+

@@ -10,3 +10,4 @@ dev-books/
 /example-books/
 **/.DS_Store
 /app/server/graphql/generated/
+.env
