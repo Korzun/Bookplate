@@ -595,6 +595,19 @@ export function createUiRouter({
 
   router.get('/login', serveSpa);
 
+  // Liveness + database reachability for the Docker HEALTHCHECK. Unauthenticated
+  // and deliberately information-free: just `ok`, never an error message.
+  router.get('/api/health', async (_req: Request, res: Response) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ ok: true });
+    } catch (err) {
+      log.warn(`Health check failed: ${err instanceof Error ? err.message : String(err)}`);
+      res.status(503).json({ ok: false });
+    }
+  });
+
   router.get('/api/public-config', (_req: Request, res: Response) => {
     // `emailEnabled` only — never any part of the credentials. This endpoint is
     // unauthenticated, and the client needs exactly one bit: whether to offer the
