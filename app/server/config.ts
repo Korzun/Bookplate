@@ -80,6 +80,18 @@ function parseThreshold(raw: string): ValidationThreshold {
   }
 }
 
+/**
+ * An env var's value, or `undefined` when it is missing OR blank/whitespace-only,
+ * so a compose line like `ADMIN_PASS: ${ADMIN_PASS:-}` counts as unset and falls
+ * through to options.json / the default. Returned trimmed unless `trim: false`
+ * (a password may legitimately contain spaces; only the blank check trims).
+ */
+function envVar(name: string, opts: { trim?: boolean } = {}): string | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return undefined;
+  return opts.trim === false ? raw : raw.trim();
+}
+
 /** Trimmed value, or `''` for anything blank/missing — the "unset" spelling everywhere below. */
 function trimmed(raw: string | undefined): string {
   return (raw ?? '').trim();
@@ -125,7 +137,7 @@ function parsePublicUrl(raw: string): string | null {
 }
 
 export function loadConfig(): AppConfig {
-  const dataDir = process.env.DATA_DIR ?? '/data';
+  const dataDir = envVar('DATA_DIR') ?? '/data';
   const optionsPath = path.join(dataDir, 'options.json');
 
   let options: Options = {
@@ -171,31 +183,31 @@ export function loadConfig(): AppConfig {
     }
   }
 
-  const libraryName = (process.env.LIBRARY_NAME ?? options.library_name).trim() || 'Bookplate';
+  const libraryName = (envVar('LIBRARY_NAME') ?? options.library_name).trim() || 'Bookplate';
 
   return {
     libraryName,
-    username: process.env.ADMIN_USER ?? options.username,
-    password: process.env.ADMIN_PASS ?? options.password,
-    booksDir: process.env.BOOKS_DIR ?? resolveBooksDir(options.library_dir),
+    username: envVar('ADMIN_USER') ?? options.username,
+    password: envVar('ADMIN_PASS', { trim: false }) ?? options.password,
+    booksDir: envVar('BOOKS_DIR') ?? resolveBooksDir(options.library_dir),
     dataDir,
-    port: parseInt(process.env.PORT ?? '3000', 10),
+    port: parseInt(envVar('PORT') ?? '3000', 10),
     maxConcurrentUploads: options.max_concurrent_uploads,
     thumbnailWidths: options.thumbnail_widths,
     validationThreshold: parseThreshold(
-      process.env.VALIDATION_THRESHOLD ?? options.validation_threshold
+      envVar('VALIDATION_THRESHOLD') ?? options.validation_threshold
     ),
     // Env var (bare-metal/dev) takes precedence over the add-on option, same
     // "env overrides options.json" convention validationThreshold uses
     // immediately above.
-    trustProxyHops: parseTrustProxyHops(process.env.TRUST_PROXY_HOPS ?? options.trust_proxy_hops),
+    trustProxyHops: parseTrustProxyHops(envVar('TRUST_PROXY_HOPS') ?? options.trust_proxy_hops),
     mail: parseMailConfig(
-      trimmed(process.env.CF_ACCOUNT_ID ?? options.email_cloudflare_account_id),
-      trimmed(process.env.CF_API_TOKEN ?? options.email_cloudflare_api_token),
-      trimmed(process.env.EMAIL_FROM ?? options.email_from_address),
-      trimmed(process.env.EMAIL_FROM_NAME ?? options.email_from_name),
+      trimmed(envVar('CF_ACCOUNT_ID') ?? options.email_cloudflare_account_id),
+      trimmed(envVar('CF_API_TOKEN') ?? options.email_cloudflare_api_token),
+      trimmed(envVar('EMAIL_FROM') ?? options.email_from_address),
+      trimmed(envVar('EMAIL_FROM_NAME') ?? options.email_from_name),
       libraryName
     ),
-    publicUrl: parsePublicUrl(trimmed(process.env.PUBLIC_URL ?? options.public_url)),
+    publicUrl: parsePublicUrl(trimmed(envVar('PUBLIC_URL') ?? options.public_url)),
   };
 }
