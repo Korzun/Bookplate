@@ -224,6 +224,33 @@ describe('BookRequestsContent', () => {
     await waitFor(() => expect(queryCount()).toBe(2));
   });
 
+  it('clears the form and reports a failed list refresh once the create is confirmed', async () => {
+    // One list mock for the mount; the refetch after the create meets an
+    // erroring one, so `client.refetchQueries` rejects after a confirmed
+    // `BookRequestCreatePayload`.
+    const { user, createCalls, container } = renderContent({
+      requests: [],
+      extraMocks: [
+        {
+          request: { query: MyBookRequestListDocument, variables: () => true },
+          error: new Error('network down'),
+        },
+      ],
+    });
+    await screen.findByText(/no requests yet/i);
+
+    await user.type(titleInput(container), 'Dune');
+    await user.type(authorInput(container), 'Frank Herbert');
+    await user.click(screen.getByRole('button', { name: /request/i }));
+
+    expect(
+      await screen.findByText('Request submitted, but the list could not be refreshed')
+    ).toBeInTheDocument();
+    await waitFor(() => expect(titleInput(container)).toHaveValue(''));
+    expect(screen.queryByText('network down')).not.toBeInTheDocument();
+    expect(createCalls()).toHaveLength(1);
+  });
+
   it('will not submit without both title and author', async () => {
     const { user, createCalls, container } = renderContent({ requests: [] });
     await screen.findByText(/no requests yet/i);

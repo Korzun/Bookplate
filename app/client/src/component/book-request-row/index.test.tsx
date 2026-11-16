@@ -143,7 +143,7 @@ const renderRow = (
     watchUserList?: boolean;
     /** Replaces the default `BookRequestUpdatePayload` result — lets a test
      * answer Save with a union error member such as
-     * `BookRequestNotPendingError`. */
+     * `BookRequestNotPendingError`, or with `null` (the request is gone). */
     updateResult?: BookRequestUpdateMutation['bookRequestUpdate'];
   } = {}
 ) => {
@@ -214,13 +214,18 @@ const renderRow = (
       result: {
         data: {
           __typename: 'Mutation',
-          bookRequestUpdate: props.updateResult ?? {
-            __typename: 'BookRequestUpdatePayload',
-            bookRequest: {
-              ...requestRow({ ...overrides, author: 'Frank Herbert' }),
-              id: request.id,
-            },
-          },
+          // `in`, not `??`: an explicit `updateResult: null` is the "missing"
+          // answer under test, not a request for the default payload.
+          bookRequestUpdate:
+            'updateResult' in props
+              ? (props.updateResult ?? null)
+              : {
+                  __typename: 'BookRequestUpdatePayload',
+                  bookRequest: {
+                    ...requestRow({ ...overrides, author: 'Frank Herbert' }),
+                    id: request.id,
+                  },
+                },
         },
       } satisfies { data: BookRequestUpdateMutation },
     },
@@ -759,5 +764,13 @@ describe('BookRequestRow — editing', () => {
     expect(client.cache.readFragment({ id, fragment: BookRequestRowFragment })?.status).toBe(
       'FULFILLED'
     );
+  });
+
+  it('keeps the form open and says the request no longer exists when the update answers null', async () => {
+    const { user } = renderRow({}, { updateResult: null });
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByText('This request no longer exists')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
   });
 });
