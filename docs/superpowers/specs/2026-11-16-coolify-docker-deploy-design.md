@@ -11,6 +11,8 @@ repository and deploys it. The add-on keeps working unchanged.
 - `docker compose up -d` from a checkout (and Coolify's Docker Compose build
   pack) runs a production Bookplate with persistent data and library volumes.
 - Coolify knows when a deploy is healthy.
+- Coolify's resource list shows Bookplate's domain and its own icon (not the
+  generic Docker whale Scribe gets).
 - README has a "Deploying on Coolify" section that mirrors Scribe's.
 
 ## Non-goals
@@ -50,6 +52,20 @@ repository and deploys it. The add-on keeps working unchanged.
    `ADMIN_PASS` as a secret, storage at `/data` and `/media/books`), and env
    table gains `VALIDATION_THRESHOLD`; the "Development" section points at the
    dev compose file.
+
+## Coolify build pack: Dockerfile, not Docker Compose
+
+Coolify's list shows an application's domain and favicon only when the domain
+is set on the application itself. The Docker Compose build pack (what Scribe
+uses) keeps domains per compose service, so the list shows "-" and the whale.
+The **Dockerfile build pack** (domain on the application, port 3000, storage
+added in Coolify's UI at `/data` and `/media/books`) gets both. The icon comes
+from the favicon Coolify fetches from that domain; Bookplate already serves
+`favicon.ico`, `favicon.svg` and `apple-touch-icon-180.png`. This icon behaviour
+is inferred from the live Coolify setup and community discussion, not Coolify's
+docs; confirm on first deploy. The README documents the Dockerfile build pack;
+the root `docker-compose.yml` stays for plain `docker compose`. The CI smoke test
+also checks `/favicon.ico` loads unauthenticated as an image.
 
 ## Left to the builder
 
