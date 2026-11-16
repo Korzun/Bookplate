@@ -73,7 +73,7 @@ async function main() {
     console.log(`  Server/OPDS: http://localhost:${serverPort}/\n`);
   }
 
-  const child = spawn('docker', ['compose', ...args], { stdio: 'inherit', env });
+  const child = spawn('docker', ['compose', '-f', 'docker-compose.dev.yml', ...args], { stdio: 'inherit', env });
   child.on('error', (err) => {
     console.error(`\n  dev-compose: failed to run 'docker' (${err.message})`);
     console.error(`  Tip: make sure Docker is installed and on your PATH.\n`);
