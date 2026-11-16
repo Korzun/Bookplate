@@ -1,9 +1,9 @@
 // Host-side wrapper: derives a per-worktree Compose project name and free host
 // ports, then execs `docker compose`. Run via `make dev` / `make dev-down`.
 
+import { spawn } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export function sanitizeProjectName(basename) {
@@ -73,7 +73,10 @@ async function main() {
     console.log(`  Server/OPDS: http://localhost:${serverPort}/\n`);
   }
 
-  const child = spawn('docker', ['compose', '-f', 'docker-compose.dev.yml', ...args], { stdio: 'inherit', env });
+  const child = spawn('docker', ['compose', '-f', 'docker-compose.dev.yml', ...args], {
+    stdio: 'inherit',
+    env,
+  });
   child.on('error', (err) => {
     console.error(`\n  dev-compose: failed to run 'docker' (${err.message})`);
     console.error(`  Tip: make sure Docker is installed and on your PATH.\n`);

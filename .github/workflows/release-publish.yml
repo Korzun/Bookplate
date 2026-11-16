@@ -112,7 +112,7 @@ jobs:
           # Image HEALTHCHECK: --health-interval=2s on the run line makes it fire
           # quickly instead of waiting out the 30s production interval.
           for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{.State.Health.Status}}' smoke-test)
+            HEALTH=$(docker inspect -f '{{.State.Health.Status}}' smoke-test 2>/dev/null || true)
             if [ "$HEALTH" = "healthy" ]; then
               echo "Container healthy after ~$((i * 2))s"
               break
