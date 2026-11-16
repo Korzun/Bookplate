@@ -11,7 +11,7 @@
 ![Supports armhf][armhf-shield]
 ![Supports armv7][armv7-shield]
 
-A Home Assistant add-on that turns your library of EPUBs into a self-hosted book
+A Home Assistant add-on, or a plain Docker container, that turns your library of EPUBs into a self-hosted book
 server for [KOReader][koreader]: an **OPDS 1.2** catalog for browsing and
 downloading, **KOSync** for reading-progress sync across devices, and a **web
 library manager** for uploading books and editing metadata.
@@ -243,6 +243,55 @@ Tools: `search_library`, `get_book`, `get_series`, `list_series`,
 or inline base64 (up to about 6 MB); URL downloads refuse private and LAN
 addresses.
 
+## Running with Docker
+
+Outside Home Assistant, Bookplate runs as one container. The root
+`docker-compose.yml` builds the image from this checkout:
+
+```bash
+cp .env.example .env     # set ADMIN_PASS before the first start
+docker compose up -d     # http://localhost:3000 (change PORT in .env)
+```
+
+Two named volumes hold the state: `/data` (the database and thumbnails) and
+`/media/books` (the library). To keep the books on a host path instead, replace
+the second mount in `docker-compose.yml` with `- /srv/books:/media/books`.
+Everything else is an environment variable (see "Environment variables" below);
+`.env.example` lists the ones the compose file passes through, and a blank value
+counts as unset. The image has a health check against `/api/health`, which Docker
+reports as `healthy`.
+
+`pull_policy: build` in `docker-compose.yml` needs Docker Compose v2.22 or newer.
+
+## Deploying on Coolify
+
+Use Coolify's **Dockerfile** build pack, not Docker Compose. With the Dockerfile
+pack the domain is set on the application itself, so Coolify shows the domain,
+and the app's icon, in its resource list; the Compose pack keeps domains per
+service.
+
+1. **New resource → Git repository**, this repository, branch `main`, build pack
+   **Dockerfile**, port `3000`.
+2. **Domain:** the hostname your tunnel or DNS serves. Behind a tunnel that
+   terminates TLS (Cloudflare Tunnel and the like), enter it with `http`: the
+   tunnel reaches Coolify's proxy over plain HTTP, and an `https` domain would
+   make the proxy request a certificate it cannot validate and redirect every
+   request back to `https`, which loops through the tunnel. Point the tunnel's
+   public hostname at the proxy (`http://localhost:80`, or
+   `http://coolify-proxy:80` when cloudflared runs as a container on Coolify's
+   network). Use `https` only when the proxy itself is reachable from the
+   internet and holds the certificate.
+3. **Environment variables:** `ADMIN_PASS` (mark it as a secret), `PUBLIC_URL`
+   (the `https` origin the browser uses, whatever the domain above says; it also
+   turns on the MCP server), and `TRUST_PROXY_HOPS=2` when a tunnel sits in
+   front of Coolify's proxy (`1` for the proxy alone). Optionally `ADMIN_USER`,
+   `LIBRARY_NAME` and the email variables (`CF_ACCOUNT_ID`, `CF_API_TOKEN`,
+   `EMAIL_FROM`).
+4. **Persistent storage:** volumes mounted at `/data` and `/media/books`, or a
+   host directory at `/media/books` to use an existing library.
+5. **Deploy.** Coolify builds the image on the server, starts it, and waits for
+   the image's health check (`/api/health`).
+
 ## Ports
 
 | Port       | Description                                  |
@@ -252,11 +301,11 @@ addresses.
 ## Development
 
 The repository is an npm workspace monorepo (`app/server` — Express + Prisma/SQLite;
-`app/client` — React + Vite). A `Makefile` and `docker-compose.yml` wrap the common
+`app/client` — React + Vite). A `Makefile` and `docker-compose.dev.yml` wrap the common
 tasks.
 
 ```bash
-# Live-reload dev stack: backend on :3000, frontend on :5173
+# Live-reload dev stack (docker-compose.dev.yml): backend on :3000, frontend on :5173
 make dev            # BOOKS=/path/to/books make dev  to point at your library
                     # PUBLIC_URL=http://localhost:<client port> make dev  to turn on MCP locally
 
@@ -274,10 +323,10 @@ npm test            # run server + client tests
 npm run lint        # lint server + client
 ```
 
-### Environment variables (dev / bare-metal)
+### Environment variables (Docker / dev / bare-metal)
 
 When not running under Home Assistant, configuration falls back to environment
-variables:
+variables. A variable set to the empty string counts as unset.
 
 | Variable        | Default        | Description                                  |
 | --------------- | -------------- | -------------------------------------------- |
@@ -288,6 +337,7 @@ variables:
 | `DATA_DIR`      | `/data`        | Path for the SQLite DB and thumbnails.       |
 | `PORT`          | `3000`         | HTTP listen port.                            |
 | `LOG_LEVEL`     | `info`         | Log verbosity.                               |
+| `VALIDATION_THRESHOLD` | `Error` | Strictness of EPUB upload validation: `Fatal`, `Error`, `Warning` or `Info`. `Fatal` rejects only unreadable files; `Error` also rejects structural errors; `Warning` and `Info` reject progressively more. |
 | `TRUST_PROXY_HOPS` | `0`         | Same as the add-on's `trust_proxy_hops` option above — reverse-proxy hops to trust for the login rate limiter's client-IP resolution only. Overrides the add-on option if both are somehow set. Leave at `0` unless you run one; trusting a hop you don't control lets a client bypass the limiter. |
 | `CF_ACCOUNT_ID` | *(none)* | Same as the add-on's `email_cloudflare_account_id` option above. Required together with `CF_API_TOKEN` and `EMAIL_FROM` — email stays switched off unless all three are set. |
 | `CF_API_TOKEN`  | *(none)* | Same as the add-on's `email_cloudflare_api_token` option above — a Cloudflare API token with the **Email Sending: Edit** permission. Required together with `CF_ACCOUNT_ID` and `EMAIL_FROM`. |
