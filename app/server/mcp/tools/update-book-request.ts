@@ -39,7 +39,7 @@ export function registerUpdateBookRequest(server: McpServer, deps: ToolDeps): vo
     {
       title: 'Update a book request',
       description:
-        'Corrects the title, author or note of a pending book request you made. Omitted fields are unchanged. Use the id list_book_requests returns.',
+        'Corrects the title, author or note of a pending book request you made. Omitted fields are unchanged. Pass note as an empty string to clear the note. Use the id list_book_requests returns.',
       inputSchema: {
         id: z.string(),
         title: z.string().min(1).max(500).optional(),
