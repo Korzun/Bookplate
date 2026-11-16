@@ -253,6 +253,8 @@ cp .env.example .env     # set ADMIN_PASS before the first start
 docker compose up -d     # http://localhost:3000 (change PORT in .env)
 ```
 
+`pull_policy: build` in `docker-compose.yml` needs Docker Compose v2.22 or newer.
+
 Two named volumes hold the state: `/data` (the database and thumbnails) and
 `/media/books` (the library). To keep the books on a host path instead, replace
 the second mount in `docker-compose.yml` with `- /srv/books:/media/books`.
@@ -261,14 +263,12 @@ Everything else is an environment variable (see "Environment variables" below);
 counts as unset. The image has a health check against `/api/health`, which Docker
 reports as `healthy`.
 
-`pull_policy: build` in `docker-compose.yml` needs Docker Compose v2.22 or newer.
-
 ## Deploying on Coolify
 
 Use Coolify's **Dockerfile** build pack, not Docker Compose. With the Dockerfile
-pack the domain is set on the application itself, so Coolify shows the domain,
-and the app's icon, in its resource list; the Compose pack keeps domains per
-service.
+pack the domain is set on the application itself, which should let Coolify's
+resource list show the domain and the app's favicon; the Compose pack keeps
+domains per service.
 
 1. **New resource → Git repository**, this repository, branch `main`, build pack
    **Dockerfile**, port `3000`.
