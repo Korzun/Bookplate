@@ -33,7 +33,7 @@ USAGE
 die() { printf 'preview.sh: %s\n' "$*" >&2; exit 1; }
 
 need() {
-	[ -n "${COOLIFY_API_TOKEN:-}" ] || die "COOLIFY_API_TOKEN is not set; it belongs in ~/.zshrc on this server (ask the user)"
+	[ -n "${COOLIFY_API_TOKEN:-}" ] || die "COOLIFY_API_TOKEN is not set; on this server it comes from Coolify via REX_SESSION_ENV (ask the user)"
 	[ -n "$COOLIFY_APP_UUID" ] || die "COOLIFY_APP_UUID is empty in $here/preview.env"
 	command -v curl >/dev/null || die "curl missing"
 	command -v jq >/dev/null || die "jq missing"
