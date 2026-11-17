@@ -65,8 +65,9 @@ pr_url() { gh pr view "$1" --json url -q .url 2>/dev/null || echo "https://githu
 preview_json() { api GET "/applications/$COOLIFY_APP_UUID/previews/$1"; }
 
 # Coolify stores the preview domain as it was templated, http:// for a Cloudflare-fronted app;
-# the public URL is https, Cloudflare terminates TLS. Take the first domain if several.
-preview_url() { preview_json "$1" | jq -r '.domains // "" | split(",")[0] | sub("^http://"; "https://")'; }
+# the public URL is https, Cloudflare terminates TLS. Lists report it as fqdn, single previews as
+# domains; take the first if several.
+preview_url() { preview_json "$1" | jq -r '(.domains // .fqdn // "") | split(",")[0] | sub("^http://"; "https://")'; }
 
 deployment_tail() {
 	# A deployment's logs are a JSON array (as a string) of {output, type, ...}
