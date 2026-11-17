@@ -15,8 +15,9 @@ on the Pi.
 
 ## What this skill expects
 
-- `COOLIFY_API_TOKEN` in the environment. On this server it belongs in
-  `~/.zshrc`; ask the user if it is missing and never commit it.
+- `COOLIFY_API_TOKEN` in the environment. On this server it arrives from
+  Coolify through the server process; if it is unset, ask the user rather than
+  hunting for it, and never commit it.
   `COOLIFY_API_URL` defaults to `http://localhost:8000`, Coolify on this host.
 - `preview.env` next to this file names the Coolify application and what to
   check. `gh`, `curl`, `jq` and `playwright` are on this server.
