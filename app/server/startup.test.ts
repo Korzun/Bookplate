@@ -191,4 +191,26 @@ describe('startBookplate', () => {
     // of startBookplate.
     expect(deps.server.listen).toHaveBeenCalled();
   });
+
+  describe('seed hook', () => {
+    it('runs the seed after ensureAdminUser and before the startup scan', async () => {
+      const seed = vi.fn().mockResolvedValue(undefined);
+      await startBookplate({ ...deps, seed });
+
+      const adminOrder = vi.mocked(ensureAdminUser).mock.invocationCallOrder[0];
+      const seedOrder = seed.mock.invocationCallOrder[0];
+      const scanOrder = vi.mocked(scan).mock.invocationCallOrder[0];
+      expect(adminOrder).toBeLessThan(seedOrder);
+      expect(seedOrder).toBeLessThan(scanOrder);
+    });
+
+    it('rejects and never listens when the seed fails', async () => {
+      const seed = vi.fn().mockRejectedValue(new Error('seed boom'));
+
+      await expect(startBookplate({ ...deps, seed })).rejects.toThrow('seed boom');
+
+      expect(scan).not.toHaveBeenCalled();
+      expect(deps.server.listen).not.toHaveBeenCalled();
+    });
+  });
 });
