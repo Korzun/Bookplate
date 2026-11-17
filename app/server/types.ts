@@ -164,6 +164,13 @@ export interface AppConfig {
    * header: a `Host`-derived link is the classic reset-link poisoning path.
    */
   publicUrl?: string | null;
+  /**
+   * `SEED_DEMO=1`: on startup, WIPE the library and users and load demo data.
+   * Destructive by design — only for disposable preview deploys.
+   */
+  seedDemo: boolean;
+  /** Password for the seeded demo accounts; always set when `seedDemo` is true. */
+  seedPassword: string | undefined;
 }
 
 export interface Device {
