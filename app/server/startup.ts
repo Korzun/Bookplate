@@ -22,6 +22,10 @@ export type StartupDeps = {
   thumbnailQueue: Pick<ThumbnailQueue, 'start' | 'stop' | 'reconcile'>;
   coverBackfill: Pick<CoverBackfill, 'start' | 'stop'>;
   server: Pick<express.Express, 'listen'>;
+  // Demo-data seeding (SEED_DEMO). Awaited right after `ensureAdminUser`,
+  // before the startup scan; unlike the scan, its errors propagate and abort
+  // startup, so a half-seeded preview never starts serving.
+  seed?: () => Promise<void>;
 };
 
 // The startup sequence, extracted from `index.ts`'s top-level IIFE so its
@@ -38,10 +42,13 @@ export async function startBookplate({
   thumbnailQueue,
   coverBackfill,
   server,
+  seed,
 }: StartupDeps): Promise<void> {
   // Before the startup scan: the scan excludes the admin's row via
   // `NOT_CONFIG_ADMIN` below, and every email flow needs this row to exist.
   await ensureAdminUser(prisma, config.username);
+
+  await seed?.();
 
   // Startup scan: per user — create missing folders, import untracked EPUBs,
   // clean up stale DB entries, then re-validate the imported library.

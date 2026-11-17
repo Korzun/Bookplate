@@ -75,6 +75,8 @@ COPY --from=prod-deps /bookplate/app/server/node_modules ./app/server/node_modul
 
 COPY --from=builder /bookplate/app/server/dist ./app/server/dist
 COPY --from=builder /bookplate/app/server/prisma ./app/server/prisma
+# Demo-seed fixture EPUBs (only read when SEED_DEMO=1); not part of tsc output.
+COPY --from=builder /bookplate/app/server/demo-seed/fixtures ./app/server/demo-seed/fixtures
 # .prisma/client/ contains the generated Prisma JS client (pure JS, no
 # platform-specific binary when using the adapter-better-sqlite3 approach).
 COPY --from=builder /bookplate/node_modules/.prisma ./node_modules/.prisma

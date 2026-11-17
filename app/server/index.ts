@@ -4,6 +4,8 @@ import * as path from 'path';
 import { loadConfig } from './config';
 import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
+import { resetDemoDirs } from './demo-seed/reset';
+import { seedDemo } from './demo-seed/seed';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { resolveMcpBaseUrl, mcpEndpointUrl } from './mcp/base-url';
@@ -31,6 +33,13 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const config = loadConfig();
+
+if (config.seedDemo) {
+  log.warn('SEED_DEMO=1: wiping DATA_DIR and BOOKS_DIR and seeding demo data');
+  // Throws on unsafe paths; this runs before the IIFE, so an uncaught throw
+  // exits the process non-zero.
+  resetDemoDirs(config.dataDir, config.booksDir);
+}
 
 fs.mkdirSync(config.booksDir, { recursive: true });
 fs.mkdirSync(config.dataDir, { recursive: true });
@@ -147,6 +156,15 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     thumbnailQueue,
     coverBackfill,
     server,
+    seed: config.seedDemo
+      ? async () => {
+          const summary = await seedDemo({ prisma, config, editionsRoot, thumbnailQueue });
+          const counts = Object.entries(summary.books)
+            .map(([user, books]) => `${user}: ${books.length}`)
+            .join(', ');
+          log.info(`Demo seed complete: users ${summary.users.join(', ')}; books ${counts}`);
+        }
+      : undefined,
   });
 })().catch((err) => {
   console.error('Fatal startup error:', err);
