@@ -88,9 +88,10 @@ wait_deployment() {
 }
 
 wait_http() {
-	# the proxy picks the new container up a few seconds after the deployment finishes
+	# the proxy picks the new container up a few seconds after the deployment finishes;
+	# 502/504 mean the container is routed but not ready yet, 503 that no router exists yet
 	url=$1; n=0
-	until code=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$url") && [ "$code" != "503" ] && [ "$code" != "000" ]; do
+	until code=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$url") && case "$code" in 000|502|503|504) false ;; *) true ;; esac; do
 		[ $n -ge 18 ] && { printf 'still HTTP %s at %s after 3 minutes\n' "$code" "$url" >&2; return 1; }
 		sleep 10; n=$((n + 1))
 	done
