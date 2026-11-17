@@ -1,3 +1,7 @@
+## Unreleased
+
+- feat: edit a pending book request in place (title, author, note), in the web UI and over MCP (`update_book_request`)
+
 ## 0.14.0
 
 - feat(client): minimize the mobile nav on a fast scroll down
