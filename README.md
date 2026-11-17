@@ -292,6 +292,13 @@ domains per service.
 5. **Deploy.** Coolify builds the image on the server, starts it, and waits for
    the image's health check (`/api/health`).
 
+### Preview / demo data
+
+Setting `SEED_DEMO=1` turns an instance into a throwaway demo: on **every
+start** it wipes `/data` and `/media/books`, then seeds the demo users
+`alice`, `bob` and `carol` (password from `SEED_PASSWORD`) with sample books,
+requests and reading history. Never set it on a real library.
+
 ## Ports
 
 | Port       | Description                                  |
