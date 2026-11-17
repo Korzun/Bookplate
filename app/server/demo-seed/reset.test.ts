@@ -62,11 +62,11 @@ describe('resetDemoDirs', () => {
     };
 
     it('refuses / as the data dir', () => {
-      expectRefusedAndIntact('/', x, '/');
+      expectRefusedAndIntact('/', x, 'filesystem root');
     });
 
     it('refuses / as the books dir', () => {
-      expectRefusedAndIntact(x, '/', '/');
+      expectRefusedAndIntact(x, '/', 'filesystem root');
     });
 
     it('refuses identical paths', () => {

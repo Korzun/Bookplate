@@ -168,6 +168,11 @@ async function importFixtures(
         `Demo seed: importing ${originalName} for ${owner.username} gave ${result.kind}${detail}`
       );
     }
+    if (key === 'dracula' && result.proposals.length === 0) {
+      throw new Error(
+        `Demo seed: importing ${originalName} for ${owner.username} produced no pending metadata fix`
+      );
+    }
     ids.set(key, result.bookId);
   }
   return ids;
