@@ -35,6 +35,8 @@ const config: AppConfig = {
   maxConcurrentUploads: 3,
   thumbnailWidths: [86, 160],
   validationThreshold: 'ERROR',
+  seedDemo: false,
+  seedPassword: undefined,
 };
 
 const mockThumbnailQueue = {

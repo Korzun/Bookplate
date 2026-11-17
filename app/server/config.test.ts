@@ -241,3 +241,37 @@ describe('loadConfig blank env vars', () => {
     expect(loadConfig().validationThreshold).toBe('WARNING');
   });
 });
+
+describe('loadConfig demo seed', () => {
+  beforeEach(() => {
+    delete process.env.SEED_DEMO;
+    delete process.env.SEED_PASSWORD;
+  });
+
+  it.each([undefined, '', '  ', '0', 'true'])('seedDemo is false for SEED_DEMO=%j', (v) => {
+    if (v !== undefined) process.env.SEED_DEMO = v;
+    const c = loadConfig();
+    expect(c.seedDemo).toBe(false);
+    expect(c.seedPassword).toBeUndefined();
+  });
+
+  it.each(['1', ' 1 '])('seedDemo is true for SEED_DEMO=%j with a password', (v) => {
+    process.env.SEED_DEMO = v;
+    process.env.SEED_PASSWORD = 'pw';
+    const c = loadConfig();
+    expect(c.seedDemo).toBe(true);
+    expect(c.seedPassword).toBe('pw');
+  });
+
+  it('keeps SEED_PASSWORD exactly, spaces included', () => {
+    process.env.SEED_DEMO = '1';
+    process.env.SEED_PASSWORD = ' pw ';
+    expect(loadConfig().seedPassword).toBe(' pw ');
+  });
+
+  it.each([undefined, '', '   '])('throws when SEED_DEMO=1 and SEED_PASSWORD=%j', (v) => {
+    process.env.SEED_DEMO = '1';
+    if (v !== undefined) process.env.SEED_PASSWORD = v;
+    expect(() => loadConfig()).toThrow(/SEED_PASSWORD/);
+  });
+});

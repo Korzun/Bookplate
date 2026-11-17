@@ -144,6 +144,8 @@ const testConfig = (booksDir: string, dataDir: string, mail: MailConfig | null):
   // ValidationThreshold values are upper-cased: FATAL | ERROR | WARNING | INFO
   // (see @korzun/epubcheck-ts and ui.test.ts's use of the same literal).
   validationThreshold: 'ERROR',
+  seedDemo: false,
+  seedPassword: undefined,
   mail,
 });
 
