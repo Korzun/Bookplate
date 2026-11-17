@@ -296,8 +296,15 @@ domains per service.
 
 Setting `SEED_DEMO=1` turns an instance into a throwaway demo: on **every
 start** it wipes `/data` and `/media/books`, then seeds the demo users
-`alice`, `bob` and `carol` (password from `SEED_PASSWORD`) with sample books,
-requests and reading history. Never set it on a real library.
+`alice`, `bob` and `carol` with sample books, requests and reading history.
+It also requires `SEED_PASSWORD` (the demo users' password); startup fails
+without it. `ADMIN_USER` must not be `alice`, `bob` or `carol`. Never set it
+on a real library.
+
+During a Coolify deploy the new container wipes the shared volumes while the
+old one is still serving, so the preview is briefly broken mid-deploy, and a
+failed seed leaves the old container serving an emptied library until the next
+successful deploy.
 
 ## Ports
 
