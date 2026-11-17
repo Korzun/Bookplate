@@ -236,6 +236,20 @@ function isAllCaps(title: string): boolean {
 // often join tags with commas (e.g. "Sci-Fi, Fantasy"); "Last, First" person
 // forms are an author-field concern and do not occur in subjects. Splitting is
 // proposal-only, so any unwanted split can be dismissed.
+// "--" is a library-catalogue subdivision ("England--Fiction", LCSH style),
+// as Standard Ebooks and other library-sourced EPUBs ship it. Unlike the
+// separators above it is unambiguous, so its split is applied automatically.
+function splitSubdivisions(subject: string): string[] {
+  return subject
+    .split(/\s*--\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+function dedupeCaseInsensitive(parts: string[]): string[] {
+  return parts.filter((p, i) => parts.findIndex((o) => o.toLowerCase() === p.toLowerCase()) === i);
+}
+
 function splitSubject(subject: string): string[] {
   return subject
     .split(/\s*(?:&|\/|;|,)\s*/)
@@ -447,15 +461,19 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
   // subjects-split: one fix per compound subject so each can be applied/dismissed
   // individually. The split operation is carried by fromChips[0] -> toChips; the
   // final subjects array is computed at apply time from the book's current state.
+  //
+  // A "--" subdivision is split first and automatically. The proposal-only
+  // separators are then checked on each resulting part, so a proposal's
+  // fromChips[0] names a subject that exists once the auto split has run
+  // ("Bennet, Elizabeth (Fictitious character)--Fiction" auto-splits off
+  // "Fiction"; splitting the name at its comma stays a dismissable proposal).
   const seen = new Set<string>();
-  subjects.forEach((subject) => {
+  const proposeSplit = (subject: string) => {
     const parts = splitSubject(subject);
     if (parts.length < 2) return;
     if (seen.has(subject.toLowerCase())) return;
     seen.add(subject.toLowerCase());
-    const dedupedParts = parts.filter(
-      (p, i) => parts.findIndex((o) => o.toLowerCase() === p.toLowerCase()) === i
-    );
+    const dedupedParts = dedupeCaseInsensitive(parts);
     const allKnown = dedupedParts.every((p) => library.has(p.toLowerCase()));
     let reason: string | undefined;
     if (allKnown) {
@@ -475,6 +493,28 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
       fromChips: [subject],
       toChips: dedupedParts,
     });
+  };
+  subjects.forEach((subject) => {
+    const levels = splitSubdivisions(subject);
+    if (levels.length < 2) {
+      proposeSplit(subject);
+      return;
+    }
+    if (!seen.has(subject.toLowerCase())) {
+      seen.add(subject.toLowerCase());
+      const dedupedLevels = dedupeCaseInsensitive(levels);
+      issues.push({
+        field: 'subjects',
+        kind: 'subjects-split',
+        from: subject,
+        to: dedupedLevels.join(', '),
+        autoEligible: true,
+        changes: {},
+        fromChips: [subject],
+        toChips: dedupedLevels,
+      });
+    }
+    levels.forEach(proposeSplit);
   });
 
   return issues;
