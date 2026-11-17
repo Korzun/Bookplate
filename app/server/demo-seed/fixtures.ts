@@ -1,25 +1,27 @@
-import * as fs from "fs";
-import * as path from "path";
-import { unzipSync, strToU8, strFromU8 } from "fflate";
-import { packEpub } from "../services/epub-zip";
-import { parseEpub } from "../services/epub-parser";
-import { buildUpdatedEpub } from "../services/epub-writer";
-import { serverRootFrom } from "../utils/server-root";
+import * as fs from 'fs';
+import * as path from 'path';
+
+import { unzipSync, strToU8, strFromU8 } from 'fflate';
+
+import { parseEpub } from '../services/epub-parser';
+import { buildUpdatedEpub } from '../services/epub-writer';
+import { packEpub } from '../services/epub-zip';
+import { serverRootFrom } from '../utils/server-root';
 
 /** Directory holding the bundled CC0 fixture EPUBs (tsx and compiled `dist/`). */
 export function demoFixturesDir(): string {
-  return path.join(serverRootFrom(__dirname), "demo-seed", "fixtures");
+  return path.join(serverRootFrom(__dirname), 'demo-seed', 'fixtures');
 }
 
 export const FIXTURES = {
-  princessOfMars: "edgar-rice-burroughs_a-princess-of-mars.epub",
-  godsOfMars: "edgar-rice-burroughs_the-gods-of-mars.epub",
-  warlordOfMars: "edgar-rice-burroughs_the-warlord-of-mars.epub",
-  prideAndPrejudice: "jane-austen_pride-and-prejudice.epub",
-  frankenstein: "mary-shelley_frankenstein.epub",
-  timeMachine: "h-g-wells_the-time-machine.epub",
-  dracula: "bram-stoker_dracula.epub",
-  sherlockHolmes: "arthur-conan-doyle_the-adventures-of-sherlock-holmes.epub",
+  princessOfMars: 'edgar-rice-burroughs_a-princess-of-mars.epub',
+  godsOfMars: 'edgar-rice-burroughs_the-gods-of-mars.epub',
+  warlordOfMars: 'edgar-rice-burroughs_the-warlord-of-mars.epub',
+  prideAndPrejudice: 'jane-austen_pride-and-prejudice.epub',
+  frankenstein: 'mary-shelley_frankenstein.epub',
+  timeMachine: 'h-g-wells_the-time-machine.epub',
+  dracula: 'bram-stoker_dracula.epub',
+  sherlockHolmes: 'arthur-conan-doyle_the-adventures-of-sherlock-holmes.epub',
 } as const;
 
 function readEntries(src: string): Record<string, Uint8Array> {
@@ -27,9 +29,9 @@ function readEntries(src: string): Record<string, Uint8Array> {
 }
 
 function findOpfPath(files: Record<string, Uint8Array>): string {
-  const container = strFromU8(files["META-INF/container.xml"]);
+  const container = strFromU8(files['META-INF/container.xml']);
   const m = /full-path="([^"]+)"/.exec(container);
-  if (!m) throw new Error("container.xml has no rootfile");
+  if (!m) throw new Error('container.xml has no rootfile');
   return m[1];
 }
 
@@ -49,17 +51,14 @@ export function deriveNoCover(src: string, dest: string): void {
   let opf = strFromU8(files[opfPath]);
 
   const coverItem = /<item\b[^>]*\bproperties="cover-image"[^>]*\/>/.exec(opf);
-  if (!coverItem) throw new Error("fixture has no cover-image manifest item");
+  if (!coverItem) throw new Error('fixture has no cover-image manifest item');
   const href = /\bhref="([^"]+)"/.exec(coverItem[0])![1];
   const id = /\bid="([^"]+)"/.exec(coverItem[0])![1];
 
-  opf = opf.replace(coverItem[0], "");
-  opf = opf.replace(
-    new RegExp(`<meta\\s+name="cover"\\s+content="${id}"\\s*/>`),
-    "",
-  );
+  opf = opf.replace(coverItem[0], '');
+  opf = opf.replace(new RegExp(`<meta\\s+name="cover"\\s+content="${id}"\\s*/>`), '');
   files[opfPath] = strToU8(opf);
-  delete files[opfDir === "." ? href : `${opfDir}/${href}`];
+  delete files[opfDir === '.' ? href : `${opfDir}/${href}`];
   fs.writeFileSync(dest, packEpub(files));
 }
 
@@ -80,8 +79,8 @@ export function deriveAllCapsTitle(src: string, dest: string): void {
  */
 export function deriveWithWarning(src: string, dest: string): void {
   const files = readEntries(src);
-  const cssPath = Object.keys(files).find((name) => name.endsWith(".css"));
-  if (!cssPath) throw new Error("fixture has no stylesheet");
+  const cssPath = Object.keys(files).find((name) => name.endsWith('.css'));
+  if (!cssPath) throw new Error('fixture has no stylesheet');
   files[cssPath] = strToU8(`${strFromU8(files[cssPath])}\n@font-face {}\n`);
   fs.writeFileSync(dest, packEpub(files));
 }
