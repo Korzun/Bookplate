@@ -248,6 +248,57 @@ describe('detectMetadataIssues', () => {
     expect(splitIssues[1].toChips).toEqual(['Fantasy', 'Horror']);
   });
 
+  it('auto-splits a "--" subdivided subject (LCSH style) into its parts', () => {
+    const issues = detectMetadataIssues({ ...base, subjects: ['England--Fiction'] });
+    const splitIssues = issues.filter((i) => i.kind === 'subjects-split');
+    expect(splitIssues).toHaveLength(1);
+    expect(splitIssues[0]).toMatchObject({
+      from: 'England--Fiction',
+      to: 'England, Fiction',
+      autoEligible: true,
+      changes: {},
+      fromChips: ['England--Fiction'],
+      toChips: ['England', 'Fiction'],
+    });
+  });
+
+  it('auto-splits every level of a multi-level "--" subject, tolerating spaces', () => {
+    const issues = detectMetadataIssues({
+      ...base,
+      subjects: ['Courtship -- England --Fiction'],
+    });
+    const s = find(issues, 'subjects-split')!;
+    expect(s.autoEligible).toBe(true);
+    expect(s.toChips).toEqual(['Courtship', 'England', 'Fiction']);
+  });
+
+  it('leaves a single hyphen alone', () => {
+    const issues = detectMetadataIssues({ ...base, subjects: ['Sci-Fi'] });
+    expect(find(issues, 'subjects-split')).toBeUndefined();
+  });
+
+  it('only proposes (never auto-applies) a further split of a "--" part', () => {
+    const issues = detectMetadataIssues({
+      ...base,
+      subjects: ['Bennet, Elizabeth (Fictitious character)--Fiction'],
+    });
+    const splitIssues = issues.filter((i) => i.kind === 'subjects-split');
+    expect(splitIssues).toHaveLength(2);
+    expect(splitIssues[0]).toMatchObject({
+      from: 'Bennet, Elizabeth (Fictitious character)--Fiction',
+      autoEligible: true,
+      toChips: ['Bennet, Elizabeth (Fictitious character)', 'Fiction'],
+    });
+    // The proposal targets the part the auto split produces, so it still
+    // applies after the auto split has run.
+    expect(splitIssues[1]).toMatchObject({
+      from: 'Bennet, Elizabeth (Fictitious character)',
+      autoEligible: false,
+      fromChips: ['Bennet, Elizabeth (Fictitious character)'],
+      toChips: ['Bennet', 'Elizabeth (Fictitious character)'],
+    });
+  });
+
   it('never throws on empty input', () => {
     expect(
       detectMetadataIssues({ title: '', titleSort: '', author: '', authorSort: '', subjects: [] })
