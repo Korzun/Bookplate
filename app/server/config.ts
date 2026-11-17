@@ -185,6 +185,12 @@ export function loadConfig(): AppConfig {
 
   const libraryName = (envVar('LIBRARY_NAME') ?? options.library_name).trim() || 'Bookplate';
 
+  const seedDemo = envVar('SEED_DEMO') === '1';
+  const seedPassword = envVar('SEED_PASSWORD', { trim: false });
+  if (seedDemo && !seedPassword) {
+    throw new Error('SEED_DEMO=1 requires SEED_PASSWORD to be set');
+  }
+
   return {
     libraryName,
     username: envVar('ADMIN_USER') ?? options.username,
@@ -209,5 +215,7 @@ export function loadConfig(): AppConfig {
       libraryName
     ),
     publicUrl: parsePublicUrl(trimmed(envVar('PUBLIC_URL') ?? options.public_url)),
+    seedDemo,
+    seedPassword,
   };
 }
