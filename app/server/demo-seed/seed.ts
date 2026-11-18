@@ -262,6 +262,7 @@ export async function seedDemo(
       id: warlordRequest,
       bookUserId: alice.userId,
       bookId: aliceBook('warlordOfMars'),
+      actor: 'admin',
     }),
     'fulfilling "The Warlord of Mars"'
   );
