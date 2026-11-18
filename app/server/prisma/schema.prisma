@@ -57,6 +57,7 @@ model Book {
   thumbnails      BookThumbnail[]
   pendingFix      PendingFix?
   validation      Validation?
+  collections     BookCollection[]
   bookRequests    BookRequest[]
   // The reading position for this book, if the owner has one. See `Progress
   // .book` below for why this relation carries no database foreign key.
@@ -82,6 +83,33 @@ model Series {
 
   @@unique([userId, name])
   @@map("series")
+}
+
+// EPUB 3 `set` collections, per user like `Series`. A book is in many; the
+// optional `position` is the book's group-position within that collection.
+model Collection {
+  id      String           @id
+  userId  String           @map("user_id")
+  name    String
+  sortKey String           @map("sort_key")
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  books   BookCollection[]
+
+  @@unique([userId, name])
+  @@map("collections")
+}
+
+model BookCollection {
+  userId       String     @map("user_id")
+  bookId       String     @map("book_id")
+  collectionId String     @map("collection_id")
+  position     Float?
+  book         Book       @relation(fields: [userId, bookId], references: [userId, id], onDelete: Cascade, onUpdate: Cascade)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, bookId, collectionId])
+  @@index([collectionId])
+  @@map("book_collections")
 }
 
 model PendingFix {
@@ -223,6 +251,7 @@ model User {
   pushSubscriptions       PushSubscription[]
   readingEvents           ReadingEvent[]
   mcpGrants               McpGrant[]
+  collections             Collection[]
 
   @@map("users")
 }

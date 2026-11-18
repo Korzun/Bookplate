@@ -1237,3 +1237,93 @@ describe('data_v23_mcp', () => {
     expect(await prisma.mcpClient.count()).toBe(1);
   });
 });
+
+describe('data_v25_collections', () => {
+  let tmpDir: string;
+  let prisma: PrismaClient;
+
+  beforeEach(async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-collections-test-'));
+    const booksDir = path.join(tmpDir, 'books');
+    fs.mkdirSync(booksDir, { recursive: true });
+    prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
+    await runMigrations(prisma, booksDir);
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const columnsOf = async (table: string): Promise<string[]> =>
+    (await prisma.$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info("${table}")`)).map(
+      (c) => c.name
+    );
+
+  async function seed(): Promise<void> {
+    await prisma.user.create({ data: { id: 'u1', username: 'alice' } });
+    await prisma.book.create({
+      data: { userId: 'u1', id: 'b1', title: 'T', size: 1, mtime: 1, addedAt: 1 },
+    });
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO collections (id, user_id, name, sort_key) VALUES ('c1', 'u1', 'Set', 'set')`
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO book_collections (user_id, book_id, collection_id, position)
+       VALUES ('u1', 'b1', 'c1', 2)`
+    );
+  }
+
+  const linkCount = async (): Promise<number> =>
+    Number(
+      (
+        await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
+          `SELECT COUNT(*) AS n FROM book_collections`
+        )
+      )[0].n
+    );
+
+  it('creates both tables with their columns', async () => {
+    expect(await columnsOf('collections')).toEqual(['id', 'user_id', 'name', 'sort_key']);
+    expect(await columnsOf('book_collections')).toEqual([
+      'user_id',
+      'book_id',
+      'collection_id',
+      'position',
+    ]);
+  });
+
+  it('has the unique (user_id, name) index on collections', async () => {
+    const idx = await prisma.$queryRawUnsafe<Array<{ name: string; unique: bigint }>>(
+      `PRAGMA index_list(collections)`
+    );
+    expect(idx.find((i) => i.name === 'collections_user_id_name_key')?.unique).toBe(1n);
+  });
+
+  it('cascades book_collections when the book is deleted', async () => {
+    await seed();
+    await prisma.$executeRawUnsafe(`DELETE FROM books WHERE user_id = 'u1' AND id = 'b1'`);
+    expect(await linkCount()).toBe(0);
+  });
+
+  it('carries book_collections along when a book id changes', async () => {
+    await seed();
+    await prisma.$executeRawUnsafe(`UPDATE books SET id = 'b2' WHERE user_id = 'u1' AND id = 'b1'`);
+    const rows = await prisma.$queryRawUnsafe<Array<{ book_id: string }>>(
+      `SELECT book_id FROM book_collections`
+    );
+    expect(rows).toEqual([{ book_id: 'b2' }]);
+  });
+
+  it('cascades book_collections when the collection is deleted', async () => {
+    await seed();
+    await prisma.$executeRawUnsafe(`DELETE FROM collections WHERE id = 'c1'`);
+    expect(await linkCount()).toBe(0);
+  });
+
+  it('cascades collections when the user is deleted', async () => {
+    await seed();
+    await prisma.user.delete({ where: { id: 'u1' } });
+    expect(await linkCount()).toBe(0);
+  });
+});
