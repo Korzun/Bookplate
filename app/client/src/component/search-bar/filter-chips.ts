@@ -64,7 +64,13 @@ export function removeChip(filter: BookListFilter, chip: ChipDef): BookListFilte
 export function applySelection(filter: BookListFilter, suggestion: Suggestion): BookListFilter {
   switch (suggestion.type) {
     case 'entryType':
-      return { ...filter, entryType: suggestion.value as 'series' | 'standalone' };
+      // `collection` + `entryType` are mutually exclusive, like `collection` +
+      // `seriesName`.
+      return {
+        ...filter,
+        entryType: suggestion.value as 'series' | 'standalone',
+        collection: undefined,
+      };
     case 'status':
       return { ...filter, status: suggestion.value as BookListFilter['status'] };
     case 'rating':
@@ -81,7 +87,12 @@ export function applySelection(filter: BookListFilter, suggestion: Suggestion): 
       // `collection` + `seriesName` together match nothing server-side.
       return { ...filter, seriesName: suggestion.value, collection: undefined };
     case 'collection':
-      return { ...filter, collection: suggestion.value, seriesName: undefined };
+      return {
+        ...filter,
+        collection: suggestion.value,
+        seriesName: undefined,
+        entryType: undefined,
+      };
     case 'subject':
       return { ...filter, subjects: [...(filter.subjects ?? []), suggestion.value] };
     case 'book':

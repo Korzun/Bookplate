@@ -33,4 +33,24 @@ describe('collection filter chip', () => {
       applySelection({ collection: 'Favorites', author: 'X' }, suggestion('series', 'Dune'))
     ).toEqual({ collection: undefined, author: 'X', seriesName: 'Dune' });
   });
+
+  it('choosing a collection suggestion clears entryType', () => {
+    expect(
+      applySelection({ entryType: 'series', author: 'X' }, suggestion('collection', 'Favorites'))
+    ).toEqual({
+      entryType: undefined,
+      author: 'X',
+      collection: 'Favorites',
+      seriesName: undefined,
+    });
+  });
+
+  it('choosing an entryType suggestion sets entryType and clears collection', () => {
+    expect(
+      applySelection(
+        { collection: 'Favorites', author: 'X' },
+        suggestion('entryType', 'standalone')
+      )
+    ).toEqual({ collection: undefined, author: 'X', entryType: 'standalone' });
+  });
 });
