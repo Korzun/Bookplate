@@ -8,6 +8,7 @@ import { logger } from '../logger';
 import { Book, EpubMeta, Owner } from '../types';
 import { seriesSortKey } from '../utils/series-sort-key';
 import { getBookById } from './book-catalog';
+import { pruneEmptyCollections, syncBookCollections } from './book-collections';
 import { BookAlreadyExistsError, BookHashCollisionError } from './book-errors';
 import { bookPath, getUserDir } from './book-paths';
 import { normalizeCover } from './cover-normalize';
@@ -204,6 +205,9 @@ export async function addBook(
     if (seriesId) {
       await recomputeSeriesMeta(tx, seriesId);
     }
+
+    await syncBookCollections(tx, owner.userId, id, meta.collections);
+    await pruneEmptyCollections(tx, owner.userId);
   });
 }
 
@@ -242,6 +246,8 @@ export async function deleteBook(
           await recomputeSeriesMeta(tx, seriesId);
         }
       }
+
+      await pruneEmptyCollections(tx, owner.userId);
     });
   } finally {
     try {
@@ -454,6 +460,11 @@ export async function reimportBook(
       });
     }
 
+    // Both branches have written the row under newId (the id change cascades any
+    // existing join rows), so replace its collections now.
+    await syncBookCollections(tx, owner.userId, newId, meta.collections);
+    await pruneEmptyCollections(tx, owner.userId);
+
     // Invalidate stale thumbnails when the cover changed. In the id-change branch the
     // FK onUpdate: Cascade has already moved the rows to newId, so keying on newId
     // covers both branches.
@@ -509,6 +520,8 @@ async function removeStaleBook(prisma: PrismaClient, userId: string, id: string)
         await recomputeSeriesMeta(tx, book.seriesId);
       }
     }
+
+    await pruneEmptyCollections(tx, userId);
   });
 }
 
