@@ -23,6 +23,7 @@ import {
 export const BOOK_DETAIL_FIELDS = `
   id documentId title titleSort author authorSort description publisher publishDate
   series { id name } seriesIndex
+  collections { position collection { id name } }
   identifiers { scheme value } subjects
   pageCount chapterCount size addedAt mtime hasCover
   validation { ${VALIDATION_SUMMARY_FIELDS} }
@@ -51,6 +52,7 @@ export type BookDetailGql = {
   publishDate: string;
   series: { id: string; name: string } | null;
   seriesIndex: number;
+  collections: Array<{ position: number | null; collection: { id: string; name: string } }>;
   identifiers: Array<{ scheme: string; value: string }>;
   subjects: string[];
   pageCount: number;
@@ -91,6 +93,9 @@ export const bookDetailSchema = {
   series: z.string().nullable(),
   seriesId: z.string().nullable(),
   seriesIndex: z.number(),
+  collections: z
+    .array(z.object({ id: z.string(), name: z.string(), position: z.number().nullable() }))
+    .describe('Curated collections (from the book file) this book belongs to, by name'),
   identifiers: z.array(z.object({ scheme: z.string(), value: z.string() })),
   subjects: z.array(z.string()),
   pageCount: z.number(),
@@ -129,6 +134,11 @@ export const toBookDetail = (b: BookDetailGql) => ({
   series: b.series?.name ?? null,
   seriesId: b.series?.id ?? null,
   seriesIndex: b.seriesIndex,
+  collections: b.collections.map((m) => ({
+    id: m.collection.id,
+    name: m.collection.name,
+    position: m.position,
+  })),
   identifiers: b.identifiers,
   subjects: b.subjects,
   pageCount: b.pageCount,
@@ -151,6 +161,9 @@ export const describeBookDetail = (b: BookDetail): string => {
   const lines = [
     `"${b.title}" by ${b.author || 'unknown'} — id=${b.id}`,
     b.series !== null ? `Series: ${b.series} #${b.seriesIndex}` : 'Standalone (no series)',
+    b.collections.length > 0
+      ? `Collections: ${b.collections.map((c) => c.name).join(', ')}`
+      : 'Collections: —',
     `Publisher: ${b.publisher || '—'}  Published: ${b.publishDate || '—'}  Pages: ${b.pageCount}`,
     `Subjects: ${b.subjects.length > 0 ? b.subjects.join(', ') : '—'}`,
     b.identifiers.length > 0

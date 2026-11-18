@@ -128,6 +128,7 @@ const READ_TOOLS = [
   'search_library',
   'get_book',
   'get_series',
+  'get_collection',
   'list_series',
   'list_library_facets',
   'list_pending_fixes',
@@ -449,6 +450,76 @@ describe('read tools', () => {
 
     const facets = await mcp.call('list_library_facets');
     expect(facets.structuredContent).toEqual({ authors: ['Seed Author'], subjects: ['Fiction'] });
+  });
+
+  describe('collections', () => {
+    beforeEach(async () => {
+      await harness.prisma.collection.create({
+        data: {
+          id: 'col-1',
+          userId: harness.aliceOwner.userId,
+          name: 'Guardian 100',
+          sortKey: 'guardian 100',
+          books: {
+            create: [
+              { userId: harness.aliceOwner.userId, bookId: BETA_ID, position: 1 },
+              { userId: harness.aliceOwner.userId, bookId: ALPHA_ID, position: 2 },
+            ],
+          },
+        },
+      });
+    });
+
+    it('get_book returns the book’s collections', async () => {
+      mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+      const id = await findId(mcp, 'Alpha Book');
+      const result = await mcp.call('get_book', { bookId: id });
+      expect(result.isError, textOf(result)).toBeFalsy();
+      const out = result.structuredContent as {
+        collections: Array<{ id: string; name: string; position: number | null }>;
+      };
+      expect(out.collections).toEqual([
+        { id: expect.any(String), name: 'Guardian 100', position: 2 },
+      ]);
+    });
+
+    it('search_library filters by collection', async () => {
+      mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+      const hit = await search(mcp, { collection: 'Guardian 100' });
+      expect(hit.entries.map((e) => e.title).sort()).toEqual(['Alpha Book', 'Beta Book']);
+      expect((await search(mcp, { collection: 'Nope' })).entries).toEqual([]);
+    });
+
+    it('get_collection by name and by id returns books in collection order', async () => {
+      mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+      const byName = await mcp.call('get_collection', { name: 'Guardian 100' });
+      expect(byName.isError, textOf(byName)).toBeFalsy();
+      const out = byName.structuredContent as {
+        id: string;
+        name: string;
+        bookCount: number;
+        books: Array<{ title: string; position: number | null }>;
+      };
+      expect(out.name).toBe('Guardian 100');
+      expect(out.bookCount).toBe(2);
+      expect(out.books.map((b) => [b.title, b.position])).toEqual([
+        ['Beta Book', 1],
+        ['Alpha Book', 2],
+      ]);
+
+      const byId = await mcp.call('get_collection', { id: out.id });
+      expect(byId.isError, textOf(byId)).toBeFalsy();
+      expect((byId.structuredContent as { name: string }).name).toBe('Guardian 100');
+    });
+
+    it('get_collection reports an unknown name or id as not found', async () => {
+      mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+      for (const args of [{ name: 'Nope' }, { id: 'garbage' }]) {
+        const missing = await mcp.call('get_collection', args);
+        expect(missing.isError).toBe(true);
+        expect(textOf(missing)).toBe('No collection with that id or name in your library');
+      }
+    });
   });
 
   it('list_pending_fixes lists books with recommendations', async () => {

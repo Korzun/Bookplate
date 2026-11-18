@@ -72,6 +72,13 @@ export function registerSearchLibrary(server: McpServer, deps: ToolDeps): void {
         query: z.string().max(200).optional().describe('Free-text search over title and author'),
         author: z.string().max(200).optional(),
         seriesName: z.string().max(200).optional(),
+        collection: z
+          .string()
+          .max(200)
+          .optional()
+          .describe(
+            'Exact collection name; lists only its books (collections are curated lists from the book files, distinct from series)'
+          ),
         subjects: z.array(z.string().max(100)).max(20).optional().describe('All must match'),
         status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED']).optional(),
         entryType: z.enum(['STANDALONE', 'SERIES']).optional(),
@@ -104,6 +111,7 @@ export function registerSearchLibrary(server: McpServer, deps: ToolDeps): void {
           query: args.query,
           author: args.author,
           seriesName: args.seriesName,
+          collection: args.collection,
           subjects: args.subjects,
           status: args.status,
           entryType: args.entryType,
