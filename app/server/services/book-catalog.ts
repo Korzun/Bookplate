@@ -18,7 +18,9 @@ import { countForBook } from './edition';
  * cross-module export. `BOOK_SELECT` and `prismaBookToBook` were exported for
  * the same reason until task 8: `listBooksPage` used to hydrate a `BookSummary[]`
  * through them. Now that it returns raw Prisma rows instead (task 8's contract
- * change), nothing outside this module needs either, so both are private again.
+ * change) they were private for a while. They are exported again because
+ * `services/book-collections.ts` (`listBooksByCollection`) consumes both; do not
+ * un-export them.
  */
 
 /**
