@@ -734,8 +734,9 @@ const bookRateMock = (input: Record<string, unknown>, rating: RatingFields): Moc
 const bookRateErrorMock = (input: Record<string, unknown>): MockedResponse => ({
   request: { query: BookRateDocument, variables: { input } },
   error: new Error('rate failed'),
-  // Long enough that the optimistic state is observable before the revert.
-  delay: 50,
+  // Long enough that the optimistic state is observable before the revert,
+  // even when a slow re-render delays the first assertion.
+  delay: 400,
 });
 
 const ratingGroup = (field: string) =>
