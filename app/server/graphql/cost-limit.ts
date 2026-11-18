@@ -442,8 +442,8 @@ export const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defa
  * `Library.searchSuggestions`/`SuggestionGroup.items` — task-3-re-review-2.md,
  * I-5. Previously ruled SAFE (priced at 1) because `getSearchSuggestions`
  * (`services/search-suggestions.ts`) caps every branch at `LIMIT 30`
- * (4 occurrences, one per suggestion
- * group), ≤4 groups (`author`/`series`/`book`/`subject`). That reasoning
+ * (one occurrence per suggestion
+ * group), ≤5 groups (`author`/`series`/`book`/`subject`/`collection`). That reasoning
  * used "has a code-enforced bound" as grounds for EXEMPTION — but this
  * file's own precedent (`CONNECTION_FIELD_LIMITS`, `Library.entries` etc.)
  * is the opposite: a field bounded at N is priced AT N, not exempted for
@@ -456,20 +456,20 @@ export const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defa
  * one cost" class I-4 named.
  *
  * Priced at the SOURCED bounds, not an assumption: `searchSuggestions`
- * itself returns at most 4 groups — `getSearchSuggestions`'s own four
- * `groups.push(...)` sites (one each for `author`, `series`, `book`, and
- * `subject`), each behind its own
+ * itself returns at most 5 groups — `getSearchSuggestions`'s own five
+ * `groups.push(...)` sites (one each for `author`, `series`, `book`,
+ * `subject`, and `collection`), each behind its own
  * guard and pushed at most once (`services/search-suggestions.ts`);
  * each group's `items` is capped at `LIMIT 30`.
  * `Suggestion.book` (`schema/suggestion/model.ts`) only resolves a
  * lookup for `BOOK`-typed items (`suggestion.userId === undefined` short-
  * circuits every other group to `null`, no query at all), so the true
- * reachable fan-out is narrower than 4×30 — but pricing `items` at 30
+ * reachable fan-out is narrower than 5×30 — but pricing `items` at 30
  * uniformly (not conditionally on group type, which `multiplierFor` has no
  * way to know from the AST alone) is the conservative, not-underpriced
  * direction, matching every other multiplier in this file.
  */
-const SUGGESTION_GROUP_COUNT = 4;
+const SUGGESTION_GROUP_COUNT = 5;
 const SUGGESTION_ITEMS_PER_GROUP = 30;
 
 export const SUGGESTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
