@@ -177,7 +177,7 @@ describe('detectMetadataIssues', () => {
     });
     const s = find(issues, 'subjects-split')!;
     expect(s.from).toBe('Sci-Fi & Fantasy');
-    expect(s.to).toBe('Sci-Fi, Fantasy');
+    expect(s.to).toBe('Sci-Fi | Fantasy');
     expect(s.autoEligible).toBe(false);
     expect(s.reason).toBe('Subjects already exist in your library');
     // The split operation is carried by the chips; the patch is computed at apply time.
@@ -248,13 +248,22 @@ describe('detectMetadataIssues', () => {
     expect(splitIssues[1].toChips).toEqual(['Fantasy', 'Horror']);
   });
 
+  it('gives a comma split a "to" that differs from its "from"', () => {
+    const s = find(
+      detectMetadataIssues({ ...base, subjects: ['Sci-Fi, Fantasy'] }),
+      'subjects-split'
+    )!;
+    expect(s.to).toBe('Sci-Fi | Fantasy');
+    expect(s.to).not.toBe(s.from);
+  });
+
   it('auto-splits a "--" subdivided subject (LCSH style) into its parts', () => {
     const issues = detectMetadataIssues({ ...base, subjects: ['England--Fiction'] });
     const splitIssues = issues.filter((i) => i.kind === 'subjects-split');
     expect(splitIssues).toHaveLength(1);
     expect(splitIssues[0]).toMatchObject({
       from: 'England--Fiction',
-      to: 'England, Fiction',
+      to: 'England | Fiction',
       autoEligible: true,
       changes: {},
       fromChips: ['England--Fiction'],
