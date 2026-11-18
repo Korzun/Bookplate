@@ -62,6 +62,7 @@ const fakeMeta = (title: string): EpubMeta => ({
   publisher: '',
   series: '',
   seriesIndex: 0,
+  collections: [],
   identifiers: [],
   subjects: [],
   coverData: null,

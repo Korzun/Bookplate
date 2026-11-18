@@ -47,6 +47,8 @@ export interface EpubMeta {
   publisher: string;
   series: string;
   seriesIndex: number;
+  /** EPUB 3 `set` collections (non-series groupings). Empty when none. */
+  collections: { name: string; position: number | null }[];
   identifiers: { scheme: string; value: string }[];
   subjects: string[];
   coverData: Buffer | null;

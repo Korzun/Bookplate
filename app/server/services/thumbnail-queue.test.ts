@@ -22,6 +22,7 @@ const FAKE_META: EpubMeta = {
   publisher: '',
   series: '',
   seriesIndex: 0,
+  collections: [],
   titleSort: '',
   authorSort: '',
   publishDate: '',

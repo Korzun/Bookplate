@@ -948,6 +948,137 @@ describe('parseEpub', () => {
     expect(meta.seriesIndex).toBe(1);
   });
 
+  describe('EPUB 3 collections', () => {
+    type C = { id?: string; name: string; type?: string; pos?: string };
+    const build = (name: string, cols: C[], extra = '') => {
+      const metaXml = cols
+        .map((c) => {
+          const idAttr = c.id ? ` id="${c.id}"` : '';
+          let x = `<meta${idAttr} property="belongs-to-collection">${c.name}</meta>`;
+          if (c.id && c.type)
+            x += `<meta refines="#${c.id}" property="collection-type">${c.type}</meta>`;
+          if (c.id && c.pos !== undefined)
+            x += `<meta refines="#${c.id}" property="group-position">${c.pos}</meta>`;
+          return x;
+        })
+        .join('\n    ');
+      const zip = new AdmZip();
+      zip.addFile('META-INF/container.xml', Buffer.from(sharedContainerXml));
+      zip.addFile(
+        'OEBPS/content.opf',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Test</dc:title>
+    ${extra}
+    ${metaXml}
+  </metadata>
+  <manifest/><spine/>
+</package>`)
+      );
+      const filePath = path.join(tmpDir, `${name}.epub`);
+      fs.writeFileSync(filePath, zip.toBuffer());
+      return parseEpub(filePath);
+    };
+
+    it('treats a set-only book as having no series (Dracula)', () => {
+      const meta = build('coll-dracula', [
+        {
+          id: 'c1',
+          name: "The Guardian's Best 100 Novels in English (2015)",
+          type: 'set',
+          pos: '77',
+        },
+        { id: 'c2', name: "The BBC's 100 Greatest British Novels (2015)", type: 'set', pos: '40' },
+      ]);
+      expect(meta.series).toBe('');
+      expect(meta.seriesIndex).toBe(0);
+      expect(meta.collections).toEqual([
+        { name: "The Guardian's Best 100 Novels in English (2015)", position: 77 },
+        { name: "The BBC's 100 Greatest British Novels (2015)", position: 40 },
+      ]);
+    });
+
+    it('takes the series index from the series collection, not the last group-position (Sherlock)', () => {
+      const meta = build('coll-sherlock', [
+        { id: 'c1', name: 'Sherlock Holmes', type: 'series', pos: '3' },
+        { id: 'c2', name: 'Set A', type: 'set', pos: '10' },
+        { id: 'c3', name: 'Set B', type: 'set', pos: '20' },
+        { id: 'c4', name: 'Set C', type: 'set' },
+      ]);
+      expect(meta.series).toBe('Sherlock Holmes');
+      expect(meta.seriesIndex).toBe(3);
+      expect(meta.collections.map((c) => c.position)).toEqual([10, 20, null]);
+    });
+
+    it('keeps a single clean series as before (The Martian)', () => {
+      const meta = build('coll-martian', [
+        { id: 'c1', name: 'The Martian', type: 'series', pos: '1' },
+      ]);
+      expect(meta.series).toBe('The Martian');
+      expect(meta.seriesIndex).toBe(1);
+      expect(meta.collections).toEqual([]);
+    });
+
+    it('treats an untyped collection as a series and uses its own group-position', () => {
+      const meta = build('coll-untyped', [{ id: 'c1', name: 'Loose Series', pos: '2' }]);
+      expect(meta.series).toBe('Loose Series');
+      expect(meta.seriesIndex).toBe(2);
+      expect(meta.collections).toEqual([]);
+    });
+
+    it('falls back to the last group-position when nothing is typed', () => {
+      const meta = build(
+        'coll-fallback',
+        [{ name: 'No Id Series' }],
+        '<meta property="group-position">4</meta>'
+      );
+      expect(meta.series).toBe('No Id Series');
+      expect(meta.seriesIndex).toBe(4);
+    });
+
+    it('ignores a collection-type refining a missing id', () => {
+      const meta = build(
+        'coll-missing-id',
+        [{ id: 'c1', name: 'Real Series' }],
+        '<meta refines="#nope" property="collection-type">set</meta>'
+      );
+      expect(meta.series).toBe('Real Series');
+      expect(meta.collections).toEqual([]);
+    });
+
+    it('parses a fractional set position and nulls a non-numeric one', () => {
+      const meta = build('coll-frac', [
+        { id: 'c1', name: 'Frac', type: 'set', pos: '1.5' },
+        { id: 'c2', name: 'Junk', type: 'set', pos: 'abc' },
+      ]);
+      expect(meta.collections).toEqual([
+        { name: 'Frac', position: 1.5 },
+        { name: 'Junk', position: null },
+      ]);
+    });
+
+    it('drops empty set names and collapses duplicates keeping the first position', () => {
+      const meta = build('coll-dupes', [
+        { id: 'c1', name: '', type: 'set' },
+        { id: 'c2', name: 'A', type: 'set', pos: '1' },
+        { id: 'c3', name: 'A', type: 'set', pos: '2' },
+      ]);
+      expect(meta.collections).toEqual([{ name: 'A', position: 1 }]);
+    });
+
+    it('prefers calibre:series over a typed series collection', () => {
+      const meta = build(
+        'coll-calibre',
+        [{ id: 'c1', name: 'Y', type: 'series', pos: '2' }],
+        '<meta name="calibre:series" content="X"/><meta name="calibre:series_index" content="5"/>'
+      );
+      expect(meta.series).toBe('X');
+      expect(meta.seriesIndex).toBe(5);
+      expect(meta.collections).toEqual([]);
+    });
+  });
+
   describe('HTML entity decoding', () => {
     it('decodes double-encoded decimal entities in title (&#8212; from &amp;#8212;)', () => {
       // Some EPUB generators double-encode: &amp;#8212; in the XML → &#8212; after XML parse
