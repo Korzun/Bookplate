@@ -512,6 +512,37 @@ describe('read tools', () => {
       expect((byId.structuredContent as { name: string }).name).toBe('Guardian 100');
     });
 
+    it('get_collection says when the 100-book cap truncates, and only then', async () => {
+      mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+      const small = await mcp.call('get_collection', { name: 'Guardian 100' });
+      expect(textOf(small)).not.toContain('Showing first');
+
+      const userId = harness.aliceOwner.userId;
+      const ids = Array.from({ length: 100 }, (_, i) => `bulk${String(i).padStart(28, '0')}`);
+      await harness.prisma.book.createMany({
+        data: ids.map((id, i) => ({
+          userId,
+          id,
+          title: `Bulk ${i}`,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        })),
+      });
+      await harness.prisma.bookCollection.createMany({
+        data: ids.map((bookId, i) => ({
+          userId,
+          bookId,
+          collectionId: 'col-1',
+          position: 10 + i,
+        })),
+      });
+      const big = await mcp.call('get_collection', { name: 'Guardian 100' });
+      expect(big.isError, textOf(big)).toBeFalsy();
+      expect((big.structuredContent as { books: unknown[] }).books).toHaveLength(100);
+      expect(textOf(big)).toContain('Showing first 100 of 102');
+    });
+
     it('get_collection reports an unknown name or id as not found', async () => {
       mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
       for (const args of [{ name: 'Nope' }, { id: 'garbage' }]) {

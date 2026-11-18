@@ -53,7 +53,8 @@ export function registerGetCollection(server: McpServer, deps: ToolDeps): void {
       description:
         'A collection and its books in collection order. Collections are curated lists read from the ' +
         'book files (for example "Guardian 100"), distinct from series. Pass either `id` (from get_book) ' +
-        'or the exact `name`.',
+        'or the exact `name`. ' +
+        'Returns at most the first 100 books; the text says when a collection is longer.',
       inputSchema: {
         id: z.string().optional(),
         name: z.string().max(500).optional(),
@@ -101,8 +102,11 @@ export function registerGetCollection(server: McpServer, deps: ToolDeps): void {
         };
         const text = [
           `Collection "${out.name}" — ${out.bookCount} book(s), id=${out.id}`,
+          ...(out.bookCount > books.length
+            ? [`Showing first ${books.length} of ${out.bookCount}`]
+            : []),
           ...books.map(
-            (b, i) => `  ${b.position === null ? `${i + 1}.` : `${b.position}.`} ${describeBook(b)}`
+            (b) => `  ${b.position === null ? '–' : `${b.position}.`} ${describeBook(b)}`
           ),
         ].join('\n');
         return ok(text, out);
