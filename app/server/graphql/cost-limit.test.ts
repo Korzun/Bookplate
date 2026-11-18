@@ -278,6 +278,7 @@ describe('the composite-element list-field inventory', () => {
   // (`UNBOUNDED_LIST_FIELD_LIMITS`), or with one worth pricing AT
   // (`SUGGESTION_FIELD_LIMITS`).
   const PRICED = [
+    'Book.collections',
     'Book.lineage',
     'Device.enabledUsers',
     'Library.pendingFixes',
@@ -294,6 +295,7 @@ describe('the composite-element list-field inventory', () => {
   // connection field's multiplier already scales these, so pricing them too
   // would double-count.
   const CONNECTION_EDGES = [
+    'CollectionBooksConnection.edges',
     'LibraryEntriesConnection.edges',
     'LibraryProgressConnection.edges',
     'SeriesBooksConnection.edges',

@@ -380,6 +380,11 @@ const UNBOUNDED_LIST_MULTIPLIER = CONNECTION_LIMITS.nodesBatch;
 const INSTANCE_DEVICE_MULTIPLIER = 100;
 const INSTANCE_USER_MULTIPLIER = 50;
 const BOOK_LINEAGE_MULTIPLIER = 20;
+// Assumed, not measured: no code caps how many collections a book belongs to,
+// but a real book sits in a handful (Standard Ebooks sets, a few shelves).
+// 20 is a conservative per-book ceiling, same scale as lineage; it multiplies
+// `collection.books(first)` reached through each membership.
+const BOOK_COLLECTIONS_MULTIPLIER = 20;
 
 /**
  * `Viewer.pushSubscriptions: [PushSubscription!]!` (`viewer/model.ts`) is a
@@ -427,6 +432,10 @@ export const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defa
     // I-7: per-book re-import history, not library-scale — see the doc
     // comment above BOOK_LINEAGE_MULTIPLIER's declaration.
     'Book.lineage': { maxSize: BOOK_LINEAGE_MULTIPLIER, defaultSize: BOOK_LINEAGE_MULTIPLIER },
+    'Book.collections': {
+      maxSize: BOOK_COLLECTIONS_MULTIPLIER,
+      defaultSize: BOOK_COLLECTIONS_MULTIPLIER,
+    },
   };
 
 /**
