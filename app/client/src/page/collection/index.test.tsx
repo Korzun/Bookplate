@@ -36,14 +36,14 @@ afterEach(() => {
 });
 
 // Wire-shaped (unmasked) mocks, as in `page/series/index.test.tsx`.
-const membership = (id: string, title: string, position: number | null) => ({
+const membership = (id: string, title: string, position: number | null, seriesIndex = 0) => ({
   __typename: 'BookCollectionMembership' as const,
   position,
   book: {
     __typename: 'Book' as const,
     id,
     title,
-    seriesIndex: 0,
+    seriesIndex,
     hasCover: false,
     thumbnailUrl: '/api/books/1/cover?width=88',
     progress: null,
@@ -72,7 +72,7 @@ const collectionMock = (): MockedResponse => ({
           books: {
             __typename: 'CollectionBooksConnection',
             edges: [
-              membership('b1', 'Third in List', 2),
+              membership('b1', 'Third in List', 2, 5),
               membership('b2', 'Fourth in List', 77),
               membership('b3', 'Unpositioned', null),
             ].map((node) => ({ __typename: 'CollectionBooksConnectionEdge', node })),
@@ -114,6 +114,8 @@ describe('CollectionPage', () => {
     expect(getByText('#2')).toBeInTheDocument();
     expect(getByText('#77')).toBeInTheDocument();
     expect(container.textContent).not.toContain('#null');
+    // Only the collection position shows, never the series "Book N".
+    expect(container.textContent).not.toContain('Book 5');
   });
 
   it('renders the not-found state for an unknown collection', async () => {

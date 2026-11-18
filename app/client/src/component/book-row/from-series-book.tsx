@@ -52,6 +52,8 @@ interface BookRowFromSeriesBookProps {
   book: FragmentType<typeof SeriesBookRowFragment>;
   /** Collection position, when this row is listed inside a collection. */
   position?: number | null;
+  /** Show the series "Book N" label. Collection listings turn it off. */
+  showSeriesIndex?: boolean;
 }
 
 /**
@@ -76,6 +78,7 @@ export function BookRowFromSeriesBook({
   showAuthor,
   book,
   position,
+  showSeriesIndex = true,
 }: BookRowFromSeriesBookProps) {
   const navigate = useNavigate();
   const unmasked = useFragment(SeriesBookRowFragment, book);
@@ -90,7 +93,7 @@ export function BookRowFromSeriesBook({
       showAuthor={showAuthor}
       title={unmasked.title}
       author=""
-      seriesIndex={unmasked.seriesIndex}
+      seriesIndex={showSeriesIndex ? unmasked.seriesIndex : 0}
       position={position}
       hasCover={unmasked.hasCover}
       coverSrc={coverSrc}

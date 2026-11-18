@@ -108,15 +108,14 @@ export const CollectionPage = () => {
       </Card>
       <Card title="Books">
         <div className={style.bookList}>
-          {collection.books.edges.map((edge, index) => (
+          {collection.books.edges.map((edge) => (
             <BookRowFromSeriesBook
-              // The masked `book` ref has no readable `id`; the membership's
-              // index within API order is stable for a given response.
-              key={index}
+              key={edge.node.book.id}
               asCard={false}
               showAuthor={false}
               book={edge.node.book}
               position={edge.node.position}
+              showSeriesIndex={false}
             />
           ))}
         </div>
