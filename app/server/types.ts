@@ -80,6 +80,8 @@ export type BookListFilters = {
   query?: string;
   author?: string;
   seriesName?: string;
+  /** Exact collection name; returns only member books (series members included). */
+  collection?: string;
   status?: 'not-started' | 'in-progress' | 'completed';
   subjects?: string[];
   entryType?: 'series' | 'standalone';
@@ -91,7 +93,7 @@ export type BookListFilters = {
 
 export type SearchSuggestionsResponse = {
   groups: Array<{
-    type: 'author' | 'series' | 'book' | 'subject';
+    type: 'author' | 'series' | 'collection' | 'book' | 'subject';
     items: Array<{
       label: string;
       value: string;

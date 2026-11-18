@@ -370,6 +370,7 @@ builder.node(model, {
               query: args.filter.query ?? undefined,
               author: args.filter.author ?? undefined,
               seriesName: args.filter.seriesName ?? undefined,
+              collection: args.filter.collection ?? undefined,
               status: args.filter.status ?? undefined,
               subjects: args.filter.subjects ?? undefined,
               entryType: args.filter.entryType ?? undefined,
@@ -441,6 +442,7 @@ builder.node(model, {
           filter: {
             author: args.filter?.author ?? undefined,
             seriesName: args.filter?.seriesName ?? undefined,
+            collection: args.filter?.collection ?? undefined,
             activeSubjects: args.filter?.activeSubjects ?? undefined,
           },
         });

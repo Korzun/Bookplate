@@ -162,6 +162,25 @@ describe('LibraryFilter', () => {
     expect(await labels({ author: 'Expanse' })).toEqual([]);
   });
 
+  it('collection selects member books, including series members, never series', async () => {
+    await harness.prisma.collection.create({
+      data: {
+        id: 'col-1',
+        userId: harness.aliceOwner.userId,
+        name: 'Guardian',
+        sortKey: 'guardian',
+        books: {
+          create: [
+            { userId: harness.aliceOwner.userId, bookId: IN_SERIES, position: 1 },
+            { userId: harness.aliceOwner.userId, bookId: DUNE, position: null },
+          ],
+        },
+      },
+    });
+    expect(await labels({ collection: 'Guardian' })).toEqual(['Dune', 'Leviathan Wakes']);
+    expect(await labels({ collection: 'Nope' })).toEqual([]);
+  });
+
   it('status selects by reading progress', async () => {
     expect(await labels({ status: 'COMPLETED' })).toEqual(['Neuromancer']);
     // Two statuses, so the enum's value mapping is exercised in more than one
