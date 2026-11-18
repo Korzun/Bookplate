@@ -21,6 +21,8 @@ export interface BookRowProps {
   title: string;
   author: string;
   seriesIndex: number;
+  /** The book's place in a collection, shown as `#<position>`; omitted when it has none. */
+  position?: number | null;
   hasCover: boolean;
   /** Already-authorized image src (from `useAuthorizedSrc`), or `undefined` while unresolved / no cover. */
   coverSrc?: string;
@@ -37,6 +39,7 @@ export function BookRow({
   title,
   author,
   seriesIndex,
+  position,
   hasCover,
   coverSrc,
   progressPercentage,
@@ -48,6 +51,9 @@ export function BookRow({
   const meta: ReactNode[] = [];
   if (showAuthor && author) {
     meta.push(author);
+  }
+  if (position !== undefined && position !== null) {
+    meta.push(`#${position}`);
   }
   if (seriesIndex > 0) {
     meta.push(`Book ${seriesIndex}`);

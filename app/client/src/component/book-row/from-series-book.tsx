@@ -50,6 +50,8 @@ interface BookRowFromSeriesBookProps {
   asCard?: boolean;
   showAuthor?: boolean;
   book: FragmentType<typeof SeriesBookRowFragment>;
+  /** Collection position, when this row is listed inside a collection. */
+  position?: number | null;
 }
 
 /**
@@ -69,7 +71,12 @@ interface BookRowFromSeriesBookProps {
  * `withTargetUser()` wrapping is needed — the same reason `BookRowFromEntry`
  * dropped it.
  */
-export function BookRowFromSeriesBook({ asCard, showAuthor, book }: BookRowFromSeriesBookProps) {
+export function BookRowFromSeriesBook({
+  asCard,
+  showAuthor,
+  book,
+  position,
+}: BookRowFromSeriesBookProps) {
   const navigate = useNavigate();
   const unmasked = useFragment(SeriesBookRowFragment, book);
   const coverSrc = useAuthorizedSrc(unmasked.hasCover ? unmasked.thumbnailUrl : null);
@@ -84,6 +91,7 @@ export function BookRowFromSeriesBook({ asCard, showAuthor, book }: BookRowFromS
       title={unmasked.title}
       author=""
       seriesIndex={unmasked.seriesIndex}
+      position={position}
       hasCover={unmasked.hasCover}
       coverSrc={coverSrc}
       progressPercentage={unmasked.progress?.percentage}

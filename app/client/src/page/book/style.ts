@@ -101,6 +101,16 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     gap: theme.space.md,
   },
+  collections: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.space.md,
+    color: theme.color.text.secondary,
+  },
+  collectionLink: {
+    color: theme.color.text.primary,
+    '&:hover': { color: theme.color.brand.default },
+  },
   deleteBook: {
     color: theme.color.danger.default,
     fontWeight: theme.fontWeight.extrabold,

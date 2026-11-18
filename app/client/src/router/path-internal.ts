@@ -13,6 +13,7 @@ export const request = () => '/request';
  * provider.ts`); `ProtectedRoute`'s `state.from` round-trip carries that
  * query string through `/login` and back.
  */
+export const collection = (collectionName: string) => `/library/collection/${collectionName}`;
 export const connect = () => '/connect';
 export const book = (bookId: string) => `${library()}/book/${bookId}`;
 export const bookEdit = (bookId: string) => `${library()}/book/${bookId}/edit`;

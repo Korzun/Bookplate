@@ -76,12 +76,17 @@ const GROUP_LABEL: Record<Suggestion['type'], string> = {
   subject: 'Subject',
 };
 
-/** Wire `SuggestionType` (`AUTHOR|BOOK|SERIES|SUBJECT`) → this hook's lowercase client type. */
-const SERVER_GROUP_TYPE: Record<SuggestionType, 'author' | 'series' | 'book' | 'subject'> = {
+/**
+ * Wire `SuggestionType` (`AUTHOR|BOOK|COLLECTION|SERIES|SUBJECT`) → this hook's
+ * lowercase client type. `null` means the client has no UI for that group yet
+ * (COLLECTION until the collection filter lands); such groups are skipped.
+ */
+const SERVER_GROUP_TYPE: Record<SuggestionType, 'author' | 'series' | 'book' | 'subject' | null> = {
   AUTHOR: 'author',
   SERIES: 'series',
   BOOK: 'book',
   SUBJECT: 'subject',
+  COLLECTION: null,
 };
 
 /** Unchanged by the REST→GraphQL move — the debounce this hook has always used. */
@@ -270,6 +275,7 @@ export function useSearchSuggestions(
     const serverGroups: ServerGroup[] = library.searchSuggestions;
     for (const g of serverGroups) {
       const type = SERVER_GROUP_TYPE[g.type];
+      if (type === null) continue;
       const additive = type === 'subject';
       const items: Suggestion[] = g.items.map((item) => ({
         type,
