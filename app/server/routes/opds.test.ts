@@ -1265,3 +1265,65 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('GET /opds/collections/:collectionId', () => {
+  const metaWith = (title: string, collections: EpubMeta['collections']): EpubMeta => ({
+    ...FAKE_META,
+    title,
+    collections,
+  });
+
+  it('lists books in position order with the collection name as title', async () => {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'col1', stage('col1'), {
+      ...metaWith('Second Book', [{ name: 'Cosmere', position: 2 }]),
+    });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'col2', stage('col2'), {
+      ...metaWith('First Book', [{ name: 'Cosmere', position: 1 }]),
+    });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'col3', stage('col3'), {
+      ...metaWith('Unrelated', []),
+    });
+    const collection = await prisma.collection.findFirstOrThrow({
+      where: { userId: alice.userId, name: 'Cosmere' },
+    });
+    const res = await request(app)
+      .get(`/opds/collections/${collection.id}`)
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<title>Cosmere</title>');
+    expect(res.text).not.toContain('Unrelated');
+    expect(res.text.indexOf('First Book')).toBeLessThan(res.text.indexOf('Second Book'));
+  });
+
+  it("returns an empty feed for another user's collection", async () => {
+    await seedBook(prisma, { booksRoot: booksDir }, bob, 'col4', stage('col4'), {
+      ...metaWith('Bob Book', [{ name: 'Bob Only', position: 1 }]),
+    });
+    const collection = await prisma.collection.findFirstOrThrow({
+      where: { userId: bob.userId, name: 'Bob Only' },
+    });
+    const res = await request(app)
+      .get(`/opds/collections/${collection.id}`)
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('<entry>');
+    expect(res.text).not.toContain('Bob Book');
+  });
+
+  it('adds a related link per collection to book entries', async () => {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'col5', stage('col5'), {
+      ...metaWith('Linked Book', [
+        { name: 'Alpha', position: 1 },
+        { name: 'Beta', position: null },
+      ]),
+    });
+    const alpha = await prisma.collection.findFirstOrThrow({
+      where: { userId: alice.userId, name: 'Alpha' },
+    });
+    const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
+    expect(res.text).toContain('rel="related"');
+    expect(res.text).toContain(`/opds/collections/${alpha.id}`);
+    expect(res.text).toContain('title="Alpha"');
+    expect(res.text).toContain('title="Beta"');
+  });
+});

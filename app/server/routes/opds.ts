@@ -18,6 +18,7 @@ import {
   listBooksByStatus,
   listSeries,
 } from '../services/book-catalog';
+import { collectionsForBooks, listBooksByCollection } from '../services/book-collections';
 import { transformCoverToJpeg } from '../services/cover-transform';
 import { getBySlug, isEnabled } from '../services/device';
 import { getOrCreateEdition } from '../services/edition';
@@ -185,6 +186,11 @@ export function createOpdsRouter({
       const owner = req.opdsOwner!;
       const { origin, device, feedBase } = feedContext(req);
       const books = await listBooks(prisma, booksRoot, owner);
+      const collections = await collectionsForBooks(
+        prisma,
+        owner,
+        books.map((b) => b.id)
+      );
       log.debug(`Books feed served (${books.length} books)`);
       const now = new Date().toISOString();
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
@@ -195,7 +201,9 @@ export function createOpdsRouter({
           selfHref: `${feedBase}/books`,
           startHref: `${feedBase}/`,
           now,
-          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          entries: books.map((b) =>
+            bookEntry(b, origin, smallestWidth, device, collections.get(b.id), feedBase)
+          ),
         })
       );
     });
@@ -232,6 +240,11 @@ export function createOpdsRouter({
       const { origin, device, feedBase } = feedContext(req);
       const author = req.params.author;
       const books = await listBooksByAuthor(prisma, booksRoot, owner, author);
+      const collections = await collectionsForBooks(
+        prisma,
+        owner,
+        books.map((b) => b.id)
+      );
       const now = new Date().toISOString();
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
@@ -241,7 +254,9 @@ export function createOpdsRouter({
           selfHref: `${feedBase}/authors/${encodeURIComponent(author)}`,
           startHref: `${feedBase}/`,
           now,
-          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          entries: books.map((b) =>
+            bookEntry(b, origin, smallestWidth, device, collections.get(b.id), feedBase)
+          ),
         })
       );
     });
@@ -278,6 +293,11 @@ export function createOpdsRouter({
       const { origin, device, feedBase } = feedContext(req);
       const seriesId = req.params.seriesId;
       const books = await listBooksBySeries(prisma, booksRoot, owner, seriesId);
+      const collections = await collectionsForBooks(
+        prisma,
+        owner,
+        books.map((b) => b.id)
+      );
       const now = new Date().toISOString();
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
@@ -287,10 +307,45 @@ export function createOpdsRouter({
           selfHref: `${feedBase}/series/${seriesId}`,
           startHref: `${feedBase}/`,
           now,
-          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          entries: books.map((b) =>
+            bookEntry(b, origin, smallestWidth, device, collections.get(b.id), feedBase)
+          ),
         })
       );
     });
+
+    target.get(
+      '/collections/:collectionId',
+      async (req: Request<{ collectionId: string }>, res: Response) => {
+        const owner = req.opdsOwner!;
+        const { origin, device, feedBase } = feedContext(req);
+        const collectionId = req.params.collectionId;
+        const books = await listBooksByCollection(prisma, booksRoot, owner, collectionId);
+        const collections = await collectionsForBooks(
+          prisma,
+          owner,
+          books.map((b) => b.id)
+        );
+        const collection = await prisma.collection.findFirst({
+          where: { id: collectionId, userId: owner.userId },
+          select: { name: true },
+        });
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          acquisitionFeed({
+            id: `urn:bookplate:collection:${collectionId}`,
+            title: collection?.name ?? 'Collection',
+            selfHref: `${feedBase}/collections/${collectionId}`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: books.map((b) =>
+              bookEntry(b, origin, smallestWidth, device, collections.get(b.id), feedBase)
+            ),
+          })
+        );
+      }
+    );
 
     target.get('/subjects', async (req: Request, res: Response) => {
       const owner = req.opdsOwner!;
@@ -324,6 +379,11 @@ export function createOpdsRouter({
       const { origin, device, feedBase } = feedContext(req);
       const subject = req.params.subject;
       const books = await listBooksBySubject(prisma, booksRoot, owner, subject);
+      const collections = await collectionsForBooks(
+        prisma,
+        owner,
+        books.map((b) => b.id)
+      );
       const now = new Date().toISOString();
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
@@ -333,7 +393,9 @@ export function createOpdsRouter({
           selfHref: `${feedBase}/subjects/${encodeURIComponent(subject)}`,
           startHref: `${feedBase}/`,
           now,
-          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          entries: books.map((b) =>
+            bookEntry(b, origin, smallestWidth, device, collections.get(b.id), feedBase)
+          ),
         })
       );
     });
@@ -393,6 +455,11 @@ export function createOpdsRouter({
         owner,
         status as 'not-started' | 'in-progress' | 'completed'
       );
+      const collections = await collectionsForBooks(
+        prisma,
+        owner,
+        books.map((b) => b.id)
+      );
       const now = new Date().toISOString();
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
@@ -402,7 +469,9 @@ export function createOpdsRouter({
           selfHref: `${feedBase}/status/${status}`,
           startHref: `${feedBase}/`,
           now,
-          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          entries: books.map((b) =>
+            bookEntry(b, origin, smallestWidth, device, collections.get(b.id), feedBase)
+          ),
         })
       );
     });

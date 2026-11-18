@@ -54,7 +54,9 @@ export function bookEntry(
   b: Book,
   baseUrl: string,
   smallestThumbnailWidth: number | null,
-  device?: Device
+  device?: Device,
+  collections: { id: string; name: string }[] = [],
+  feedBase: string = `${baseUrl}/opds`
 ): string {
   const acquisitionHref = device
     ? `${baseUrl}/opds/books/${b.id}/devices/${device.slug}/download`
@@ -91,6 +93,14 @@ export function bookEntry(
       xml`    <link rel="http://opds-spec.org/image/thumbnail"
           href="${baseUrl}/opds/books/${b.id}/cover?width=${String(smallestThumbnailWidth)}&amp;v=${version}"
           type="image/jpeg"/>`
+    );
+  }
+  for (const c of collections) {
+    parts.push(
+      xml`    <link rel="related"
+          href="${feedBase}/collections/${c.id}"
+          type="application/atom+xml;profile=opds-catalog;kind=acquisition"
+          title="${c.name}"/>`
     );
   }
   parts.push('  </entry>');

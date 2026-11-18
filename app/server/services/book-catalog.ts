@@ -40,7 +40,7 @@ import { countForBook } from './edition';
  * they share are a coincidence of two independent requirements rather than a
  * shared one.
  */
-const BOOK_SELECT = {
+export const BOOK_SELECT = {
   id: true,
   title: true,
   titleSort: true,
@@ -96,7 +96,7 @@ function sortByTitle<T extends { titleSort: string; title: string; id: string }>
   });
 }
 
-function prismaBookToBook(
+export function prismaBookToBook(
   booksRoot: string,
   owner: Owner,
   r: Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>
