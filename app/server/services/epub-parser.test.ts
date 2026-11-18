@@ -1027,6 +1027,24 @@ describe('parseEpub', () => {
       expect(meta.collections).toEqual([]);
     });
 
+    it('treats an unknown collection-type as untyped: a series candidate, never a set', () => {
+      const meta = build('coll-unknown-type', [
+        { id: 'c1', name: 'Odd Series', type: 'anthology', pos: '3' },
+      ]);
+      expect(meta.series).toBe('Odd Series');
+      expect(meta.seriesIndex).toBe(3);
+      expect(meta.collections).toEqual([]);
+    });
+
+    it('keeps an unknown-typed collection as the series beside a real set', () => {
+      const meta = build('coll-unknown-with-set', [
+        { id: 'c1', name: 'Odd Series', type: 'anthology', pos: '3' },
+        { id: 'c2', name: 'A Set', type: 'set', pos: '9' },
+      ]);
+      expect(meta.series).toBe('Odd Series');
+      expect(meta.collections).toEqual([{ name: 'A Set', position: 9 }]);
+    });
+
     it('falls back to the last group-position when nothing is typed', () => {
       const meta = build(
         'coll-fallback',
