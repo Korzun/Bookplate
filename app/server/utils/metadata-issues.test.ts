@@ -277,25 +277,62 @@ describe('detectMetadataIssues', () => {
     expect(find(issues, 'subjects-split')).toBeUndefined();
   });
 
-  it('only proposes (never auto-applies) a further split of a "--" part', () => {
+  it('auto-splits a "--" inverted-name subject without proposing a comma split', () => {
     const issues = detectMetadataIssues({
       ...base,
       subjects: ['Bennet, Elizabeth (Fictitious character)--Fiction'],
     });
     const splitIssues = issues.filter((i) => i.kind === 'subjects-split');
-    expect(splitIssues).toHaveLength(2);
+    expect(splitIssues).toHaveLength(1);
     expect(splitIssues[0]).toMatchObject({
       from: 'Bennet, Elizabeth (Fictitious character)--Fiction',
       autoEligible: true,
       toChips: ['Bennet, Elizabeth (Fictitious character)', 'Fiction'],
     });
-    // The proposal targets the part the auto split produces, so it still
-    // applies after the auto split has run.
-    expect(splitIssues[1]).toMatchObject({
-      from: 'Bennet, Elizabeth (Fictitious character)',
-      autoEligible: false,
-      fromChips: ['Bennet, Elizabeth (Fictitious character)'],
-      toChips: ['Bennet', 'Elizabeth (Fictitious character)'],
+  });
+
+  describe('catalogue headings (Standard Ebooks fixtures)', () => {
+    const proposals = (issues: MetadataIssue[]) =>
+      issues.filter((i) => i.kind === 'subjects-split' && !i.autoEligible);
+
+    it('does not comma-split an inverted name heading from a "--" subject', () => {
+      const issues = detectMetadataIssues({
+        ...base,
+        subjects: ['Holmes, Sherlock (Fictitious character)--Fiction'],
+      });
+      expect(proposals(issues)).toEqual([]);
+    });
+
+    it('does not comma-split an inverted qualifier in a book with "--" subjects', () => {
+      const issues = detectMetadataIssues({
+        ...base,
+        subjects: [
+          'Holmes, Sherlock (Fictitious character)--Fiction',
+          'Private investigators--England--Fiction',
+          'Detective and mystery stories, English',
+        ],
+      });
+      expect(proposals(issues)).toEqual([]);
+    });
+
+    it('does not comma-split an inverted name with a qualifier even without "--" subjects', () => {
+      const issues = detectMetadataIssues({
+        ...base,
+        subjects: ['Carter, John (Fictitious character)', 'Science fiction'],
+      });
+      expect(proposals(issues)).toEqual([]);
+    });
+
+    it('still proposes a comma tag list in a book with no "--" subjects', () => {
+      const issues = detectMetadataIssues({ ...base, subjects: ['Sci-Fi, Fantasy', 'Horror'] });
+      expect(proposals(issues).map((i) => i.toChips)).toEqual([['Sci-Fi', 'Fantasy']]);
+    });
+
+    it('still proposes "&" splits in a book with "--" subjects', () => {
+      const issues = detectMetadataIssues({ ...base, subjects: ['Arts & crafts--Fiction'] });
+      expect(proposals(issues)).toMatchObject([
+        { from: 'Arts & crafts', toChips: ['Arts', 'crafts'] },
+      ]);
     });
   });
 
