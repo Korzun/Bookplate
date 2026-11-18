@@ -11,6 +11,8 @@ export function filterFromSearchParams(params: URLSearchParams): BookListFilter 
   if (author) filter.author = author;
   const seriesName = params.get('seriesName');
   if (seriesName) filter.seriesName = seriesName;
+  const collection = params.get('collection');
+  if (collection) filter.collection = collection;
   const status = params.get('status');
   if (status === 'not-started' || status === 'in-progress' || status === 'completed')
     filter.status = status;
@@ -30,6 +32,7 @@ export function filterToSearchParams(filter: BookListFilter): URLSearchParams {
   if (filter.query) params.set('q', filter.query);
   if (filter.author) params.set('author', filter.author);
   if (filter.seriesName) params.set('seriesName', filter.seriesName);
+  if (filter.collection) params.set('collection', filter.collection);
   if (filter.status) params.set('status', filter.status);
   for (const s of filter.subjects ?? []) params.append('subjects', s);
   if (filter.entryType) params.set('entryType', filter.entryType);

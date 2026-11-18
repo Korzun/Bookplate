@@ -31,3 +31,14 @@ describe('rating filter URL state', () => {
     expect(filterToSearchParams({}).toString()).toBe('');
   });
 });
+
+describe('collection filter URL state', () => {
+  it('parses and round-trips an encoded collection name', () => {
+    const params = new URLSearchParams('collection=A%2FB');
+    expect(filterFromSearchParams(params)).toEqual({ collection: 'A/B' });
+    expect(filterToSearchParams({ collection: 'A/B' }).get('collection')).toBe('A/B');
+    expect(filterFromSearchParams(filterToSearchParams({ collection: 'A/B' }))).toEqual({
+      collection: 'A/B',
+    });
+  });
+});
