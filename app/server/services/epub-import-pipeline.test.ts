@@ -259,7 +259,7 @@ describe('epub-import-pipeline', () => {
       expect(result.proposals.find((f) => f.kind === 'subjects-split')).toBeUndefined();
     });
 
-    it('auto-splits "--" subjects on import, keeping a further comma split as a proposal', async () => {
+    it('auto-splits "--" subjects on import without proposing comma splits of headings', async () => {
       const book = await seedBookWithSubjects('book-lcsh', [
         'England--Fiction',
         'Bennet, Elizabeth (Fictitious character)--Fiction',
@@ -278,7 +278,7 @@ describe('epub-import-pipeline', () => {
       ]);
       expect(result.applied.filter((f) => f.kind === 'subjects-split')).toHaveLength(2);
       const proposals = result.proposals.filter((f) => f.kind === 'subjects-split');
-      expect(proposals.map((f) => f.from)).toEqual(['Bennet, Elizabeth (Fictitious character)']);
+      expect(proposals).toEqual([]);
     });
   });
 });

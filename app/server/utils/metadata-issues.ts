@@ -232,10 +232,14 @@ function isAllCaps(title: string): boolean {
   return letters.length >= 4 && title === title.toUpperCase() && title !== title.toLowerCase();
 }
 
-// Compound-subject separators. Comma is included because publishers/Calibre
-// often join tags with commas (e.g. "Sci-Fi, Fantasy"); "Last, First" person
-// forms are an author-field concern and do not occur in subjects. Splitting is
-// proposal-only, so any unwanted split can be dismissed.
+// Compound-subject separators. Splitting is proposal-only, so any unwanted
+// split can be dismissed. Comma is a separator only sometimes: publishers and
+// Calibre join tags with it ("Sci-Fi, Fantasy"), but catalogue headings use it
+// inside one heading, for inverted names ("Holmes, Sherlock (Fictitious
+// character)") and inverted qualifiers ("Detective and mystery stories,
+// English"). So a comma splits only in a book with no "--" subject (no sign of
+// catalogue headings) and only when the subject is not shaped like an inverted
+// name with a qualifier (INVERTED_NAME).
 // "--" is a library-catalogue subdivision ("England--Fiction", LCSH style),
 // as Standard Ebooks and other library-sourced EPUBs ship it. Unlike the
 // separators above it is unambiguous, so its split is applied automatically.
@@ -250,9 +254,12 @@ function dedupeCaseInsensitive(parts: string[]): string[] {
   return parts.filter((p, i) => parts.findIndex((o) => o.toLowerCase() === p.toLowerCase()) === i);
 }
 
-function splitSubject(subject: string): string[] {
+// "Last, First (Qualifier)": exactly one comma, ending in a parenthetical.
+const INVERTED_NAME = /^[^,()]+,\s*[^,()]+\([^()]*\)\s*$/;
+
+function splitSubject(subject: string, opts: { comma: boolean }): string[] {
   return subject
-    .split(/\s*(?:&|\/|;|,)\s*/)
+    .split(opts.comma ? /\s*(?:&|\/|;|,)\s*/ : /\s*(?:&|\/|;)\s*/)
     .map((p) => p.trim())
     .filter(Boolean);
 }
@@ -465,11 +472,15 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
   // A "--" subdivision is split first and automatically. The proposal-only
   // separators are then checked on each resulting part, so a proposal's
   // fromChips[0] names a subject that exists once the auto split has run
-  // ("Bennet, Elizabeth (Fictitious character)--Fiction" auto-splits off
-  // "Fiction"; splitting the name at its comma stays a dismissable proposal).
+  // ("Arts & crafts--Fiction" auto-splits off "Fiction"; splitting "Arts &
+  // crafts" stays a dismissable proposal). Any "--" subject marks the book as
+  // catalogue-sourced, which turns off comma splits for all its subjects.
+  const catalogue = subjects.some((s) => typeof s === 'string' && splitSubdivisions(s).length > 1);
   const seen = new Set<string>();
   const proposeSplit = (subject: string) => {
-    const parts = splitSubject(subject);
+    const parts = splitSubject(subject, {
+      comma: !catalogue && !INVERTED_NAME.test(subject),
+    });
     if (parts.length < 2) return;
     if (seen.has(subject.toLowerCase())) return;
     seen.add(subject.toLowerCase());
