@@ -17,6 +17,7 @@ import { isLivePendingFix, parsePendingFixState } from '../../derive';
 // lines down.
 import { model as book } from '../book/model';
 import { builder } from '../builder';
+import { model as collection } from '../collection/model';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry/model';
 import { model as libraryRatingProfile } from '../library-rating-profile/model';
 import { isOwnerOrAdmin, parseCompoundId } from '../node-scope';
@@ -369,6 +370,7 @@ builder.node(model, {
               query: args.filter.query ?? undefined,
               author: args.filter.author ?? undefined,
               seriesName: args.filter.seriesName ?? undefined,
+              collection: args.filter.collection ?? undefined,
               status: args.filter.status ?? undefined,
               subjects: args.filter.subjects ?? undefined,
               entryType: args.filter.entryType ?? undefined,
@@ -440,6 +442,7 @@ builder.node(model, {
           filter: {
             author: args.filter?.author ?? undefined,
             seriesName: args.filter?.seriesName ?? undefined,
+            collection: args.filter?.collection ?? undefined,
             activeSubjects: args.filter?.activeSubjects ?? undefined,
           },
         });
@@ -478,6 +481,17 @@ builder.node(model, {
       args: { name: t.arg.string({ required: true }) },
       resolve: (query, owner, args, context) =>
         context.prisma.series.findUnique({
+          ...query,
+          where: { userId_name: { userId: owner.userId, name: args.name } },
+        }),
+    }),
+
+    collectionByName: t.prismaField({
+      type: collection,
+      nullable: true,
+      args: { name: t.arg.string({ required: true }) },
+      resolve: (query, owner, args, context) =>
+        context.prisma.collection.findUnique({
           ...query,
           where: { userId_name: { userId: owner.userId, name: args.name } },
         }),

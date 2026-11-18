@@ -86,6 +86,10 @@ import { graphql } from '~/gql';
  * every visit, and it is a plain object of five scalars — no list, so it
  * adds breadth only, one per selection.
  *
+ * `collections { position collection { id name } }` (epub-collections): a
+ * small list (one book's memberships), re-measured at breadth 51 (51.0%) /
+ * complexity 165 (0.5%) — supersedes the figures below.
+ *
  * Measured (`npm run test:cost -w app/server`): breadth 44 (44.0%),
  * complexity 44 (0.1%) of budget — up from 37 (37.0%) / 37 (0.1%) before
  * `rating`, and down from breadth 50 (50.0%) / complexity 164 (0.5%)
@@ -120,6 +124,13 @@ export const BookDetailDocument = graphql(`
           series {
             id
             name
+          }
+          collections {
+            position
+            collection {
+              id
+              name
+            }
           }
           progress {
             id

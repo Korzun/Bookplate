@@ -442,19 +442,56 @@ export function parseEpub(filePath: string): EpubMeta {
 
   let calibreSeries = '';
   let calibreSeriesIndex = 0;
-  let groupPosition = 0;
-  const collectionCandidates: MetaLike[] = [];
+  let lastGroupPosition = 0;
+  const collectionMetas: MetaLike[] = [];
+  const typeById = new Map<string, string>();
+  const positionById = new Map<string, number>();
+  const parseNum = (raw: string | undefined): number | null => {
+    const n = parseFloat(raw ?? '');
+    return Number.isFinite(n) ? n : null;
+  };
 
   for (const m of metas) {
     if (m['@_name'] === 'calibre:series') calibreSeries = decodeEntities(m['@_content'] ?? '');
-    if (m['@_name'] === 'calibre:series_index')
-      calibreSeriesIndex = parseFloat(m['@_content'] ?? '0') || 0;
-    if (m['@_property'] === 'belongs-to-collection') collectionCandidates.push(m);
-    if (m['@_property'] === 'group-position') groupPosition = parseFloat(m['#text'] ?? '0') || 0;
+    if (m['@_name'] === 'calibre:series_index') calibreSeriesIndex = parseNum(m['@_content']) ?? 0;
+    if (m['@_property'] === 'belongs-to-collection') collectionMetas.push(m);
+    const refines = (m['@_refines'] ?? '').replace(/^#/, '');
+    if (m['@_property'] === 'collection-type' && refines && !typeById.has(refines))
+      typeById.set(refines, (m['#text'] ?? '').trim().toLowerCase());
+    if (m['@_property'] === 'group-position') {
+      const pos = parseNum(m['#text']);
+      lastGroupPosition = pos ?? 0;
+      if (refines && pos !== null && !positionById.has(refines)) positionById.set(refines, pos);
+    }
   }
 
-  const series = calibreSeries || pickLang(collectionCandidates);
-  const seriesIndex = calibreSeriesIndex || groupPosition;
+  // Only "series" and "set" count as typed; unknown values are treated as untyped,
+  // and a collection-type that refines no collection is ignored.
+  const typeOf = (c: MetaLike): 'series' | 'set' | '' => {
+    const id = typeof c === 'string' ? '' : (c['@_id'] ?? '');
+    const t = id ? typeById.get(id) : undefined;
+    return t === 'series' || t === 'set' ? t : '';
+  };
+  const typedKinds = collectionMetas.map(typeOf);
+  const anyTyped = typedKinds.some((t) => t !== '');
+  const seriesTyped = collectionMetas.filter((_, i) => typedKinds[i] === 'series');
+  const seriesCandidates = seriesTyped.length
+    ? seriesTyped
+    : collectionMetas.filter((_, i) => typedKinds[i] === '');
+  const chosenSeries = seriesCandidates.length ? pickLocalized(seriesCandidates) : null;
+
+  const collections: { name: string; position: number | null }[] = [];
+  collectionMetas.forEach((c, i) => {
+    if (typedKinds[i] !== 'set') return;
+    const { text, id } = toLocalizedValue(c);
+    const name = text.trim();
+    if (!name || collections.some((x) => x.name === name)) return;
+    collections.push({ name, position: (id ? positionById.get(id) : undefined) ?? null });
+  });
+
+  const series = calibreSeries || (chosenSeries?.text ?? '');
+  const ownPosition = chosenSeries?.id ? positionById.get(chosenSeries.id) : undefined;
+  const seriesIndex = calibreSeriesIndex || ownPosition || (anyTyped ? 0 : lastGroupPosition);
 
   // titleSort: dc:title file-as attribute, then an EPUB 3 <meta refines>
   // fallback, then the EPUB 2 <meta name="calibre:title_sort"> form (the
@@ -545,6 +582,7 @@ export function parseEpub(filePath: string): EpubMeta {
     publisher,
     identifiers,
     subjects,
+    collections,
     series,
     seriesIndex,
     coverData,

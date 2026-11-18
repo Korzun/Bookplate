@@ -18,7 +18,9 @@ import { countForBook } from './edition';
  * cross-module export. `BOOK_SELECT` and `prismaBookToBook` were exported for
  * the same reason until task 8: `listBooksPage` used to hydrate a `BookSummary[]`
  * through them. Now that it returns raw Prisma rows instead (task 8's contract
- * change), nothing outside this module needs either, so both are private again.
+ * change) they were private for a while. They are exported again because
+ * `services/book-collections.ts` (`listBooksByCollection`) consumes both; do not
+ * un-export them.
  */
 
 /**
@@ -40,7 +42,7 @@ import { countForBook } from './edition';
  * they share are a coincidence of two independent requirements rather than a
  * shared one.
  */
-const BOOK_SELECT = {
+export const BOOK_SELECT = {
   id: true,
   title: true,
   titleSort: true,
@@ -96,7 +98,7 @@ function sortByTitle<T extends { titleSort: string; title: string; id: string }>
   });
 }
 
-function prismaBookToBook(
+export function prismaBookToBook(
   booksRoot: string,
   owner: Owner,
   r: Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>

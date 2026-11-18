@@ -370,6 +370,7 @@ describe('Library.progress', () => {
       author: 'A',
       series: '',
       seriesIndex: 0,
+      collections: [],
       publisher: '',
       publishDate: '',
       description: '',

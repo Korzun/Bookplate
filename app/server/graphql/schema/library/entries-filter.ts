@@ -32,6 +32,7 @@ export const libraryFilter = builder.inputType('LibraryFilter', {
     query: t.string({ required: false }),
     author: t.string({ required: false }),
     seriesName: t.string({ required: false }),
+    collection: t.string({ required: false }),
     status: t.field({ type: libraryEntryStatus, required: false }),
     subjects: t.stringList({ required: false }),
     entryType: t.field({ type: libraryEntryType, required: false }),

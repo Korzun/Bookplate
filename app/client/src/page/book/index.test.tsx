@@ -189,6 +189,7 @@ const bookMock = (overrides: Record<string, unknown> = {}): MockedResponse => ({
           coverUrl: '/api/books/1/cover?user=le&v=1',
           deviceEditionCount: 2,
           series: { __typename: 'Series' as const, id: 'U2VyaWVzOjE=', name: 'Earthsea' },
+          collections: [],
           progress: {
             __typename: 'Progress' as const,
             id: 'UHJvZ3Jlc3M6MQ==',
@@ -733,8 +734,9 @@ const bookRateMock = (input: Record<string, unknown>, rating: RatingFields): Moc
 const bookRateErrorMock = (input: Record<string, unknown>): MockedResponse => ({
   request: { query: BookRateDocument, variables: { input } },
   error: new Error('rate failed'),
-  // Long enough that the optimistic state is observable before the revert.
-  delay: 50,
+  // Long enough that the optimistic state is observable before the revert,
+  // even when a slow re-render delays the first assertion.
+  delay: 400,
 });
 
 const ratingGroup = (field: string) =>
@@ -815,6 +817,43 @@ describe('BookPage', () => {
     // Wizard of Earthsea") also matches the looser pattern.
     await userEvent.click(await screen.findByText(/\(Earthsea/));
     expect(routerMocks.navigate).toHaveBeenCalledWith('/library/series/Earthsea');
+  });
+
+  it('lists collections with positions, linking to the collection page', async () => {
+    await renderPage([
+      bookMock({
+        collections: [
+          {
+            __typename: 'BookCollectionMembership',
+            position: 77,
+            collection: {
+              __typename: 'Collection',
+              id: 'Q29sbGVjdGlvbjox',
+              name: 'Best 100 (2015)',
+            },
+          },
+          {
+            __typename: 'BookCollectionMembership',
+            position: null,
+            collection: { __typename: 'Collection', id: 'Q29sbGVjdGlvbjoy', name: 'Unnumbered' },
+          },
+        ],
+      }),
+    ]);
+
+    const link = await screen.findByRole('link', { name: 'Best 100 (2015)' });
+    expect(link).toHaveAttribute('href', '/library/collection/Best%20100%20(2015)');
+    expect(link.parentElement).toHaveTextContent('Best 100 (2015) #77');
+    expect(screen.getByRole('link', { name: 'Unnumbered' }).parentElement).toHaveTextContent(
+      /^Unnumbered$/
+    );
+  });
+
+  it('hides the Collections row when the book has none', async () => {
+    await renderPage([bookMock()]);
+
+    await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+    expect(screen.queryByText('Collections')).not.toBeInTheDocument();
   });
 
   it('falls back to the library when the book has no series', async () => {

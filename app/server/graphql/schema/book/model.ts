@@ -182,6 +182,10 @@ export const model = builder.prismaNode('Book', {
     // reads the GraphQL type off the Prisma relation itself.
     series: t.relation('seriesRel', { nullable: true }),
 
+    collections: t.relation('collections', {
+      query: { orderBy: { collection: { name: 'asc' } } },
+    }),
+
     validation: t.relation('validation', { nullable: true }),
 
     // Gated by the same `isLivePendingFix` predicate as `Library.pendingFixes`

@@ -93,6 +93,7 @@ const seedCover = async (): Promise<void> => {
       publisher: '',
       series: '',
       seriesIndex: 0,
+      collections: [],
       identifiers: [],
       subjects: [],
       coverData: Buffer.from('fake-jpeg-bytes'),

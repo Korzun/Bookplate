@@ -36,6 +36,7 @@ export function toLibraryFilter(filter: BookListFilter): LibraryFilter {
     query: filter.query,
     author: filter.author,
     seriesName: filter.seriesName,
+    collection: filter.collection,
     subjects: filter.subjects,
     status: filter.status ? STATUS_MAP[filter.status] : undefined,
     entryType: filter.entryType ? ENTRY_TYPE_MAP[filter.entryType] : undefined,

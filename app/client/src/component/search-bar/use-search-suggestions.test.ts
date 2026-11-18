@@ -321,6 +321,45 @@ describe('useSearchSuggestions', () => {
     expect(subjectGroup?.items[0].additive).toBe(true);
   });
 
+  it('maps a COLLECTION group to a collection suggestion group', async () => {
+    const groups = [
+      wireGroup('COLLECTION', [
+        { label: 'Favorites', value: 'Favorites', matchStart: 0, matchLength: 3 },
+      ]),
+    ];
+    const { result } = renderProbe('fav', emptyFilter, [suggestionsMock('fav', {}, groups)]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(result.current?.loading).toBe(false));
+    const group = result.current?.groups.find((g) => g.type === 'collection');
+    expect(group?.label).toBe('Collection');
+    expect(group?.items[0]).toMatchObject({
+      type: 'collection',
+      value: 'Favorites',
+      additive: false,
+    });
+  });
+
+  it('sends the active collection as a suggestions filter variable', async () => {
+    // A mock matches only on the exact variables, so receiving its group
+    // proves the variable was sent and the query did not error.
+    const groups = [
+      wireGroup('COLLECTION', [
+        { label: 'Fantasy Picks', value: 'Fantasy Picks', matchStart: 0, matchLength: 3 },
+      ]),
+    ];
+    const { result } = renderProbe('fan', { collection: 'Favorites' }, [
+      suggestionsMock('fan', { collection: 'Favorites' }, groups),
+    ]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(result.current?.loading).toBe(false));
+    const group = result.current?.groups.find((g) => g.type === 'collection');
+    expect(group?.items[0]).toMatchObject({ type: 'collection', value: 'Fantasy Picks' });
+  });
+
   it('sends active filter chips as GraphQL variables (author, subjects → activeSubjects)', async () => {
     const filter: BookListFilter = { author: 'N.K. Jemisin', subjects: ['Fantasy'] };
     const wireFilter: SearchSuggestionsFilter = {

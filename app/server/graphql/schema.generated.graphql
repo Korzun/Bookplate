@@ -9,6 +9,7 @@ type Book implements Node {
   chapterCount: Int!
   chapterNames: [String!]
   chapterSpineMap: [Int!]!
+  collections: [BookCollectionMembership!]!
 
   """
   REST URL for this book's cover image. Admin viewers get `?user=<owner username>` appended (their session has no library of its own to default to); every viewer gets `v=<mtime epoch>` for cache-busting.
@@ -91,6 +92,12 @@ type BookClearEditionsPayload {
 }
 
 union BookClearEditionsResult = BookClearEditionsPayload
+
+type BookCollectionMembership {
+  book: Book!
+  collection: Collection!
+  position: Float
+}
 
 input BookDeleteInput {
   id: ID!
@@ -299,6 +306,23 @@ type BookValidatePayload {
 
 union BookValidateResult = BookValidatePayload
 
+type Collection implements Node {
+  bookCount: Int!
+  books(after: String, before: String, first: Int, last: Int): CollectionBooksConnection!
+  id: ID!
+  name: String!
+}
+
+type CollectionBooksConnection {
+  edges: [CollectionBooksConnectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+type CollectionBooksConnectionEdge {
+  cursor: String!
+  node: BookCollectionMembership!
+}
+
 type Config {
   libraryName: String!
   maxConcurrentUploads: Int!
@@ -498,6 +522,7 @@ scalar JSON
 type Library implements Node {
   authors: [String!]!
   book(id: ID!): Book
+  collectionByName(name: String!): Collection
 
   """
   Forward pagination only: this connection offers `first`/`after` and no `last`/`before` — the underlying cursor is forward-only.
@@ -544,6 +569,7 @@ enum LibraryEntryType {
 
 input LibraryFilter {
   author: String
+  collection: String
   entryType: LibraryEntryType
 
   """Keep books (and series with a book) meeting every minimum given."""
@@ -1017,6 +1043,7 @@ input RatingMinimums {
 input SearchSuggestionsFilter {
   activeSubjects: [String!]
   author: String
+  collection: String
   seriesName: String
 }
 
@@ -1076,6 +1103,7 @@ type SuggestionGroup {
 enum SuggestionType {
   AUTHOR
   BOOK
+  COLLECTION
   SERIES
   SUBJECT
 }
