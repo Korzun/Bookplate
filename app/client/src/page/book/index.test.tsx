@@ -743,7 +743,7 @@ const ratingGroup = (field: string) =>
 describe('BookPage', () => {
   it('shows a loading state while the book is still resolving', async () => {
     await renderPage([]);
-    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
   });
 
   it('shows "Book not found." for a null book', async () => {
@@ -1158,7 +1158,7 @@ describe('BookPage', () => {
       // A SKIPPED `useQuery` reports `loading: false` on its own, so without
       // the fold this renders "Book not found." for the whole bootstrap
       // round trip on every cold load.
-      expect(screen.getByText('Loading…')).toBeInTheDocument();
+      expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
       expect(screen.queryByText('Book not found.')).toBeNull();
       expect(screen.queryByText('Failed to load book.')).toBeNull();
     });

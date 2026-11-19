@@ -2,9 +2,15 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
   loading: {
-    color: theme.color.text.muted,
+    display: 'flex',
+    justifyContent: 'center',
     padding: theme.space.xxxxxl,
-    textAlign: 'center',
+  },
+  spinner: {
+    ...theme.recipe.spinner,
+    height: '2rem',
+    width: '2rem',
+    color: theme.color.text.muted,
   },
   notFound: {
     color: theme.color.text.muted,

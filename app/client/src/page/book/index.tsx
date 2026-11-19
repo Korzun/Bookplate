@@ -37,7 +37,7 @@ import {
   BookValidateDocument,
   ValidationFragment,
 } from '~/graphql/book';
-import { AlertOctagonIcon, DeviceIcon } from '~/icon';
+import { AlertOctagonIcon, DeviceIcon, SpinnerIcon } from '~/icon';
 import type { Severity, ValidationMessage } from '~/lib/severity';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useDownloadBook } from '~/lib/use-download-book';
@@ -724,9 +724,9 @@ export const BookPage = () => {
   if (loading) {
     return (
       <Page>
-        <Card>
-          <p className={styles.loading}>Loading…</p>
-        </Card>
+        <div className={styles.loading}>
+          <SpinnerIcon role="status" aria-label="Loading" className={styles.spinner} />
+        </div>
       </Page>
     );
   }
