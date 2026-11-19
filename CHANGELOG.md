@@ -1,5 +1,6 @@
 ## Unreleased
 
+- feat(client): loading spinners while the library loads more books and while a series page loads
 - feat: edit a pending book request in place (title, author, note), in the web UI and over MCP (`update_book_request`)
 
 ## 0.14.0
