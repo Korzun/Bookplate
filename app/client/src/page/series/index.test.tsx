@@ -138,9 +138,9 @@ async function renderPage(mocks: MockedResponse[]) {
 
 describe('SeriesPage', () => {
   it('shows a loading state while the series is still resolving', async () => {
-    const { getByText } = await renderPage([]);
+    const { getByRole } = await renderPage([]);
 
-    expect(getByText('Loading…')).toBeInTheDocument();
+    expect(getByRole('status', { name: 'Loading' })).toBeInTheDocument();
   });
 
   it('shows "Series not found" for a null series', async () => {

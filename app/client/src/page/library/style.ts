@@ -49,4 +49,15 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     width: '2rem',
     color: theme.color.text.muted,
   },
+  loadingMore: {
+    display: 'flex',
+    justifyContent: 'center',
+    padding: theme.space.md,
+  },
+  loadingMoreSpinner: {
+    ...theme.recipe.spinner,
+    height: '1.5rem',
+    width: '1.5rem',
+    color: theme.color.text.muted,
+  },
 }));

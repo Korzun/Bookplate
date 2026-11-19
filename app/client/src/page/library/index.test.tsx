@@ -573,6 +573,43 @@ describe('LibraryPage', () => {
     expect(screen.queryByText('Failed to load library')).toBeNull();
   });
 
+  it('shows a spinner below the rows while the next page is loading', async () => {
+    const mocks = [
+      firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),
+      // Held long past the test's own lifetime, so the `fetchMore` stays in
+      // flight and the spinner is observable rather than racing the result.
+      {
+        request: {
+          query: LibraryEntriesDocument,
+          variables: { libraryId: LIBRARY_ID, first: PAGE_SIZE, after: 'c1', filter: emptyFilter },
+        },
+        delay: 60_000,
+        result: {
+          data: {
+            __typename: 'Query',
+            ...connection([bookEdge('c2')], { hasNextPage: false, endCursor: 'c2' }),
+          },
+        },
+      } satisfies MockedResponse<LibraryEntriesQuery>,
+    ];
+
+    renderLibraryPage(mocks);
+
+    await waitFor(() => expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Loading more books' })).toBeTruthy()
+    );
+    // The existing rows stay put above the spinner.
+    expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy();
+  });
+
+  it('shows no load-more spinner once there are no more pages', async () => {
+    renderLibraryPage([firstPageMock([bookEdge('c1')], { hasNextPage: false, endCursor: 'c1' })]);
+
+    await waitFor(() => expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy());
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('keeps rows and offers Retry when the next page fails', async () => {
     const mocks = [
       firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),

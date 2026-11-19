@@ -15,6 +15,7 @@ import {
 import { SeriesBookRowFragment } from '~/component/book-row/from-series-book';
 import { toRatingValue } from '~/component/book-row/to-rating-value';
 import { graphql, useFragment } from '~/gql';
+import { SpinnerIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
 import { useCurrentLibraryId } from '~/provider/library-target';
 import { path } from '~/router';
@@ -145,7 +146,9 @@ export const SeriesPage = () => {
     return (
       <Page back={path.library()}>
         <Card>
-          <p className={style.loading}>Loading…</p>
+          <div className={style.loading}>
+            <SpinnerIcon role="status" aria-label="Loading" className={style.spinner} />
+          </div>
         </Card>
       </Page>
     );
