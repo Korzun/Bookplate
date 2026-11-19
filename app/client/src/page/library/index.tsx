@@ -174,7 +174,7 @@ export const LibraryPage = () => {
   // itself and surfaced through the SAME `error` field, with `edges` left
   // UNTOUCHED — existing rows survive, the page offers a retry
   // (`edges.length === 0` vs `> 0` is what distinguishes the two below).
-  const { edges, loading, error, hasNextPage, loadMore } = usePaginatedConnection({
+  const { edges, loading, loadingMore, error, hasNextPage, loadMore } = usePaginatedConnection({
     document: LibraryEntriesDocument,
     variables: { libraryId: libraryId ?? '', first: PAGE_SIZE, filter: libraryFilter },
     skip: libraryId === undefined,
@@ -287,6 +287,15 @@ export const LibraryPage = () => {
         <div className={style.root}>
           {edges.map(renderEdge)}
           {hasNextPage && <div ref={sentinelRef} />}
+          {loadingMore && (
+            <div className={style.loadingMore}>
+              <SpinnerIcon
+                role="status"
+                aria-label="Loading more books"
+                className={style.loadingMoreSpinner}
+              />
+            </div>
+          )}
           {error !== undefined && edges.length > 0 && (
             <div className={style.pageError}>
               Failed to load more books
