@@ -145,11 +145,9 @@ export const SeriesPage = () => {
   if (loading) {
     return (
       <Page back={path.library()}>
-        <Card>
-          <div className={style.loading}>
-            <SpinnerIcon role="status" aria-label="Loading" className={style.spinner} />
-          </div>
-        </Card>
+        <div className={style.loading}>
+          <SpinnerIcon role="status" aria-label="Loading" className={style.spinner} />
+        </div>
       </Page>
     );
   }
