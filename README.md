@@ -238,7 +238,8 @@ Tools: `search_library`, `get_book`, `get_series`, `list_series`,
 `list_library_facets`, `list_pending_fixes`, `get_validation_report`,
 `list_reading_progress`, `get_book_cover`, `list_book_requests`,
 `update_book_metadata`, `validate_book`, `resolve_metadata_fixes`,
-`regenerate_chapters`, `delete_book`, `request_book`, `fulfill_book_request`,
+`regenerate_chapters`, `delete_book`, `request_book`, `update_book_request`,
+`fulfill_book_request`,
 `create_upload_link`, `upload_book`, `stage_replacement` and
 `replace_book_file`. Uploads take an upload link (`create_upload_link`, then PUT
 the file to it with `curl --fail -T file <link>`: up to 50 MB, works once, valid
