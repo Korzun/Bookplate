@@ -12,7 +12,7 @@ import type { BookListFilter } from '~/lib/book-types';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 export type Suggestion = {
-  type: 'entryType' | 'status' | 'rating' | 'author' | 'series' | 'book' | 'subject';
+  type: 'entryType' | 'status' | 'rating' | 'author' | 'series' | 'book' | 'subject' | 'collection';
   label: string;
   value: string;
   additive: boolean;
@@ -74,14 +74,19 @@ const GROUP_LABEL: Record<Suggestion['type'], string> = {
   series: 'Series',
   book: 'Book',
   subject: 'Subject',
+  collection: 'Collection',
 };
 
-/** Wire `SuggestionType` (`AUTHOR|BOOK|SERIES|SUBJECT`) → this hook's lowercase client type. */
-const SERVER_GROUP_TYPE: Record<SuggestionType, 'author' | 'series' | 'book' | 'subject'> = {
+/**
+ * Wire `SuggestionType` (`AUTHOR|BOOK|COLLECTION|SERIES|SUBJECT`) → this hook's
+ * lowercase client type.
+ */
+const SERVER_GROUP_TYPE: Record<SuggestionType, Suggestion['type']> = {
   AUTHOR: 'author',
   SERIES: 'series',
   BOOK: 'book',
   SUBJECT: 'subject',
+  COLLECTION: 'collection',
 };
 
 /** Unchanged by the REST→GraphQL move — the debounce this hook has always used. */
@@ -131,7 +136,8 @@ export function useSearchSuggestions(
   const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
-  const { status, author, seriesName, subjects, entryType, minOverall, unrated } = filter;
+  const { status, author, seriesName, collection, subjects, entryType, minOverall, unrated } =
+    filter;
   const ratingActive = !!minOverall || !!unrated;
 
   useEffect(() => {
@@ -148,6 +154,7 @@ export function useSearchSuggestions(
   const suggestionsFilter: SearchSuggestionsFilter = {
     ...(author ? { author } : {}),
     ...(seriesName ? { seriesName } : {}),
+    ...(collection ? { collection } : {}),
     ...(subjects && subjects.length > 0 ? { activeSubjects: subjects } : {}),
   };
 

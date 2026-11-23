@@ -6,6 +6,7 @@ import {
   UploadView,
   BookEditPage,
   BookPage,
+  CollectionPage,
   ConnectPage,
   DeviceListPage,
   ForgotPasswordPage,
@@ -52,6 +53,7 @@ export const AppRouter = () => {
               <Route path={path.request()} element={<RequestView />} />
             </Route>
             <Route path={path.series(pathKey.seriesName)} element={<SeriesPage />} />
+            <Route path={path.collection(pathKey.collectionName)} element={<CollectionPage />} />
             <Route path={path.book(pathKey.bookId)} element={<BookPage />} />
             <Route path={path.bookEdit(pathKey.bookId)} element={<BookEditPage />} />
             <Route path={path.settings()} element={<SettingsPage />} />

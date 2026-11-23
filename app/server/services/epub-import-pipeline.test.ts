@@ -49,6 +49,7 @@ const FAKE_META: EpubMeta = {
   publisher: '',
   series: '',
   seriesIndex: 0,
+  collections: [],
   identifiers: [],
   subjects: [],
   coverData: null,

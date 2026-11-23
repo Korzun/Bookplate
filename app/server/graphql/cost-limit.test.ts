@@ -278,6 +278,7 @@ describe('the composite-element list-field inventory', () => {
   // (`UNBOUNDED_LIST_FIELD_LIMITS`), or with one worth pricing AT
   // (`SUGGESTION_FIELD_LIMITS`).
   const PRICED = [
+    'Book.collections',
     'Book.lineage',
     'Device.enabledUsers',
     'Library.pendingFixes',
@@ -294,6 +295,7 @@ describe('the composite-element list-field inventory', () => {
   // connection field's multiplier already scales these, so pricing them too
   // would double-count.
   const CONNECTION_EDGES = [
+    'CollectionBooksConnection.edges',
     'LibraryEntriesConnection.edges',
     'LibraryProgressConnection.edges',
     'SeriesBooksConnection.edges',
@@ -563,13 +565,13 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
  * `Library.series` scored 30,103 (98x higher for the same cost).
  */
 describe('SUGGESTION_FIELD_LIMITS — I-5, "bounded" priced AT its bound, not exempted for having one', () => {
-  it('Library.searchSuggestions prices at its real group-count bound (4), SuggestionGroup.items at its real per-group bound (30)', () => {
+  it('Library.searchSuggestions prices at its real group-count bound (5), SuggestionGroup.items at its real per-group bound (30)', () => {
     const { breadth, complexity } = costOf(
       '{ viewer { library { searchSuggestions(query: "a") { items { book { series { books(first: 100) { edges { node { id } } } } } } } } } }'
     );
     // books(first:100){edges{node{id}}}=301; series{books}=1+1*301=302; book{series}=1+1*302=303;
-    // items(mult 30){book}=1+30*303=9091; searchSuggestions(mult 4){items}=1+4*9091=36365; library{searchSuggestions}=1+36365=36366; viewer{library}=1+36366=36367.
-    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 36367 });
+    // items(mult 30){book}=1+30*303=9091; searchSuggestions(mult 5){items}=1+5*9091=45456; library{searchSuggestions}=1+45456=45457; viewer{library}=1+45457=45458.
+    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 45458 });
     expect(complexity).toBeGreaterThan(3823 * 9); // clearly outside the legit envelope, not marginally
   });
 
@@ -592,7 +594,7 @@ describe('SUGGESTION_FIELD_LIMITS — I-5, "bounded" priced AT its bound, not ex
       '{ viewer { library { searchSuggestions(query: "dune") { type items { label value } } } } }'
     );
     expect(complexity).toBeLessThan(3823);
-    expect({ breadth, complexity }).toEqual({ breadth: 7, complexity: 251 });
+    expect({ breadth, complexity }).toEqual({ breadth: 7, complexity: 313 });
   });
 
   it('aliasing searchSuggestions (a free-text query arg makes aliases trivially distinct) is priced per-alias like every other field — SUMS, does not collapse', () => {

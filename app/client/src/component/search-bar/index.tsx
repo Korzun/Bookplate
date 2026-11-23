@@ -8,87 +8,11 @@ import { SearchIcon, XIcon } from '~/icon';
 import type { BookListFilter } from '~/lib/book-types';
 import { path } from '~/router';
 
+import type { ChipDef } from './filter-chips';
+import { applySelection, filterToChips, removeChip } from './filter-chips';
 import { useStyle } from './style';
 import type { Suggestion, SuggestionGroup } from './use-search-suggestions';
-import { ratingFilterLabel, useSearchSuggestions } from './use-search-suggestions';
-
-const STATUS_LABELS: Record<string, string> = {
-  'not-started': 'Not Started',
-  'in-progress': 'In Progress',
-  completed: 'Completed',
-};
-
-type ChipDef =
-  | { kind: 'entryType'; value: 'Series' | 'Single books' }
-  | { kind: 'status'; value: string }
-  | { kind: 'rating'; value: string; glyph: RatingValue | null }
-  | { kind: 'author'; value: string }
-  | { kind: 'series'; value: string }
-  | { kind: 'subject'; value: string };
-
-function filterToChips(filter: BookListFilter): ChipDef[] {
-  const chips: ChipDef[] = [];
-  if (filter.entryType)
-    chips.push({
-      kind: 'entryType',
-      value: filter.entryType === 'series' ? 'Series' : 'Single books',
-    });
-  if (filter.status)
-    chips.push({ kind: 'status', value: STATUS_LABELS[filter.status] ?? filter.status });
-  const ratingLabel = ratingFilterLabel(filter);
-  if (ratingLabel)
-    chips.push({
-      kind: 'rating',
-      value: ratingLabel,
-      glyph: filter.unrated ? null : (filter.minOverall ?? null),
-    });
-  if (filter.author) chips.push({ kind: 'author', value: filter.author });
-  if (filter.seriesName) chips.push({ kind: 'series', value: filter.seriesName });
-  for (const s of filter.subjects ?? []) chips.push({ kind: 'subject', value: s });
-  return chips;
-}
-
-function removeChip(filter: BookListFilter, chip: ChipDef): BookListFilter {
-  switch (chip.kind) {
-    case 'entryType':
-      return { ...filter, entryType: undefined };
-    case 'status':
-      return { ...filter, status: undefined };
-    case 'rating':
-      return { ...filter, minOverall: undefined, unrated: undefined };
-    case 'author':
-      return { ...filter, author: undefined };
-    case 'series':
-      return { ...filter, seriesName: undefined };
-    case 'subject':
-      return { ...filter, subjects: filter.subjects?.filter((s) => s !== chip.value) };
-  }
-}
-
-function applySelection(filter: BookListFilter, suggestion: Suggestion): BookListFilter {
-  switch (suggestion.type) {
-    case 'entryType':
-      return { ...filter, entryType: suggestion.value as 'series' | 'standalone' };
-    case 'status':
-      return { ...filter, status: suggestion.value as BookListFilter['status'] };
-    case 'rating':
-      return suggestion.value === 'unrated'
-        ? { ...filter, minOverall: undefined, unrated: true }
-        : {
-            ...filter,
-            minOverall: Number(suggestion.value) as RatingValue,
-            unrated: undefined,
-          };
-    case 'author':
-      return { ...filter, author: suggestion.value };
-    case 'series':
-      return { ...filter, seriesName: suggestion.value };
-    case 'subject':
-      return { ...filter, subjects: [...(filter.subjects ?? []), suggestion.value] };
-    case 'book':
-      return filter;
-  }
-}
+import { useSearchSuggestions } from './use-search-suggestions';
 
 /** The rating picker's own hand glyph, in `currentColor` so the surrounding text colours it. */
 function RatingGlyph({ value }: { value: RatingValue }) {
@@ -118,6 +42,7 @@ const TYPE_CHIP_CLASS: Record<ChipDef['kind'], string> = {
   rating: 'chipRating',
   author: 'chipAuthor',
   series: 'chipSeries',
+  collection: 'chipCollection',
   subject: 'chipSubject',
 };
 
@@ -127,6 +52,7 @@ const TYPE_CHIP_LABEL: Record<ChipDef['kind'], string> = {
   rating: 'Rating',
   author: 'Author',
   series: 'Series',
+  collection: 'Collection',
   subject: 'Subject',
 };
 
@@ -136,6 +62,7 @@ const TYPE_DROPDOWN_CLASS: Record<Suggestion['type'], string> = {
   rating: 'dropdownItemTypeRating',
   author: 'dropdownItemTypeAuthor',
   series: 'dropdownItemTypeSeries',
+  collection: 'dropdownItemTypeCollection',
   book: 'dropdownItemTypeBook',
   subject: 'dropdownItemTypeSubject',
 };
@@ -293,7 +220,7 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
           placeholder={
             chips.length > 0
               ? 'Search titles…'
-              : 'Search by title, author, series, subject, status, or type…'
+              : 'Search by title, author, series, collection, subject, status, or type…'
           }
           value={inputValue}
           onChange={(e) => {

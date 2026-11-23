@@ -208,7 +208,7 @@ export async function listBooksPage(
   const fetchLimit = take + 1;
 
   const includeStandalones = filters?.seriesName === undefined && filters?.entryType !== 'series';
-  const includeSeries = filters?.entryType !== 'standalone';
+  const includeSeries = filters?.entryType !== 'standalone' && !filters?.collection;
 
   // Pre-fetch progress only when status filter applies to standalone books.
   // Series status is computed at the DB level by seriesIdsForStatus().
@@ -235,7 +235,7 @@ export async function listBooksPage(
   // filter, include series member books so that e.g. searching "gate" also
   // returns "Abaddon's Gate" as a book row alongside the "The Expanse" series row.
   const expandsToSeriesBooks =
-    (!!filters?.query || ratingFilterActive(filters)) &&
+    (!!filters?.query || ratingFilterActive(filters) || !!filters?.collection) &&
     filters?.seriesName === undefined &&
     filters?.entryType !== 'standalone';
 
@@ -316,6 +316,15 @@ export async function listBooksPage(
   // seriesName: exact match — only the named series, no standalones
   if (filters?.seriesName) {
     seriesWhere = { ...seriesWhere, name: { equals: filters.seriesName } };
+  }
+
+  // collection: exact name; books only (series tiles are off via `includeSeries`,
+  // members come back as rows via `expandsToSeriesBooks`). Appended to AND so the
+  // cursor predicate survives.
+  if (filters?.collection && includeStandalones) {
+    bookWhere = withAnd(bookWhere, [
+      { collections: { some: { collection: { name: filters.collection } } } },
+    ]);
   }
 
   // For series status filter, compute matching series IDs at the DB level

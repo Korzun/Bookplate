@@ -1,4 +1,5 @@
 import './book';
+import './book-collection-membership';
 import './book-hash-collision-error';
 import './book-not-validated-error';
 import './book-rating';
@@ -6,6 +7,7 @@ import './book-request';
 import './book-request-limit-exceeded-error';
 import './book-request-not-pending-error';
 import './book-request-status';
+import './collection';
 import './config';
 import './cover-fit';
 import './device';

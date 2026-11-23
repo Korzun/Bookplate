@@ -16,7 +16,12 @@ export async function getSearchSuggestions(
     filter,
   }: {
     q: string;
-    filter: { author?: string; seriesName?: string; activeSubjects?: string[] };
+    filter: {
+      author?: string;
+      seriesName?: string;
+      collection?: string;
+      activeSubjects?: string[];
+    };
   }
 ): Promise<SearchSuggestionsResponse> {
   const normalizedQ = normalizeForSearch(q);
@@ -73,6 +78,30 @@ export async function getSearchSuggestions(
     if (ranked.length > 0)
       groups.push({
         type: 'series',
+        items: ranked.map(({ label, value }) => ({
+          label,
+          value,
+          ...computeMatchWindow(q, label),
+        })),
+      });
+  }
+
+  if (!filter.collection) {
+    const rows = await prisma.$queryRaw<Array<{ value: string }>>`
+      SELECT c.name AS value
+      FROM collections c
+      WHERE c.user_id = ${owner.userId}
+        AND c.name LIKE ${likePat}
+      ORDER BY c.name
+      LIMIT 30
+    `;
+    const ranked = scoreAndRank(
+      rows.map((r) => ({ label: r.value, value: r.value })),
+      normalizedQ
+    );
+    if (ranked.length > 0)
+      groups.push({
+        type: 'collection',
         items: ranked.map(({ label, value }) => ({
           label,
           value,

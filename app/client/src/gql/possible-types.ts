@@ -120,6 +120,7 @@
     "Node": [
       "Book",
       "BookRequest",
+      "Collection",
       "Library",
       "Series",
       "User"

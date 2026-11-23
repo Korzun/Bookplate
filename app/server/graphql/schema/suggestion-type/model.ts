@@ -14,6 +14,7 @@ export const model = builder.enumType('SuggestionType', {
   values: {
     AUTHOR: { value: 'author' },
     SERIES: { value: 'series' },
+    COLLECTION: { value: 'collection' },
     BOOK: { value: 'book' },
     SUBJECT: { value: 'subject' },
   } as const satisfies Record<Uppercase<SuggestionTypeValue>, { value: SuggestionTypeValue }>,

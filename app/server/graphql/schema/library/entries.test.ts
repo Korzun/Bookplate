@@ -497,6 +497,10 @@ describe('Library.entries — Book column selection', () => {
       'owner, id) — reads BookIdHistory, not a BOOK_SELECT column beyond ' +
       'userId (already exercised above). Covered directly by ' +
       'book/lineage.test.ts.',
+    collections:
+      'Relation over BookCollection rows, resolved by its own query keyed on ' +
+      'userId+id — not a BOOK_SELECT column. Covered by the collection and ' +
+      'book-collections tests.',
   };
 
   // Coverage guard: the failure mode the two tests above cannot catch on

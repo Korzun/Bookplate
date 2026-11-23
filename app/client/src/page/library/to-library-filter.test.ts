@@ -23,6 +23,10 @@ describe('toLibraryFilter', () => {
     });
   });
 
+  it('passes collection through unchanged', () => {
+    expect(toLibraryFilter({ collection: 'X' }).collection).toBe('X');
+  });
+
   it.each([
     ['not-started', 'NOT_STARTED'],
     ['in-progress', 'IN_PROGRESS'],

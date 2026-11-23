@@ -103,6 +103,7 @@ const FAKE_META: EpubMeta = {
   publisher: 'Test Publisher',
   series: 'Test Series',
   seriesIndex: 1,
+  collections: [],
   titleSort: '',
   authorSort: '',
   publishDate: '',
@@ -492,6 +493,7 @@ const MOCK_META: EpubMeta = {
   publisher: '',
   series: '',
   seriesIndex: 0,
+  collections: [],
   titleSort: '',
   authorSort: '',
   publishDate: '',
@@ -557,6 +559,7 @@ describe('scan()', () => {
       publisher: '',
       series: '',
       seriesIndex: 0,
+      collections: [],
       titleSort: '',
       authorSort: '',
       publishDate: '',
@@ -591,6 +594,7 @@ describe('scan()', () => {
         publisher: '',
         series: '',
         seriesIndex: 0,
+        collections: [],
         titleSort: '',
         authorSort: '',
         publishDate: '',
@@ -1456,5 +1460,73 @@ describe('stored cover normalization (addBook / reimportBook)', () => {
     const thumb = await getThumbnail(prisma, OWNER.userId, id, 150);
     expect(thumb).not.toBeNull();
     expect(Buffer.from(thumb!.data).toString()).toBe('thumb-keep');
+  });
+});
+
+describe('collections', () => {
+  const DRACULA = [
+    { name: 'Gothic Classics', position: 1 },
+    { name: 'Vampire Tales', position: null },
+  ];
+
+  function armReimport(meta: Partial<EpubMeta>, newId: string): void {
+    vi.mocked(parseEpub).mockImplementationOnce(() => ({ ...FAKE_META, ...meta }));
+    vi.mocked(partialMD5).mockImplementationOnce(() => newId);
+  }
+
+  async function collectionNames(): Promise<string[]> {
+    const rows = await prisma.collection.findMany({
+      where: { userId: OWNER.userId },
+      orderBy: { name: 'asc' },
+    });
+    return rows.map((r) => r.name);
+  }
+
+  it('addBook creates collections and join rows without touching book.series', async () => {
+    await addBook(prisma, booksRoot, OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: '',
+      collections: DRACULA,
+    });
+    expect(await collectionNames()).toEqual(['Gothic Classics', 'Vampire Tales']);
+    const joins = await prisma.bookCollection.findMany({
+      where: { userId: OWNER.userId, bookId: 'b1' },
+    });
+    expect(joins).toHaveLength(2);
+    const book = await prisma.book.findUnique({
+      where: { userId_id: { userId: OWNER.userId, id: 'b1' } },
+    });
+    expect(book!.series).toBe('');
+  });
+
+  it.each([
+    ['same-id path', 'b1'],
+    ['id-rotation path', 'b1-rotated'],
+  ])('reimportBook drops a removed collection (%s)', async (_label, newId) => {
+    await addBook(prisma, booksRoot, OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      collections: DRACULA,
+    });
+    armReimport({ collections: [{ name: 'Gothic Classics', position: 3 }] }, newId);
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'b1');
+
+    expect(await collectionNames()).toEqual(['Gothic Classics']);
+    const joins = await prisma.bookCollection.findMany({ where: { userId: OWNER.userId } });
+    expect(joins).toHaveLength(1);
+    expect(joins[0].bookId).toBe(newId);
+    expect(joins[0].position).toBe(3);
+  });
+
+  it('deleteBook removes emptied collections and keeps shared ones', async () => {
+    await addBook(prisma, booksRoot, OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      collections: DRACULA,
+    });
+    await addBook(prisma, booksRoot, OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      collections: [{ name: 'Gothic Classics', position: 2 }],
+    });
+    await deleteBook(prisma, booksRoot, editionsRoot, OWNER, 'b1');
+    expect(await collectionNames()).toEqual(['Gothic Classics']);
   });
 });

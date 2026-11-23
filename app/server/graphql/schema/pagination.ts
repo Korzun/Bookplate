@@ -188,6 +188,7 @@ export const CONNECTION_LIMITS = {
   libraryEntries: { maxSize: 100, defaultSize: 20 },
   libraryProgress: { maxSize: 100, defaultSize: 50 },
   seriesBooks: { maxSize: 100, defaultSize: 20 },
+  collectionBooks: { maxSize: 100, defaultSize: 20 },
   validationMessages: { maxSize: 100, defaultSize: 20 },
   userBookRequests: { maxSize: 100, defaultSize: 20 },
   ratingFavourites: { maxSize: 100, defaultSize: 25 },

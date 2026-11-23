@@ -1015,4 +1015,43 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       }
     }
   });
+
+  // Data migration: EPUB collections (`collections`, `book_collections`). Added
+  // here, not in the DDL pass, for the reason `data_v23_mcp` records:
+  // `data_v10`/`data_v11` rebuild "users" and "books" from explicit column
+  // lists, which would drop foreign keys created against them earlier. The DDL
+  // file `20261118000000_add_collections` is a no-op. The tables start empty.
+  await runDataMigration(prisma, 'data_v25_collections', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "collections" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "user_id" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "sort_key" TEXT NOT NULL,
+        CONSTRAINT "collections_user_id_fkey" FOREIGN KEY ("user_id")
+          REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "collections_user_id_name_key"
+         ON "collections" ("user_id", "name")`
+    );
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "book_collections" (
+        "user_id" TEXT NOT NULL,
+        "book_id" TEXT NOT NULL,
+        "collection_id" TEXT NOT NULL,
+        "position" REAL,
+        PRIMARY KEY ("user_id", "book_id", "collection_id"),
+        CONSTRAINT "book_collections_book_fkey" FOREIGN KEY ("user_id", "book_id")
+          REFERENCES "books" ("user_id", "id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "book_collections_collection_id_fkey" FOREIGN KEY ("collection_id")
+          REFERENCES "collections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "book_collections_collection_id_idx"
+         ON "book_collections" ("collection_id")`
+    );
+  });
 }

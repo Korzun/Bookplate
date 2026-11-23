@@ -62,6 +62,8 @@ export type BookListFilter = {
   query?: string;
   author?: string;
   seriesName?: string;
+  /** Single collection name; the server returns books only when set. */
+  collection?: string;
   status?: 'not-started' | 'in-progress' | 'completed';
   subjects?: string[];
   entryType?: 'series' | 'standalone';

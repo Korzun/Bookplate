@@ -36,6 +36,7 @@ const FAKE_META = {
   author: 'A',
   series: '',
   seriesIndex: 0,
+  collections: [],
   publisher: '',
   publishDate: '',
   description: '',

@@ -1,6 +1,6 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 
 import {
   BookRating,
@@ -851,6 +851,20 @@ export const BookPage = () => {
               <Tag key={subject + index} onClick={() => handleSubjectNavigate(subject)}>
                 {subject}
               </Tag>
+            ))}
+          </div>
+        </Card>
+      )}
+      {book.collections.length > 0 && (
+        <Card title="Collections">
+          <div className={styles.collections}>
+            {book.collections.map(({ collection, position }) => (
+              <span key={collection.id}>
+                <Link to={path.collection(collection.name)} className={styles.collectionLink}>
+                  {collection.name}
+                </Link>
+                {position !== null ? ` #${position}` : ''}
+              </span>
             ))}
           </div>
         </Card>

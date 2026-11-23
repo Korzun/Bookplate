@@ -245,6 +245,7 @@ export const LibraryPage = () => {
     !!bookListFilter.query ||
     !!bookListFilter.author ||
     !!bookListFilter.seriesName ||
+    !!bookListFilter.collection ||
     !!bookListFilter.status ||
     !!bookListFilter.minOverall ||
     !!bookListFilter.unrated ||

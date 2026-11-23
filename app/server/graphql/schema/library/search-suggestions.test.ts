@@ -59,6 +59,34 @@ describe('Library.searchSuggestions', () => {
     expect(groups.some((g) => g.type === 'BOOK')).toBe(true);
   });
 
+  it('returns a COLLECTION group, omitted when filter.collection is set', async () => {
+    await harness.prisma.collection.create({
+      data: {
+        id: 'col-1',
+        userId: harness.aliceOwner.userId,
+        name: 'Guardian Saga',
+        sortKey: 'guardian saga',
+        books: { create: [{ userId: harness.aliceOwner.userId, bookId: BOOK_ID }] },
+      },
+    });
+    type Groups = {
+      viewer: { library: { searchSuggestions: { type: string; items: { label: string }[] }[] } };
+    };
+    const run = async (filter: string) => {
+      const result = await harness.execute(
+        `{ viewer { library { searchSuggestions(query: "guard"${filter}) { type items { label } } } } }`,
+        { viewer: harness.aliceViewer }
+      );
+      expect(result.errors).toBeUndefined();
+      return (result.data as Groups).viewer.library.searchSuggestions;
+    };
+    const group = (await run('')).find((g) => g.type === 'COLLECTION');
+    expect(group?.items.map((i) => i.label)).toEqual(['Guardian Saga']);
+    expect(
+      (await run(', filter: { collection: "Guardian Saga" }')).some((g) => g.type === 'COLLECTION')
+    ).toBe(false);
+  });
+
   it('returns no groups for a blank query', async () => {
     const result = await harness.execute(
       '{ viewer { library { searchSuggestions(query: "  ") { type } } } }',

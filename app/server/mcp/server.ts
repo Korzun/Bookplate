@@ -13,6 +13,7 @@ import type { ToolDeps } from './tools/deps';
 import { registerFulfillBookRequest } from './tools/fulfill-book-request';
 import { registerGetBook } from './tools/get-book';
 import { registerGetBookCover } from './tools/get-book-cover';
+import { registerGetCollection } from './tools/get-collection';
 import { registerGetSeries } from './tools/get-series';
 import { registerGetTasteProfile } from './tools/get-taste-profile';
 import { registerGetValidationReport } from './tools/get-validation-report';
@@ -45,6 +46,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
   registerSearchLibrary(server, deps);
   registerGetBook(server, deps);
   registerGetSeries(server, deps);
+  registerGetCollection(server, deps);
   registerListSeries(server, deps);
   registerListLibraryFacets(server, deps);
   registerListPendingFixes(server, deps);

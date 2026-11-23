@@ -68,6 +68,7 @@ const FAKE_META: EpubMeta = {
   publisher: 'Test Publisher',
   series: 'Test Series',
   seriesIndex: 1,
+  collections: [],
   titleSort: '',
   authorSort: '',
   publishDate: '',
@@ -1099,5 +1100,43 @@ describe('listBooksPage() — rating filters', () => {
     // members complete (seriesIdsForStatus) and m2 is unread. Only the
     // completed member survives, as a standalone row.
     expect(itemsShape(result.items)).toEqual([standalone('m1')]);
+  });
+});
+
+describe('listBooksPage with collection filter', () => {
+  const standalone = (bookId: string): ItemShape => ({ type: 'standalone', bookId });
+
+  async function seedCollected(id: string, title: string, series: string, collections: string[]) {
+    await seedBook(prisma, { booksRoot }, OWNER, id, stage(id), {
+      ...FAKE_META,
+      title,
+      series,
+      collections: collections.map((name) => ({ name, position: null })),
+    });
+  }
+
+  it('returns member books, including series members, and no series entries', async () => {
+    await seedCollected('a', 'Alpha', '', ['Guardian']);
+    await seedCollected('s1', 'Saga One', 'Saga', ['Guardian']);
+    await seedCollected('s2', 'Saga Two', 'Saga', []);
+    await seedCollected('o', 'Other', '', ['Elsewhere']);
+    const result = await listBooksPage(prisma, OWNER, null, 20, { collection: 'Guardian' });
+    expect(itemsShape(result.items)).toEqual([standalone('a'), standalone('s1')]);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it('paginates across pages of size 1', async () => {
+    await seedCollected('a', 'Alpha', '', ['Guardian']);
+    await seedCollected('s1', 'Saga One', 'Saga', ['Guardian']);
+    await seedCollected('z', 'Zulu', '', ['Guardian']);
+    await seedCollected('o', 'Other', '', []);
+    const filters = { collection: 'Guardian' };
+    const first = await listBooksPage(prisma, OWNER, null, 1, filters);
+    expect(itemsShape(first.items)).toEqual([standalone('a')]);
+    const second = await listBooksPage(prisma, OWNER, decodeCursor(first.nextCursor!), 1, filters);
+    expect(itemsShape(second.items)).toEqual([standalone('s1')]);
+    const third = await listBooksPage(prisma, OWNER, decodeCursor(second.nextCursor!), 1, filters);
+    expect(itemsShape(third.items)).toEqual([standalone('z')]);
+    expect(third.nextCursor).toBeNull();
   });
 });
