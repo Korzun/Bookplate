@@ -4,22 +4,30 @@ import { Router, Request, Response } from 'express';
 
 import { logger } from '../logger';
 import { kosyncAuth } from '../middleware/auth';
+import { createLoginLimiter, SYNC_LOCKOUT, type LoginLimiter } from '../middleware/login-limiter';
 import { resolveBookId } from '../services/book-lineage';
 import { getProgress, saveProgress } from '../services/progress';
 import { parseReadingEventEnvelope, recordReadingEvent } from '../services/reading-events';
 
 const log = logger('KOSync');
 
-export function createKosyncRouter(prisma: PrismaClient): Router {
+export function createKosyncRouter(
+  prisma: PrismaClient,
+  {
+    syncLimiter = createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' }),
+    trustProxyHops = 0,
+  }: { syncLimiter?: LoginLimiter; trustProxyHops?: number } = {}
+): Router {
   const router = Router();
+  const auth = kosyncAuth(prisma, { syncLimiter, trustProxyHops });
 
   // Auth check: GET /sync/users/auth
-  router.get('/users/auth', kosyncAuth(prisma), (_req: Request, res: Response) => {
+  router.get('/users/auth', auth, (_req: Request, res: Response) => {
     res.status(200).json({ authorized: 'OK' });
   });
 
   // Save progress: PUT /sync/syncs/progress
-  router.put('/syncs/progress', kosyncAuth(prisma), async (req: Request, res: Response) => {
+  router.put('/syncs/progress', auth, async (req: Request, res: Response) => {
     const { document, progress, percentage, device, device_id } = (req.body ?? {}) as {
       document?: string;
       progress?: string;
@@ -49,7 +57,7 @@ export function createKosyncRouter(prisma: PrismaClient): Router {
   // Get progress: GET /sync/syncs/progress/:document
   router.get(
     '/syncs/progress/:document',
-    kosyncAuth(prisma),
+    auth,
     async (req: Request<{ document: string }>, res: Response) => {
       const currentId = await resolveBookId(prisma, req.kosyncUserId!, req.params.document);
       const p = await getProgress(prisma, req.kosyncUserId!, currentId);
@@ -69,7 +77,7 @@ export function createKosyncRouter(prisma: PrismaClient): Router {
   // no second login. The firmware stops draining its queue at the first
   // non-2xx and retries the same event, so a redelivery answers 200 too; a
   // 400 is reserved for a body that will never become valid.
-  router.post('/crosspoint/events', kosyncAuth(prisma), async (req: Request, res: Response) => {
+  router.post('/crosspoint/events', auth, async (req: Request, res: Response) => {
     const envelope = parseReadingEventEnvelope(req.body);
     if (!envelope) {
       log.warn(`CrossPoint event from "${req.kosyncUser}" rejected — missing envelope fields`);

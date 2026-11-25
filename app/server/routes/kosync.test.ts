@@ -391,3 +391,49 @@ describe('POST /sync/crosspoint/events', () => {
     expect(await prisma.readingEvent.count()).toBe(0);
   });
 });
+
+describe('sync lockout', () => {
+  beforeEach(async () => {
+    await createUser(prisma, 'alice', null, ALICE_SYNC_PASSWORD);
+    await createUser(prisma, 'bob', null, 'bobsecret');
+  });
+
+  const wrong = (user: string) =>
+    request(app).get('/sync/users/auth').set(authHeaders(user, 'nope'));
+
+  it('10 wrong keys then 429 for that user', async () => {
+    for (let i = 0; i < 10; i++) expect((await wrong('alice')).status).toBe(401);
+    const res = await request(app)
+      .get('/sync/users/auth')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD));
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBe('900');
+    expect(res.body).toEqual({ error: 'Too many attempts. Try again in 15 min.' });
+  });
+
+  it('stale device for one user does not lock another user at the same IP', async () => {
+    for (let i = 0; i < 10; i++) await wrong('alice');
+    expect((await wrong('alice')).status).toBe(429);
+    const res = await request(app).get('/sync/users/auth').set(authHeaders('bob', 'bobsecret'));
+    expect(res.status).toBe(200);
+  });
+
+  it('missing headers do not count', async () => {
+    for (let i = 0; i < 11; i++) {
+      expect((await request(app).get('/sync/users/auth')).status).toBe(401);
+    }
+    const res = await request(app)
+      .get('/sync/users/auth')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD));
+    expect(res.status).toBe(200);
+  });
+
+  it('success clears', async () => {
+    for (let i = 0; i < 9; i++) expect((await wrong('alice')).status).toBe(401);
+    const ok = await request(app)
+      .get('/sync/users/auth')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD));
+    expect(ok.status).toBe(200);
+    for (let i = 0; i < 9; i++) expect((await wrong('alice')).status).toBe(401);
+  });
+});

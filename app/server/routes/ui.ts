@@ -208,9 +208,9 @@ type RateLimitWindow = { count: number; windowStart: number };
  * e-reader/sync clients retry aggressively and automatically on transient
  * network failures (device-side retry storms), or a client typo would lock
  * the DEVICE out of syncing for a window with no user present to notice or
- * retry manually the way a browser login form's user would; the existing
- * mitigation for those endpoints is bcrypt's own cost factor on every
- * attempt, not a request-count limiter.
+ * retry manually the way a browser login form's user would. Their check is a
+ * cheap MD5 compare, so they are covered instead by the per-address-and-user
+ * sync lockout in `middleware/auth.ts`, which a success clears.
  *
  * `createReplaceStaging`'s TTL-sweep SHAPE, followed literally, on a
  * different cadence (review I-1: an earlier version of this function only

@@ -6,6 +6,7 @@ import { Router, Request, Response, RequestHandler } from 'express';
 
 import { logger } from '../logger';
 import { opdsAuth } from '../middleware/auth';
+import { createLoginLimiter, SYNC_LOCKOUT, type LoginLimiter } from '../middleware/login-limiter';
 import { getCover, getThumbnail } from '../services/book-assets';
 import {
   getAuthors,
@@ -93,6 +94,10 @@ export type CreateOpdsRouterDeps = {
   /** Omitted by the base-catalog-only callers; required for device editions. */
   editionsRoot?: string;
   validationThreshold?: ValidationThreshold;
+  /** Shared sync-password lockout; omitted, the router builds its own. */
+  syncLimiter?: LoginLimiter;
+  /** See `AppConfig.trustProxyHops`; 0 ignores X-Forwarded-For. */
+  trustProxyHops?: number;
 };
 
 export function createOpdsRouter({
@@ -102,9 +107,11 @@ export function createOpdsRouter({
   libraryName = 'Bookplate',
   editionsRoot,
   validationThreshold = ValidationThreshold.ERROR,
+  syncLimiter = createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' }),
+  trustProxyHops = 0,
 }: CreateOpdsRouterDeps): Router {
   const router = Router();
-  const auth = opdsAuth(prisma, libraryName);
+  const auth = opdsAuth(prisma, libraryName, { syncLimiter, trustProxyHops });
   const smallestWidth = thumbnailWidths.length > 0 ? Math.min(...thumbnailWidths) : null;
 
   // Base vs device-scoped context. `req.opdsDevice` is set only under the
