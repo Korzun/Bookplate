@@ -10,6 +10,7 @@ import sharp from 'sharp';
 import request from 'supertest';
 
 import { runMigrations } from '../db/migrate';
+import { createLoginLimiter, SYNC_LOCKOUT } from '../middleware/login-limiter';
 import { saveThumbnail } from '../services/book-assets';
 import { listSeries } from '../services/book-catalog';
 import { buildEdition } from '../services/edition-builder';
@@ -18,6 +19,7 @@ import { createUser } from '../services/user';
 import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
 import { generateSlug } from '../utils/slug';
+import { createKosyncRouter } from './kosync';
 import { createOpdsRouter } from './opds';
 
 vi.mock('../logger');
@@ -1262,5 +1264,48 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
       .get(`/opds/device/kindle/books/${bookId}/cover`)
       .set(basicAuth('alice', 'secret'));
     expect(res.status).toBe(404);
+  });
+});
+
+describe('sync lockout', () => {
+  it('10 wrong Basic passwords then 429', async () => {
+    for (let i = 0; i < 10; i++) {
+      expect((await request(app).get('/opds/').set(basicAuth('alice', 'wrong'))).status).toBe(401);
+    }
+    const res = await request(app).get('/opds/').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBe('900');
+    expect(res.headers['www-authenticate']).toBeUndefined();
+    expect(res.body).toEqual({ error: 'Too many attempts. Try again in 15 min.' });
+  });
+
+  it('no Authorization header (the challenge round trip) does not count', async () => {
+    for (let i = 0; i < 11; i++) {
+      const res = await request(app).get('/opds/');
+      expect(res.status).toBe(401);
+      expect(res.headers['www-authenticate']).toContain('Basic');
+    }
+    expect((await request(app).get('/opds/').set(basicAuth('alice', 'secret'))).status).toBe(200);
+  });
+
+  it('OPDS and KOSync share a bucket when given one limiter', async () => {
+    const syncLimiter = createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' });
+    const shared = express();
+    shared.use(express.json());
+    shared.use(
+      '/opds',
+      createOpdsRouter({ booksRoot: booksDir, prisma, thumbnailWidths: [60, 170], syncLimiter })
+    );
+    shared.use('/sync', createKosyncRouter(prisma, { syncLimiter }));
+    const badKey = { 'x-auth-user': 'alice', 'x-auth-key': 'f'.repeat(32) };
+    for (let i = 0; i < 5; i++) {
+      expect((await request(shared).get('/opds/').set(basicAuth('alice', 'wrong'))).status).toBe(
+        401
+      );
+    }
+    for (let i = 0; i < 5; i++) {
+      expect((await request(shared).get('/sync/users/auth').set(badKey)).status).toBe(401);
+    }
+    expect((await request(shared).get('/sync/users/auth').set(badKey)).status).toBe(429);
   });
 });

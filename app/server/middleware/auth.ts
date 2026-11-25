@@ -5,17 +5,32 @@ import { Request, Response, NextFunction } from 'express';
 import { logger } from '../logger';
 import { verifyAccessToken, AuthUser } from '../services/jwt';
 import { authenticate, hashSyncPassword } from '../services/password';
+import { resolveLoginClientIp } from '../utils/client-ip';
+import { sendLocked, type LoginLimiter } from './login-limiter';
 
 export type { AuthUser };
 
 const log = logger('Auth');
+
+export type SyncAuthDeps = { syncLimiter: LoginLimiter; trustProxyHops: number };
+
+/**
+ * Lockout key and log subject for a sync credential attempt. One bucket per
+ * client address AND username, so one stale device cannot lock a different
+ * user behind the same address. `who` JSON-quotes the username so a CR/LF in
+ * it cannot forge a log line.
+ */
+function syncAttemptIdentity(req: Request, trustProxyHops: number, username: string) {
+  const ip = resolveLoginClientIp(req, trustProxyHops);
+  return { key: `${ip}\u0000${username}`, who: `${ip} user ${JSON.stringify(username)}` };
+}
 
 /**
  * HTTP Basic Auth for OPDS — validates against the KOSync credentials.
  * OPDS clients send the password as plaintext (just Base64-encoded per RFC 7617),
  * so we hash it with MD5 before comparing against the stored key.
  */
-export function opdsAuth(prisma: PrismaClient, realm: string = 'Bookplate') {
+export function opdsAuth(prisma: PrismaClient, realm: string, deps: SyncAuthDeps) {
   const safeRealm = realm.replace(/[\r\n"\\]/g, '');
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -30,13 +45,27 @@ export function opdsAuth(prisma: PrismaClient, realm: string = 'Bookplate') {
       const colonIndex = decoded.indexOf(':');
       const username = decoded.slice(0, colonIndex);
       const password = decoded.slice(colonIndex + 1);
-      const userId = await authenticate(prisma, username, hashSyncPassword(password));
+      const { key, who } = syncAttemptIdentity(req, deps.trustProxyHops, username);
+      const lockedMs = deps.syncLimiter.lockedForMs(key);
+      if (lockedMs !== null) {
+        sendLocked(res, lockedMs);
+        return;
+      }
+      const attempt = deps.syncLimiter.begin(key, who);
+      let userId: string | false;
+      try {
+        userId = await authenticate(prisma, username, hashSyncPassword(password));
+      } catch (err) {
+        attempt.cancelled();
+        throw err;
+      }
       if (!userId) {
         log.warn(`OPDS auth failed for user "${username}"`);
         res.set('WWW-Authenticate', `Basic realm="${safeRealm}"`);
         res.status(401).send();
         return;
       }
+      attempt.succeeded();
       req.opdsOwner = { userId, username };
       next();
     } catch (err) {
@@ -46,7 +75,7 @@ export function opdsAuth(prisma: PrismaClient, realm: string = 'Bookplate') {
 }
 
 /** KOSync header auth — validates x-auth-user + x-auth-key against stored credentials. */
-export function kosyncAuth(prisma: PrismaClient) {
+export function kosyncAuth(prisma: PrismaClient, deps: SyncAuthDeps) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const username = req.headers['x-auth-user'];
@@ -56,12 +85,26 @@ export function kosyncAuth(prisma: PrismaClient) {
         res.status(401).json({ message: 'Unauthorized' });
         return;
       }
-      const userId = await authenticate(prisma, username, key);
+      const identity = syncAttemptIdentity(req, deps.trustProxyHops, username);
+      const lockedMs = deps.syncLimiter.lockedForMs(identity.key);
+      if (lockedMs !== null) {
+        sendLocked(res, lockedMs);
+        return;
+      }
+      const attempt = deps.syncLimiter.begin(identity.key, identity.who);
+      let userId: string | false;
+      try {
+        userId = await authenticate(prisma, username, key);
+      } catch (err) {
+        attempt.cancelled();
+        throw err;
+      }
       if (!userId) {
         log.warn(`KOSync auth failed for user "${username}"`);
         res.status(401).json({ message: 'Unauthorized' });
         return;
       }
+      attempt.succeeded();
       req.kosyncUser = username;
       req.kosyncUserId = userId;
       next();

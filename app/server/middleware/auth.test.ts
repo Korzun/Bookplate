@@ -1,12 +1,22 @@
 import * as crypto from 'crypto';
 
+import type { PrismaClient } from '@prisma/client';
 import express from 'express';
 import request from 'supertest';
 
 import { signAccessToken } from '../services/jwt';
-import { emailSetupGate, jwtAuth, passwordChangeGate } from './auth';
+import { authenticate } from '../services/password';
+import { emailSetupGate, jwtAuth, kosyncAuth, opdsAuth, passwordChangeGate } from './auth';
+import { createLoginLimiter, SYNC_LOCKOUT } from './login-limiter';
 
-vi.mock('../logger');
+const warnSpy = vi.hoisted(() => vi.fn());
+vi.mock('../logger', () => ({
+  logger: () => ({ debug: vi.fn(), info: vi.fn(), warn: warnSpy, error: vi.fn() }),
+}));
+vi.mock('../services/password', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/password')>()),
+  authenticate: vi.fn(),
+}));
 
 const secret = crypto.randomBytes(32);
 
@@ -195,5 +205,56 @@ describe('emailSetupGate', () => {
   it('passes through a request with no token, leaving 401 to jwtAuth', async () => {
     const res = await request(buildApp()).get('/api/anything');
     expect(res.status).toBe(401);
+  });
+});
+
+describe('sync auth logging', () => {
+  const PASSWORD = 'hunter2-plain-password';
+  const KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+
+  function syncApp() {
+    const deps = {
+      syncLimiter: createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' }),
+      trustProxyHops: 0,
+    };
+    const app = express();
+    app.get('/opds', opdsAuth({} as PrismaClient, 'Bookplate', deps), (_req, res) => {
+      res.sendStatus(200);
+    });
+    app.get('/sync', kosyncAuth({} as PrismaClient, deps), (_req, res) => {
+      res.sendStatus(200);
+    });
+    return app;
+  }
+
+  it('never logs the submitted password or key, including the lockout line', async () => {
+    vi.mocked(authenticate).mockResolvedValue(false);
+    const app = syncApp();
+    const basic = Buffer.from(`alice:${PASSWORD}`).toString('base64');
+    for (let i = 0; i < 11; i++) {
+      await request(app).get('/opds').set('Authorization', `Basic ${basic}`);
+    }
+    for (let i = 0; i < 11; i++) {
+      await request(app).get('/sync').set({ 'x-auth-user': 'bob', 'x-auth-key': KEY });
+    }
+    const lines = warnSpy.mock.calls.map((c) => String(c[0]));
+    expect(lines.filter((l) => l.includes('Sync lockout'))).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).not.toContain(PASSWORD);
+      expect(line).not.toContain(basic);
+      expect(line).not.toContain(KEY);
+    }
+  });
+
+  it('a CR/LF in a Basic username cannot forge a lockout log line', async () => {
+    vi.mocked(authenticate).mockResolvedValue(false);
+    const app = syncApp();
+    const basic = Buffer.from('alice\nFAKE LINE:pw').toString('base64');
+    for (let i = 0; i < 10; i++) {
+      await request(app).get('/opds').set('Authorization', `Basic ${basic}`);
+    }
+    const lockout = warnSpy.mock.calls.map((c) => String(c[0])).find((l) => l.includes('lockout'));
+    expect(lockout).toBeDefined();
+    expect(lockout).not.toContain('\n');
   });
 });
