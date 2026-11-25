@@ -792,18 +792,19 @@ describe('login lockout', () => {
   });
 
   it('concurrent burst trips the lock', async () => {
-    // Enough slots that no request in the burst is refused as busy.
+    // 8 stays under the 10/min IP limiter. Each failure must be recorded
+    // before the password check, or all 8 would pass the lock check and 401.
     const burstApp = buildApp(
       {},
-      { loginRateLimitNow: () => now, argonSlots: createCheckSlots(5) }
+      { loginRateLimitNow: () => now, argonSlots: createCheckSlots(8) }
     );
     const burst = await Promise.all(
-      Array.from({ length: 5 }, () => login('alice', 'wrong', burstApp))
+      Array.from({ length: 8 }, () => login('alice', 'wrong', burstApp))
     );
-    expect(burst.map((r) => r.status)).toEqual([401, 401, 401, 401, 401]);
-    const res = await login('alice', 'wrong', burstApp);
-    expect(res.status).toBe(429);
-    expect(res.body).toEqual(LOCKED);
+    expect(burst.filter((r) => r.status === 401)).toHaveLength(5);
+    const locked = burst.filter((r) => r.status === 429);
+    expect(locked).toHaveLength(3);
+    for (const res of locked) expect(res.body).toEqual(LOCKED);
   });
 
   it('unlocks after 15 min', async () => {
@@ -841,6 +842,19 @@ describe('login lockout', () => {
     slots.tryAcquire();
     slots.tryAcquire();
     expect((await login('admin', 'pass', busyApp)).status).toBe(200);
+  });
+
+  it('wrong config-admin password is a counted 401 even when every slot is busy', async () => {
+    const slots = createCheckSlots(2);
+    const busyApp = buildApp({}, { loginRateLimitNow: () => now, argonSlots: slots });
+    slots.tryAcquire();
+    slots.tryAcquire();
+    for (let i = 0; i < 5; i++) {
+      expect((await login('admin', 'wrong', busyApp)).status).toBe(401);
+    }
+    const res = await login('admin', 'pass', busyApp);
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual(LOCKED);
   });
 });
 
