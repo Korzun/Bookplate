@@ -83,6 +83,25 @@ describe('createLoginLimiter', () => {
     expect(limiter.lockedForMs('a')).toBe(900_000);
   });
 
+  it('cancelled twice removes only one failure', () => {
+    const limiter = make();
+    const attempts = fail(limiter, 'a', 5);
+    attempts[4].cancelled();
+    attempts[4].cancelled();
+    limiter.begin('a', 'a');
+    expect(limiter.lockedForMs('a')).toBe(900_000);
+  });
+
+  it('cancelled after succeeded is a no-op', () => {
+    const limiter = make();
+    const a = limiter.begin('a', 'a');
+    a.succeeded();
+    fail(limiter, 'a', 4);
+    a.cancelled();
+    limiter.begin('a', 'a');
+    expect(limiter.lockedForMs('a')).toBe(900_000);
+  });
+
   it('logs one warn when a lock begins, not per refused check', () => {
     const write = vi.mocked(process.stderr.write);
     const limiter = make();

@@ -79,15 +79,22 @@ export function createLoginLimiter(options: {
           `${label} lockout: ${who} locked for ${lockMs / 60_000} min after ${maxFailures} failures`
         );
       }
+      // The first of succeeded()/cancelled() wins; later calls are no-ops.
+      let settled = false;
       return {
         succeeded() {
+          if (settled) return;
+          settled = true;
           entries.delete(key);
         },
         cancelled() {
+          if (settled) return;
+          settled = true;
           const current = entries.get(key);
           if (!current) return;
           const i = current.failures.indexOf(at);
           if (i !== -1) current.failures.splice(i, 1);
+          prune(current, now());
           if (current.failures.length < maxFailures) current.lockedUntil = null;
           if (!isLive(current, now())) entries.delete(key);
         },
