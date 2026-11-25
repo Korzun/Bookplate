@@ -712,6 +712,16 @@ export function createUiRouter({
       });
       return;
     }
+    // A wrong admin password ends here, counted and without asking for an
+    // argon slot. Otherwise a busy 429 for a wrong guess against the 200 a
+    // right one gets (the admin never needs a slot) would make an uncounted
+    // oracle. Unknown usernames still go through the slot, so busy-vs-401
+    // cannot reveal whether an account exists.
+    if (loginName === config.username) {
+      log.warn(`Login failed for admin "${loginName}"`);
+      res.sendStatus(401);
+      return;
+    }
     // Single-statement `findUnique` with exactly one production caller —
     // inlined under the placement rule. One query, selecting only
     // `passwordHash`, answers both "does this user exist" and "does it
