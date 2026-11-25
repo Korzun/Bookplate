@@ -15,6 +15,8 @@ import type { PrismaClient } from '@prisma/client';
 import express, { Request, Response, Router } from 'express';
 
 import { logger } from '../logger';
+import { sendBusy, sendLocked, type LoginLimiter } from '../middleware/login-limiter';
+import type { CheckSlots } from '../services/check-slots';
 import { findUserByEmail } from '../services/email';
 import { consumeEmailToken, invalidateEmailTokens, issueEmailToken } from '../services/email-token';
 import { passwordResetMessage } from '../services/mail-template';
@@ -22,6 +24,7 @@ import { isMailConfigured, type Mailer } from '../services/mailer';
 import { hashLoginPassword } from '../services/password';
 import { revokeAllForUsername } from '../services/token';
 import type { AppConfig } from '../types';
+import { resolveLoginClientIp } from '../utils/client-ip';
 
 const log = logger('Password');
 
@@ -43,9 +46,13 @@ export function createPasswordRouter(deps: {
   config: AppConfig;
   mailer: Mailer | null;
   rateLimit: express.RequestHandler;
+  /** The same instance `/api/login` uses: login and reset share one bucket. */
+  webLimiter: LoginLimiter;
+  argonSlots: CheckSlots;
+  trustProxyHops: number;
 }): Router {
   const router = Router();
-  const { prisma, config, mailer, rateLimit } = deps;
+  const { prisma, config, mailer, rateLimit, webLimiter, argonSlots, trustProxyHops } = deps;
 
   // Mail off ⇒ the whole flow does not exist. 404 rather than 503: there is no
   // resource here to be temporarily unavailable, and the client already hides the
@@ -137,25 +144,47 @@ export function createPasswordRouter(deps: {
         reject('new password too short');
         return;
       }
+      const ip = resolveLoginClientIp(req, trustProxyHops);
+      const lockedFor = webLimiter.lockedForMs(ip);
+      if (lockedFor !== null) {
+        sendLocked(res, lockedFor);
+        return;
+      }
+      // Every reject below is a guess and stays counted.
+      const attempt = webLimiter.begin(ip, ip);
       const account = await findUserByEmail(prisma, email);
       if (account === null || account.isConfigAdmin) {
         reject('no eligible account for that address');
         return;
       }
-      const consumed = await consumeEmailToken(prisma, {
-        userId: account.id,
-        purpose: 'reset',
-        code,
-      });
-      if (consumed === null) {
-        reject('unknown, used or expired code');
+      // Taken before the code is consumed, so a busy refusal never burns a
+      // valid code; held until the new password is hashed.
+      const release = argonSlots.tryAcquire();
+      if (release === null) {
+        attempt.cancelled();
+        sendBusy(res, ip, 'Password reset');
         return;
       }
-      // The token records the address it was sent to, so a code minted before an
-      // address change cannot be spent after it.
-      if (account.email === null || consumed.email !== account.email) {
-        reject('code was issued for a different address');
-        return;
+      let passwordHash: string;
+      try {
+        const consumed = await consumeEmailToken(prisma, {
+          userId: account.id,
+          purpose: 'reset',
+          code,
+        });
+        if (consumed === null) {
+          reject('unknown, used or expired code');
+          return;
+        }
+        // The token records the address it was sent to, so a code minted before an
+        // address change cannot be spent after it.
+        if (account.email === null || consumed.email !== account.email) {
+          reject('code was issued for a different address');
+          return;
+        }
+        passwordHash = await hashLoginPassword(newPassword);
+      } finally {
+        release();
       }
 
       // Ordered revoke -> update -> invalidate so no partial failure below can
@@ -186,13 +215,14 @@ export function createPasswordRouter(deps: {
       await prisma.user.update({
         where: { id: account.id },
         data: {
-          passwordHash: await hashLoginPassword(newPassword),
+          passwordHash,
           // A reset satisfies the forced-change requirement: the user just chose
           // this password themselves.
           mustChangePassword: false,
         },
       });
       await invalidateEmailTokens(prisma, account.id, 'reset');
+      attempt.succeeded();
       log.info(`Password reset completed for "${account.username}"`);
       res.sendStatus(204);
     }

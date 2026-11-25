@@ -18,6 +18,7 @@ import {
   hashLoginPassword,
   hashSyncPassword,
   resetPassword,
+  safeEqual,
   validateUser,
 } from './password';
 import { createUser } from './user';
@@ -238,5 +239,19 @@ describe('hashSyncPassword', () => {
   it('returns the MD5 hex digest of the input', () => {
     const expected = crypto.createHash('md5').update('blue oak').digest('hex');
     expect(hashSyncPassword('blue oak')).toBe(expected);
+  });
+});
+
+describe('safeEqual', () => {
+  it('is true for equal strings', () => {
+    expect(safeEqual('pass', 'pass')).toBe(true);
+  });
+
+  it('is false for different strings, including different lengths', () => {
+    expect(safeEqual('pass', 'pas')).toBe(false);
+  });
+
+  it('is true for two empty strings', () => {
+    expect(safeEqual('', '')).toBe(true);
   });
 });
