@@ -21,7 +21,7 @@ import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
 import { createFakeMailer, MAIL_CONFIG, type FakeMailer } from '../test-support/mail';
 import { AppConfig } from '../types';
-import { createUiRouter } from './ui';
+import { createUiRouter, type CreateUiRouterDeps } from './ui';
 
 vi.mock('../logger');
 
@@ -83,7 +83,10 @@ afterEach(async () => {
  * omitted) leaves mail unconfigured, matching `createMailer` returning `null`
  * for an unconfigured install.
  */
-function build(configOverrides: Partial<AppConfig> = {}): {
+function build(
+  configOverrides: Partial<AppConfig> = {},
+  deps: Pick<CreateUiRouterDeps, 'loginRateLimitNow'> = {}
+): {
   app: express.Express;
   mailer: FakeMailer | null;
 } {
@@ -102,6 +105,7 @@ function build(configOverrides: Partial<AppConfig> = {}): {
       prisma,
       replaceStaging,
       mailer,
+      ...deps,
     })
   );
   testApp.use((_err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
@@ -330,6 +334,76 @@ describe('POST /api/password/reset', () => {
       .post('/api/login')
       .send({ username: config.username, password: config.password });
     expect(login.status).toBe(200);
+  });
+});
+
+describe('reset lockout', () => {
+  // The clock also feeds the 5/min IP limiter shared by forgot and reset, so
+  // `reset` steps it past that window before each request (unless told not
+  // to), staying inside the 15-min lockout window. Every 429 below is the
+  // lockout's.
+  let now: number;
+  const LOCKED = { error: 'Too many attempts. Try again in 15 min.' };
+  const GOOD = 'a-brand-new-password';
+
+  const primed = async () => {
+    now = 1_000_000;
+    const built = build({ mail: MAIL_CONFIG }, { loginRateLimitNow: () => now });
+    const id = await createReader('ann', 'old-password');
+    await setUserEmail(prisma, id, 'ann@example.com');
+    await markEmailVerified(prisma, id);
+    await request(built.app).post('/api/password/forgot').send({ email: 'ann@example.com' });
+    const code = /\b[0-9A-HJKMNP-TV-Z]{8}\b/.exec(built.mailer!.sent[0].text)![0];
+    const reset = (body?: object, tick = true) => {
+      if (tick) now += 61_000;
+      const req = request(built.app).post('/api/password/reset');
+      return body === undefined ? req : req.send(body);
+    };
+    return { ...built, code, reset };
+  };
+
+  it('5 wrong codes then 429', async () => {
+    const { code, reset } = await primed();
+    for (let i = 0; i < 5; i++) {
+      const res = await reset({ email: 'ann@example.com', code: 'WRONGONE', newPassword: GOOD });
+      expect(res.status).toBe(400);
+    }
+    // Same instant as the 5th failure, which started the lock: a full 15 min left.
+    const res = await reset({ email: 'ann@example.com', code, newPassword: GOOD }, false);
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBe('900');
+    expect(res.body).toEqual(LOCKED);
+  });
+
+  it('too-short password and malformed body do not count', async () => {
+    const { code, reset } = await primed();
+    for (let i = 0; i < 6; i++) {
+      const res = await reset({ email: 'ann@example.com', code, newPassword: 'short' });
+      expect(res.status).toBe(400);
+    }
+    for (let i = 0; i < 6; i++) {
+      expect((await reset()).status).toBe(400);
+    }
+    expect((await reset({ email: 'ann@example.com', code, newPassword: GOOD })).status).toBe(204);
+  });
+
+  it('reset and login share one bucket', async () => {
+    const { app } = await primed();
+    for (let i = 0; i < 3; i++) {
+      const res = await request(app).post('/api/login').send({ username: 'ann', password: 'nope' });
+      expect(res.status).toBe(401);
+    }
+    for (let i = 0; i < 2; i++) {
+      const res = await request(app)
+        .post('/api/password/reset')
+        .send({ email: 'ann@example.com', code: 'WRONGONE', newPassword: GOOD });
+      expect(res.status).toBe(400);
+    }
+    const res = await request(app)
+      .post('/api/login')
+      .send({ username: 'ann', password: 'old-password' });
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual(LOCKED);
   });
 });
 

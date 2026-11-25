@@ -10,14 +10,22 @@ import multer from 'multer';
 import { encodeBookGlobalId, parseCompoundId } from '../graphql/schema/node-scope';
 import { logger } from '../logger';
 import { emailSetupGate, jwtAuth, passwordChangeGate } from '../middleware/auth';
+import {
+  createLoginLimiter,
+  sendBusy,
+  sendLocked,
+  WEB_LOCKOUT,
+  type LoginLimiter,
+} from '../middleware/login-limiter';
 import { getCover, getThumbnail } from '../services/book-assets';
 import { getBookById } from '../services/book-catalog';
 import { getStagingDir } from '../services/book-paths';
+import { argonSlots as sharedArgonSlots, type CheckSlots } from '../services/check-slots';
 import { findUserByEmail } from '../services/email';
 import { importEpub } from '../services/import-epub';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { isMailConfigured, type Mailer } from '../services/mailer';
-import { getMustChangePassword, validateUser } from '../services/password';
+import { getMustChangePassword, safeEqual, validateUser } from '../services/password';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import {
@@ -351,6 +359,14 @@ export type CreateUiRouterDeps = {
    * Task 4, before the second instance existed. Tests pass a fake.
    */
   loginRateLimitNow?: () => number;
+  /**
+   * Per-client failure lockout, shared by `/api/login` and
+   * `/api/password/reset`. Defaults to a fresh `WEB_LOCKOUT` limiter on
+   * `loginRateLimitNow`'s clock.
+   */
+  webLimiter?: LoginLimiter;
+  /** Cap on concurrent argon2 checks. Defaults to the process-wide `argonSlots`. */
+  argonSlots?: CheckSlots;
 };
 
 export function createUiRouter({
@@ -362,13 +378,16 @@ export function createUiRouter({
   replaceStaging,
   mailer,
   loginRateLimitNow = Date.now,
+  webLimiter = createLoginLimiter({ now: loginRateLimitNow, ...WEB_LOCKOUT, label: 'Login' }),
+  argonSlots = sharedArgonSlots,
 }: CreateUiRouterDeps): Router {
   const router = Router();
+  const trustProxyHops = config.trustProxyHops ?? 0;
 
   const requireAuth = jwtAuth(jwtSecret);
   const loginRateLimit = createIpRateLimit({
     now: loginRateLimitNow,
-    trustProxyHops: config.trustProxyHops ?? 0,
+    trustProxyHops,
     maxAttempts: LOGIN_RATE_LIMIT_MAX_ATTEMPTS,
     windowMs: LOGIN_RATE_LIMIT_WINDOW_MS,
     label: 'Login',
@@ -621,14 +640,24 @@ export function createUiRouter({
   // change or an address.
   const passwordRateLimit = createIpRateLimit({
     now: loginRateLimitNow,
-    trustProxyHops: config.trustProxyHops ?? 0,
+    trustProxyHops,
     // Tighter than login's 10: a legitimate user submits one forgot request and
     // one reset, and the cost of a wrong guess here is a password, not a session.
     maxAttempts: 5,
     windowMs: LOGIN_RATE_LIMIT_WINDOW_MS,
     label: 'Password reset',
   });
-  router.use(createPasswordRouter({ prisma, config, mailer, rateLimit: passwordRateLimit }));
+  router.use(
+    createPasswordRouter({
+      prisma,
+      config,
+      mailer,
+      rateLimit: passwordRateLimit,
+      webLimiter,
+      argonSlots,
+      trustProxyHops,
+    })
+  );
 
   router.use(passwordChangeGate(jwtSecret));
   router.use(emailSetupGate(jwtSecret));
@@ -639,6 +668,17 @@ export function createUiRouter({
       res.sendStatus(401);
       return;
     }
+    // Lockout bookkeeping: `begin` records a provisional failure before any
+    // await, so a concurrent burst cannot slip past the count. Every exit
+    // below either leaves it (a real credential failure), `succeeded()`s or
+    // `cancelled()`s it.
+    const ip = resolveLoginClientIp(req, trustProxyHops);
+    const lockedFor = webLimiter.lockedForMs(ip);
+    if (lockedFor !== null) {
+      sendLocked(res, lockedFor);
+      return;
+    }
+    const attempt = webLimiter.begin(ip, ip);
     // The field is named `username` for compatibility — REST's contract is
     // unchanged — but it is an IDENTIFIER: an address when it contains an `@`,
     // a username otherwise. Resolving to a username here means everything
@@ -658,7 +698,8 @@ export function createUiRouter({
       }
       loginName = byEmail.username;
     }
-    if (loginName === config.username && password === config.password) {
+    if (loginName === config.username && safeEqual(password, config.password)) {
+      attempt.succeeded();
       log.info(`Admin "${loginName}" logged in`);
       await deleteExpired(prisma);
       await issueTokens(res, {
@@ -690,12 +731,25 @@ export function createUiRouter({
     // answer 403 "password not set" instead of the generic 401, which both
     // differs from every other failed login and confirms the username exists.
     if (loginUser !== null && !loginUser.passwordHash && !loginUser.isConfigAdmin) {
+      attempt.cancelled();
       log.warn(`Login failed for "${loginName}" — password not set`);
       res.sendStatus(403);
       return;
     }
-    const userId = await validateUser(prisma, loginName, password);
+    const release = argonSlots.tryAcquire();
+    if (release === null) {
+      attempt.cancelled();
+      sendBusy(res, ip, 'Login');
+      return;
+    }
+    let userId: string | false;
+    try {
+      userId = await validateUser(prisma, loginName, password);
+    } finally {
+      release();
+    }
     if (userId) {
+      attempt.succeeded();
       log.info(`User "${loginName}" logged in`);
       await deleteExpired(prisma);
       await issueTokens(res, {

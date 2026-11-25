@@ -8,6 +8,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import AdmZip from 'adm-zip';
+import argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import express, { NextFunction, Request, Response } from 'express';
 import { graphql, type ExecutionResult } from 'graphql';
@@ -23,6 +24,7 @@ import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { saveThumbnail } from '../services/book-assets';
 import { getBookById, listBooks } from '../services/book-catalog';
 import { getStagingDir } from '../services/book-paths';
+import { createCheckSlots } from '../services/check-slots';
 import { setUserEmail } from '../services/email';
 import { verifyAccessToken } from '../services/jwt';
 import type { NotificationPoker } from '../services/notification-queue';
@@ -37,7 +39,7 @@ import * as validationModule from '../services/validation';
 import { MAIL_CONFIG } from '../test-support/mail';
 import { seedBook } from '../test-support/seed-book';
 import { AppConfig, EpubMeta, Owner } from '../types';
-import { createIpRateLimit, createUiRouter } from './ui';
+import { createIpRateLimit, createUiRouter, type CreateUiRouterDeps } from './ui';
 
 vi.mock('../logger');
 // Wrap (not replace) the real implementation so every other upload test in
@@ -452,7 +454,10 @@ beforeEach(async () => {
  * default `config.mail === null`. Extends the same construction the outer
  * `beforeEach` uses rather than adding a parallel one.
  */
-function buildApp(configOverrides: Partial<AppConfig> = {}): express.Express {
+function buildApp(
+  configOverrides: Partial<AppConfig> = {},
+  deps: Pick<CreateUiRouterDeps, 'loginRateLimitNow' | 'argonSlots' | 'webLimiter'> = {}
+): express.Express {
   const testApp = express();
   testApp.use(express.json());
   testApp.use(express.urlencoded({ extended: false }));
@@ -467,6 +472,7 @@ function buildApp(configOverrides: Partial<AppConfig> = {}): express.Express {
       prisma,
       replaceStaging,
       mailer: null,
+      ...deps,
     })
   );
   // Terminal error middleware mirrors server.ts so unexpected throws → 500
@@ -700,6 +706,141 @@ describe('POST /api/login', () => {
         .set('Content-Type', 'application/x-www-form-urlencoded');
       expect(bRes.status).toBe(200);
     });
+  });
+});
+
+describe('login lockout', () => {
+  // The clock also feeds the 10/min IP limiter in front. Tests that send more
+  // than 10 requests step it past that window between phases, staying well
+  // inside the 15-min lockout window, so every 429 below is the lockout's.
+  let now: number;
+  let lockApp: express.Express;
+  const LOCKED = { error: 'Too many attempts. Try again in 15 min.' };
+  const BUSY = { error: 'Server busy. Try again in a minute.' };
+  const nextIpWindow = (): void => {
+    now += 61_000;
+  };
+
+  const login = (username: string, password: string, onApp = lockApp) =>
+    request(onApp).post('/api/login').send({ username, password });
+
+  beforeEach(() => {
+    now = 1_000_000;
+    lockApp = buildApp({}, { loginRateLimitNow: () => now });
+  });
+
+  it('5 wrong passwords then 429 for that client, even with the right password', async () => {
+    for (let i = 0; i < 5; i++) {
+      expect((await login('alice', 'wrong')).status).toBe(401);
+    }
+    const res = await login('alice', 'alicepass');
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBe('900');
+    expect(res.body).toEqual(LOCKED);
+  });
+
+  it('success clears the failure count', async () => {
+    for (let i = 0; i < 4; i++) {
+      expect((await login('alice', 'wrong')).status).toBe(401);
+    }
+    expect((await login('alice', 'alicepass')).status).toBe(200);
+    nextIpWindow();
+    for (let i = 0; i < 4; i++) {
+      expect((await login('alice', 'wrong')).status).toBe(401);
+    }
+    expect((await login('alice', 'wrong')).status).toBe(401);
+    const res = await login('alice', 'wrong');
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual(LOCKED);
+  });
+
+  it('wrong config-admin password counts; right one still works after 4', async () => {
+    for (let i = 0; i < 4; i++) {
+      expect((await login('admin', 'wrong')).status).toBe(401);
+    }
+    expect((await login('admin', 'pass')).status).toBe(200);
+    nextIpWindow();
+    for (let i = 0; i < 5; i++) {
+      expect((await login('admin', 'wrong')).status).toBe(401);
+    }
+    const res = await login('admin', 'pass');
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual(LOCKED);
+  });
+
+  it('unknown email counts as a failure', async () => {
+    for (let i = 0; i < 5; i++) {
+      expect((await login('nobody@example.com', 'whatever')).status).toBe(401);
+    }
+    const res = await login('alice', 'alicepass');
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual(LOCKED);
+  });
+
+  it('403 password-not-set does not count', async () => {
+    await createUser(prisma, 'nopass', null);
+    for (let i = 0; i < 6; i++) {
+      expect((await login('nopass', 'anything')).status).toBe(403);
+    }
+  });
+
+  it('malformed body does not count', async () => {
+    for (let i = 0; i < 6; i++) {
+      expect((await request(lockApp).post('/api/login')).status).toBe(401);
+    }
+    expect((await login('alice', 'alicepass')).status).toBe(200);
+  });
+
+  it('concurrent burst trips the lock', async () => {
+    // Enough slots that no request in the burst is refused as busy.
+    const burstApp = buildApp(
+      {},
+      { loginRateLimitNow: () => now, argonSlots: createCheckSlots(5) }
+    );
+    const burst = await Promise.all(
+      Array.from({ length: 5 }, () => login('alice', 'wrong', burstApp))
+    );
+    expect(burst.map((r) => r.status)).toEqual([401, 401, 401, 401, 401]);
+    const res = await login('alice', 'wrong', burstApp);
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual(LOCKED);
+  });
+
+  it('unlocks after 15 min', async () => {
+    for (let i = 0; i < 5; i++) {
+      await login('alice', 'wrong');
+    }
+    expect((await login('alice', 'alicepass')).body).toEqual(LOCKED);
+    now += 900_000;
+    expect((await login('alice', 'alicepass')).status).toBe(200);
+  });
+
+  it('busy argon refuses without verifying or counting', async () => {
+    const slots = createCheckSlots(2);
+    const busyApp = buildApp({}, { loginRateLimitNow: () => now, argonSlots: slots });
+    const held = [slots.tryAcquire()!, slots.tryAcquire()!];
+    const verify = vi.spyOn(argon2, 'verify');
+
+    const res = await login('alice', 'alicepass', busyApp);
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBe('60');
+    expect(res.body).toEqual(BUSY);
+    expect(verify).not.toHaveBeenCalled();
+
+    held.forEach((release) => release());
+    for (let i = 0; i < 4; i++) {
+      expect((await login('alice', 'wrong', busyApp)).status).toBe(401);
+    }
+    // Had the busy refusal counted, this would already be the locked 429.
+    expect((await login('alice', 'wrong', busyApp)).status).toBe(401);
+  });
+
+  it('config admin login does not need a slot', async () => {
+    const slots = createCheckSlots(2);
+    const busyApp = buildApp({}, { loginRateLimitNow: () => now, argonSlots: slots });
+    slots.tryAcquire();
+    slots.tryAcquire();
+    expect((await login('admin', 'pass', busyApp)).status).toBe(200);
   });
 });
 

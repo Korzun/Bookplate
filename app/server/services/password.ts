@@ -33,6 +33,12 @@ export function hashSyncPassword(syncPassword: string): string {
   return crypto.createHash('md5').update(syncPassword).digest('hex');
 }
 
+/** Constant-time string compare: hashing first gives equal-length inputs for any lengths. */
+export function safeEqual(a: string, b: string): boolean {
+  const digest = (s: string) => crypto.createHash('sha256').update(s).digest();
+  return crypto.timingSafeEqual(digest(a), digest(b));
+}
+
 export async function hashLoginPassword(password: string): Promise<string> {
   return argon2.hash(password);
 }
