@@ -4,7 +4,10 @@ import { logger } from '../logger';
 
 const log = logger('LoginLimiter');
 
-const SWEEP_THRESHOLD = 256;
+const SWEEP_INTERVAL_MS = 1_000;
+
+/** Default cap on entries per limiter; live locks may push past it, nothing else does. */
+export const LIMITER_MAX_ENTRIES = 10_000;
 
 export type LoginAttempt = {
   /** Credential accepted: clears this key's failures and any lock. */
@@ -16,8 +19,11 @@ export type LoginAttempt = {
 export type LoginLimiter = {
   /** ms until the lock lifts, or null when not locked. Expired locks are cleared here. */
   lockedForMs(key: string): number | null;
-  /** Records a provisional failure now. If that reaches maxFailures, starts the lock and logs one warn naming `who`. */
-  begin(key: string, who: string): LoginAttempt;
+  /**
+   * Records a provisional failure now. If that reaches maxFailures, starts the
+   * lock and logs one warn naming `who`, with `hint` appended when given.
+   */
+  begin(key: string, who: string, hint?: string): LoginAttempt;
   size(): number;
 };
 
@@ -29,10 +35,16 @@ export function createLoginLimiter(options: {
   windowMs: number;
   lockMs: number;
   label: string;
+  maxEntries?: number;
 }): LoginLimiter {
   const { maxFailures, windowMs, lockMs, label } = options;
   const now = options.now ?? Date.now;
+  const maxEntries = options.maxEntries ?? LIMITER_MAX_ENTRIES;
+  // Evicting a tenth of the cap at once keeps a flood of new keys from paying
+  // a full sweep on every insert.
+  const lowWater = maxEntries - Math.max(1, Math.floor(maxEntries / 10));
   const entries = new Map<string, Entry>();
+  let lastSweep = -Infinity;
 
   function prune(entry: Entry, at: number): void {
     entry.failures = entry.failures.filter((ts) => ts > at - windowMs);
@@ -43,9 +55,20 @@ export function createLoginLimiter(options: {
   }
 
   function sweep(at: number): void {
+    lastSweep = at;
     for (const [key, entry] of entries) {
       prune(entry, at);
       if (!isLive(entry, at)) entries.delete(key);
+    }
+  }
+
+  /** Makes room for one new key. Oldest first (Map order); a live lock is never evicted. */
+  function makeRoom(at: number): void {
+    sweep(at);
+    if (entries.size < maxEntries) return;
+    for (const [key, entry] of entries) {
+      if (entries.size <= lowWater) break;
+      if (entry.lockedUntil === null || entry.lockedUntil <= at) entries.delete(key);
     }
   }
 
@@ -59,15 +82,16 @@ export function createLoginLimiter(options: {
       return null;
     },
 
-    begin(key, who) {
+    begin(key, who, hint) {
       const at = now();
-      if (entries.size > SWEEP_THRESHOLD) sweep(at);
+      if (at - lastSweep >= SWEEP_INTERVAL_MS) sweep(at);
       let entry = entries.get(key);
       if (entry?.lockedUntil != null && entry.lockedUntil <= at) {
         entries.delete(key);
         entry = undefined;
       }
       if (!entry) {
+        if (entries.size >= maxEntries) makeRoom(at);
         entry = { failures: [], lockedUntil: null };
         entries.set(key, entry);
       }
@@ -76,7 +100,7 @@ export function createLoginLimiter(options: {
       if (entry.lockedUntil === null && entry.failures.length >= maxFailures) {
         entry.lockedUntil = at + lockMs;
         log.warn(
-          `${label} lockout: ${who} locked for ${lockMs / 60_000} min after ${maxFailures} failures`
+          `${label} lockout: ${who} locked for ${lockMs / 60_000} min after ${maxFailures} failures${hint ?? ''}`
         );
       }
       // The first of succeeded()/cancelled() wins; later calls are no-ops.
