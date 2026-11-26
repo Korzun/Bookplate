@@ -132,8 +132,8 @@ export interface AppConfig {
   validationThreshold: ValidationThreshold;
   /**
    * How many reverse-proxy hops in front of this process to trust when
-   * resolving a request's real client IP — used ONLY by `routes/ui.ts`'s
-   * login rate limiter (`resolveLoginClientIp`), never as Express's own
+   * resolving a request's real client IP (`resolveLoginClientIp`) for the
+   * IP rate limiters and the web and sync lockouts — never as Express's own
    * `trust proxy` setting (deliberately not touched — that setting also
    * changes `req.secure`/cookie semantics app-wide, a strictly bigger
    * change than this one control needs). `0` (the default when unset,
@@ -147,7 +147,9 @@ export interface AppConfig {
    * NEVER set this higher than the actual number of proxies you control —
    * an unfilled/over-counted hop lets a client forge its own
    * `X-Forwarded-For` entry and pick an arbitrary rate-limit bucket,
-   * defeating the limiter entirely.
+   * defeating the limiter entirely. Too FEW hops is the opposite failure:
+   * every client resolves to the proxy's address, so a few bad attempts
+   * lock everyone out.
    */
   trustProxyHops?: number;
   /**
