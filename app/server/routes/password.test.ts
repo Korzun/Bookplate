@@ -12,6 +12,7 @@ import request from 'supertest';
 import { runMigrations } from '../db/migrate';
 import { ensureAdminUser } from '../services/admin-account';
 import { getStagingDir } from '../services/book-paths';
+import { createCheckSlots, type CheckSlots } from '../services/check-slots';
 import { markEmailVerified, setUserEmail } from '../services/email';
 import { hashEmailCode, RESET_TTL_MS } from '../services/email-token';
 import { signAccessToken } from '../services/jwt';
@@ -85,7 +86,7 @@ afterEach(async () => {
  */
 function build(
   configOverrides: Partial<AppConfig> = {},
-  deps: Pick<CreateUiRouterDeps, 'loginRateLimitNow'> = {}
+  deps: Pick<CreateUiRouterDeps, 'loginRateLimitNow' | 'argonSlots'> = {}
 ): {
   app: express.Express;
   mailer: FakeMailer | null;
@@ -346,9 +347,9 @@ describe('reset lockout', () => {
   const LOCKED = { error: 'Too many attempts. Try again in 15 min.' };
   const GOOD = 'a-brand-new-password';
 
-  const primed = async () => {
+  const primed = async (argonSlots?: CheckSlots) => {
     now = 1_000_000;
-    const built = build({ mail: MAIL_CONFIG }, { loginRateLimitNow: () => now });
+    const built = build({ mail: MAIL_CONFIG }, { loginRateLimitNow: () => now, argonSlots });
     const id = await createReader('ann', 'old-password');
     await setUserEmail(prisma, id, 'ann@example.com');
     await markEmailVerified(prisma, id);
@@ -385,6 +386,28 @@ describe('reset lockout', () => {
       expect((await reset()).status).toBe(400);
     }
     expect((await reset({ email: 'ann@example.com', code, newPassword: GOOD })).status).toBe(204);
+  });
+
+  it('busy refuses without burning the code', async () => {
+    const slots = createCheckSlots(2);
+    const { code, reset } = await primed(slots);
+    const held = [slots.tryAcquire()!, slots.tryAcquire()!];
+    const busy = await reset({ email: 'ann@example.com', code, newPassword: GOOD });
+    expect(busy.status).toBe(429);
+    expect(busy.headers['retry-after']).toBe('60');
+    expect(busy.body).toEqual({ error: 'Server busy. Try again in a minute.' });
+    held.forEach((release) => release());
+    expect((await reset({ email: 'ann@example.com', code, newPassword: GOOD })).status).toBe(204);
+  });
+
+  it('a throw during the check is not counted', async () => {
+    const { reset } = await primed();
+    vi.spyOn(prisma.user, 'findUnique').mockRejectedValueOnce(new Error('db down'));
+    const wrong = { email: 'ann@example.com', code: 'WRONGONE', newPassword: GOOD };
+    expect((await reset(wrong)).status).toBe(500);
+    for (let i = 0; i < 4; i++) expect((await reset(wrong)).status).toBe(400);
+    // Had the throw counted, the 4th wrong code would have started the lock.
+    expect((await reset(wrong)).status).toBe(400);
   });
 
   it('reset and login share one bucket', async () => {

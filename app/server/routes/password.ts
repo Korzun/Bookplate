@@ -15,7 +15,7 @@ import type { PrismaClient } from '@prisma/client';
 import express, { Request, Response, Router } from 'express';
 
 import { logger } from '../logger';
-import { sendBusy, sendLocked, type LoginLimiter } from '../middleware/login-limiter';
+import { addressHint, sendBusy, sendLocked, type LoginLimiter } from '../middleware/login-limiter';
 import type { CheckSlots } from '../services/check-slots';
 import { findUserByEmail } from '../services/email';
 import { consumeEmailToken, invalidateEmailTokens, issueEmailToken } from '../services/email-token';
@@ -150,81 +150,86 @@ export function createPasswordRouter(deps: {
         sendLocked(res, lockedFor);
         return;
       }
-      // Every reject below is a guess and stays counted.
-      const attempt = webLimiter.begin(ip, ip);
-      const account = await findUserByEmail(prisma, email);
-      if (account === null || account.isConfigAdmin) {
-        reject('no eligible account for that address');
-        return;
-      }
-      // Taken before the code is consumed, so a busy refusal never burns a
-      // valid code; held until the new password is hashed.
-      const release = argonSlots.tryAcquire();
-      if (release === null) {
-        attempt.cancelled();
-        sendBusy(res, ip, 'Password reset');
-        return;
-      }
-      let passwordHash: string;
+      // Every reject below is a guess and stays counted; a throw is cancelled.
+      const attempt = webLimiter.begin(ip, ip, addressHint(ip));
       try {
-        const consumed = await consumeEmailToken(prisma, {
-          userId: account.id,
-          purpose: 'reset',
-          code,
-        });
-        if (consumed === null) {
-          reject('unknown, used or expired code');
+        const account = await findUserByEmail(prisma, email);
+        if (account === null || account.isConfigAdmin) {
+          reject('no eligible account for that address');
           return;
         }
-        // The token records the address it was sent to, so a code minted before an
-        // address change cannot be spent after it.
-        if (account.email === null || consumed.email !== account.email) {
-          reject('code was issued for a different address');
+        // Taken before the code is consumed, so a busy refusal never burns a
+        // valid code; held until the new password is hashed.
+        const release = argonSlots.tryAcquire();
+        if (release === null) {
+          attempt.cancelled();
+          sendBusy(res, ip, 'Password reset');
           return;
         }
-        passwordHash = await hashLoginPassword(newPassword);
-      } finally {
-        release();
-      }
+        let passwordHash: string;
+        try {
+          const consumed = await consumeEmailToken(prisma, {
+            userId: account.id,
+            purpose: 'reset',
+            code,
+          });
+          if (consumed === null) {
+            reject('unknown, used or expired code');
+            return;
+          }
+          // The token records the address it was sent to, so a code minted before an
+          // address change cannot be spent after it.
+          if (account.email === null || consumed.email !== account.email) {
+            reject('code was issued for a different address');
+            return;
+          }
+          passwordHash = await hashLoginPassword(newPassword);
+        } finally {
+          release();
+        }
 
-      // Ordered revoke -> update -> invalidate so no partial failure below can
-      // leave a NEW password live alongside STILL-VALID refresh tokens — the one
-      // inversion this order exists to rule out. Do not reorder these.
-      //
-      // The code above has already been consumed (`consumeEmailToken` deletes
-      // the row unconditionally, before any of this runs), so in every failure
-      // case below it is gone, not merely unspent: recovery is always a fresh
-      // `/forgot` request, never a resubmit of the same code.
-      //
-      //   - failed revoke: nothing below it ran — the account is exactly as it
-      //     was before this request (old password, old tokens).
-      //   - failed update: every refresh token is already revoked (a forced
-      //     logout) but the old password is still the live one — never a new
-      //     password with old tokens still valid.
-      //   - failed invalidate: harmless — everything that matters already
-      //     succeeded, and `invalidateEmailTokens` here is belt-and-braces only,
-      //     since `consumeEmailToken` already removed the row.
-      //
-      // The order NOT to use is update-then-revoke: if the revoke then threw,
-      // the account would be left strictly worse than before the request — new
-      // password live, every pre-existing refresh token still valid — with a 500
-      // telling the caller it failed.
-      await revokeAllForUsername(prisma, account.username);
-      // Same side effect `userChangePassword` has, for the same reason: a stolen
-      // or stale refresh token must not outlive a password change.
-      await prisma.user.update({
-        where: { id: account.id },
-        data: {
-          passwordHash,
-          // A reset satisfies the forced-change requirement: the user just chose
-          // this password themselves.
-          mustChangePassword: false,
-        },
-      });
-      await invalidateEmailTokens(prisma, account.id, 'reset');
-      attempt.succeeded();
-      log.info(`Password reset completed for "${account.username}"`);
-      res.sendStatus(204);
+        // Ordered revoke -> update -> invalidate so no partial failure below can
+        // leave a NEW password live alongside STILL-VALID refresh tokens — the one
+        // inversion this order exists to rule out. Do not reorder these.
+        //
+        // The code above has already been consumed (`consumeEmailToken` deletes
+        // the row unconditionally, before any of this runs), so in every failure
+        // case below it is gone, not merely unspent: recovery is always a fresh
+        // `/forgot` request, never a resubmit of the same code.
+        //
+        //   - failed revoke: nothing below it ran — the account is exactly as it
+        //     was before this request (old password, old tokens).
+        //   - failed update: every refresh token is already revoked (a forced
+        //     logout) but the old password is still the live one — never a new
+        //     password with old tokens still valid.
+        //   - failed invalidate: harmless — everything that matters already
+        //     succeeded, and `invalidateEmailTokens` here is belt-and-braces only,
+        //     since `consumeEmailToken` already removed the row.
+        //
+        // The order NOT to use is update-then-revoke: if the revoke then threw,
+        // the account would be left strictly worse than before the request — new
+        // password live, every pre-existing refresh token still valid — with a 500
+        // telling the caller it failed.
+        await revokeAllForUsername(prisma, account.username);
+        // Same side effect `userChangePassword` has, for the same reason: a stolen
+        // or stale refresh token must not outlive a password change.
+        await prisma.user.update({
+          where: { id: account.id },
+          data: {
+            passwordHash,
+            // A reset satisfies the forced-change requirement: the user just chose
+            // this password themselves.
+            mustChangePassword: false,
+          },
+        });
+        await invalidateEmailTokens(prisma, account.id, 'reset');
+        attempt.succeeded();
+        log.info(`Password reset completed for "${account.username}"`);
+        res.sendStatus(204);
+      } catch (err) {
+        attempt.cancelled();
+        throw err;
+      }
     }
   );
 
