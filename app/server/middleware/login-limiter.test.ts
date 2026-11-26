@@ -3,6 +3,7 @@ import request from 'supertest';
 
 import {
   createLoginLimiter,
+  LIMITER_MAX_ENTRIES,
   sendBusy,
   sendLocked,
   WEB_LOCKOUT,
@@ -12,8 +13,8 @@ import {
 let t = 0;
 const now = () => t;
 
-function make(): LoginLimiter {
-  return createLoginLimiter({ now, ...WEB_LOCKOUT, label: 'Test' });
+function make(maxEntries?: number): LoginLimiter {
+  return createLoginLimiter({ now, ...WEB_LOCKOUT, label: 'Test', maxEntries });
 }
 
 function fail(limiter: LoginLimiter, key: string, times: number) {
@@ -120,6 +121,58 @@ describe('createLoginLimiter', () => {
     t = 900_001;
     limiter.begin('late', 'x');
     expect(limiter.size()).toBe(1);
+  });
+
+  it('sweeps at most once a second', () => {
+    const limiter = make();
+    limiter.begin('a', 'x');
+    t = 899_500;
+    limiter.begin('b', 'x');
+    // 'a' is past the window from here on, but the last sweep was 900 ms ago.
+    t = 900_400;
+    limiter.begin('c', 'x');
+    expect(limiter.size()).toBe(3);
+    t = 900_500;
+    limiter.begin('d', 'x');
+    expect(limiter.size()).toBe(3);
+  });
+
+  it('caps entries at LIMITER_MAX_ENTRIES', () => {
+    expect(LIMITER_MAX_ENTRIES).toBe(10_000);
+    const limiter = make();
+    for (let i = 0; i < 20_000; i++) limiter.begin(`k${i}`, 'x');
+    expect(limiter.size()).toBeLessThanOrEqual(10_000);
+  });
+
+  it('never evicts a live lock, even past the cap', () => {
+    const limiter = make(5);
+    for (let k = 0; k < 5; k++) fail(limiter, `lock${k}`, 5);
+    limiter.begin('new', 'x');
+    expect(limiter.size()).toBe(6);
+    for (let k = 0; k < 5; k++) expect(limiter.lockedForMs(`lock${k}`)).toBe(900_000);
+  });
+
+  it('evicts the oldest unlocked entry first', () => {
+    const limiter = make(3);
+    fail(limiter, 'L', 5);
+    fail(limiter, 'a', 4);
+    fail(limiter, 'b', 4);
+    // At the cap: 'a' is the oldest entry without a lock.
+    limiter.begin('c', 'x');
+    limiter.begin('b', 'x');
+    expect(limiter.lockedForMs('b')).toBe(900_000);
+    // At the cap again: 'c' goes now, so 'a' starts over at one failure.
+    limiter.begin('a', 'x');
+    expect(limiter.lockedForMs('a')).toBeNull();
+    expect(limiter.lockedForMs('L')).toBe(900_000);
+  });
+
+  it('appends the hint to the lockout warn line', () => {
+    const write = vi.mocked(process.stderr.write);
+    const limiter = make();
+    for (let i = 0; i < 5; i++) limiter.begin('k', 'who-1', ' — the hint');
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(String(write.mock.calls[0][0]).trimEnd()).toMatch(/failures — the hint$/);
   });
 });
 
