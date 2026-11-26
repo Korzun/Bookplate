@@ -19,6 +19,7 @@ import type { Mock, MockedFunction } from 'vitest';
 import { runMigrations } from '../db/migrate';
 import type { Context, Viewer } from '../graphql/context';
 import { schema } from '../graphql/schema';
+import { securityHeaders } from '../middleware/security-headers';
 import { ensureAdminUser } from '../services/admin-account';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { saveThumbnail } from '../services/book-assets';
@@ -459,6 +460,7 @@ function buildApp(
   deps: Pick<CreateUiRouterDeps, 'loginRateLimitNow' | 'argonSlots' | 'webLimiter'> = {}
 ): express.Express {
   const testApp = express();
+  testApp.use(securityHeaders());
   testApp.use(express.json());
   testApp.use(express.urlencoded({ extended: false }));
   testApp.use(cookieParser());
@@ -1886,6 +1888,42 @@ describe('GET /api/books/:id/cover', () => {
       .set(...bearer(token))
       .set('If-None-Match', etag);
     expect(second.status).toBe(304);
+  });
+
+  it('cover keeps its Cache-Control', async () => {
+    await seedBook(prisma, { booksRoot: booksDir }, aliceOwner, 'ccBook', stage('ccBook'), {
+      ...FAKE_META,
+      coverData: Buffer.from('cc-cover'),
+      coverMime: 'image/jpeg',
+    });
+    const token = await loginAlice();
+    const versioned = await request(app)
+      .get('/api/books/ccBook/cover?v=1')
+      .set(...bearer(token));
+    expect(versioned.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    const plain = await request(app)
+      .get('/api/books/ccBook/cover')
+      .set(...bearer(token));
+    expect(plain.headers['cache-control']).toBe('private, max-age=0, must-revalidate');
+  });
+
+  it('cover 304 carries the cover Cache-Control, not no-store', async () => {
+    await seedBook(prisma, { booksRoot: booksDir }, aliceOwner, 'cc304', stage('cc304'), {
+      ...FAKE_META,
+      coverData: Buffer.from('cc304-cover'),
+      coverMime: 'image/jpeg',
+    });
+    const token = await loginAlice();
+    const first = await request(app)
+      .get('/api/books/cc304/cover?v=1')
+      .set(...bearer(token));
+    const second = await request(app)
+      .get('/api/books/cc304/cover?v=1')
+      .set(...bearer(token))
+      .set('If-None-Match', first.headers['etag']);
+    expect(second.status).toBe(304);
+    expect(second.headers['cache-control']).toBe(first.headers['cache-control']);
+    expect(second.headers['cache-control']).toBe('private, max-age=31536000, immutable');
   });
 });
 

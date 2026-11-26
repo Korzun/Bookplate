@@ -950,21 +950,23 @@ export function createUiRouter({
       }
 
       const etag = `"${createHash('md5').update(data).digest('hex')}"`;
-      if (req.headers['if-none-match'] === etag) {
-        res.status(304).end();
-        return;
-      }
-
       // A cache-busting `v` token (the book's mtime) means the URL changes whenever the
       // cover changes, so the response is safe to cache immutably; without it we fall back
       // to revalidate-every-time so a stale cover is never served under a reused URL.
       const versioned = typeof req.query.v === 'string' && req.query.v.length > 0;
-      res.set('Content-Type', mime);
+      // ETag and Cache-Control go on before the 304 branch so a 304 carries them
+      // too (it would otherwise inherit the /api no-store default and a browser
+      // could evict the cached cover).
       res.set('ETag', etag);
       res.set(
         'Cache-Control',
         versioned ? 'private, max-age=31536000, immutable' : 'private, max-age=0, must-revalidate'
       );
+      if (req.headers['if-none-match'] === etag) {
+        res.status(304).end();
+        return;
+      }
+      res.set('Content-Type', mime);
       res.send(data);
     }
   );

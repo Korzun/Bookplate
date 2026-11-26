@@ -6,7 +6,9 @@ import express, { NextFunction, Request, RequestHandler, Response, Router } from
 
 import { logger } from './logger';
 import { graphqlBodyLimit } from './middleware/graphql-body-limit';
+import { createLoginLimiter, SYNC_LOCKOUT } from './middleware/login-limiter';
 import { requestLog } from './middleware/request-log';
+import { securityHeaders } from './middleware/security-headers';
 import { requestTimeout } from './middleware/timeout';
 import { createKosyncRouter } from './routes/kosync';
 import { createOpdsRouter } from './routes/opds';
@@ -52,6 +54,10 @@ export function createServer({
   const editionsRoot = path.join(config.dataDir, 'editions');
 
   const server = express();
+  server.disable('x-powered-by');
+
+  // First, so every response (including early 503s and errors) carries them.
+  server.use(securityHeaders());
 
   // Respond with a clean 503 before Cloudflare's ~100s proxy timeout (524).
   server.use(requestTimeout(90_000));
@@ -84,6 +90,11 @@ export function createServer({
   server.use(express.urlencoded({ extended: false }));
   server.use(cookieParser());
 
+  // One bucket shared by OPDS and KOSync: a sync password guessed across both
+  // surfaces counts against the same lockout.
+  const syncLimiter = createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' });
+  const trustProxyHops = config.trustProxyHops ?? 0;
+
   server.use(
     '/opds',
     createOpdsRouter({
@@ -93,9 +104,11 @@ export function createServer({
       libraryName: config.libraryName,
       editionsRoot,
       validationThreshold: config.validationThreshold,
+      syncLimiter,
+      trustProxyHops,
     })
   );
-  server.use('/sync', createKosyncRouter(prisma));
+  server.use('/sync', createKosyncRouter(prisma, { syncLimiter, trustProxyHops }));
   server.use(
     '/',
     createUiRouter({
