@@ -3,10 +3,11 @@ import request from 'supertest';
 
 import { CONTENT_SECURITY_POLICY, securityHeaders } from './security-headers';
 
-function buildApp(): express.Express {
+function buildApp(isProduction = true): express.Express {
   const app = express();
-  app.use(securityHeaders());
+  app.use(securityHeaders({ isProduction }));
   app.get('/api/x', (_req, res) => void res.json({}));
+  app.get('/graphql', (_req, res) => void res.send('<html>graphiql</html>'));
   app.post('/graphql', (_req, res) => void res.json({}));
   app.get('/mcp/oauth/authorize', (_req, res) => void res.send('ok'));
   app.get('/apiary', (_req, res) => void res.send('ok'));
@@ -60,8 +61,28 @@ describe('securityHeaders', () => {
     expect(res.headers['etag']).toBe('"e"');
   });
 
-  it('CSP allows blob/data images and same-origin workers', () => {
-    expect(CONTENT_SECURITY_POLICY).toContain("img-src 'self' data: blob:");
-    expect(CONTENT_SECURITY_POLICY).toContain("worker-src 'self'");
+  it('sends exactly this CSP', async () => {
+    const res = await request(buildApp()).get('/');
+    expect(res.headers['content-security-policy']).toBe(
+      "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+    );
+  });
+
+  it('drops the CSP from GET /graphql outside production, so GraphiQL loads', async () => {
+    const dev = buildApp(false);
+    const graphiql = await request(dev).get('/graphql');
+    expect(graphiql.headers['content-security-policy']).toBeUndefined();
+    expect(graphiql.headers['x-frame-options']).toBe('DENY');
+    expect((await request(dev).post('/graphql')).headers['content-security-policy']).toBe(
+      CONTENT_SECURITY_POLICY
+    );
+    expect((await request(dev).get('/')).headers['content-security-policy']).toBe(
+      CONTENT_SECURITY_POLICY
+    );
+  });
+
+  it('keeps the CSP on GET /graphql in production', async () => {
+    const res = await request(buildApp(true)).get('/graphql');
+    expect(res.headers['content-security-policy']).toBe(CONTENT_SECURITY_POLICY);
   });
 });

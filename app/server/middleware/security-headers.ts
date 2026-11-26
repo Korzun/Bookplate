@@ -12,10 +12,14 @@ const NO_STORE_PREFIXES = ['/api/', '/graphql', '/mcp'];
  * paths to `Cache-Control: no-store`. Routes that set their own
  * `Cache-Control` later simply overwrite the default. Mount it first, so
  * `req.path` is the full path.
+ *
+ * Outside production, `GET /graphql` gets no CSP: yoga serves GraphiQL there,
+ * which needs CDN scripts and inline script.
  */
-export function securityHeaders(): RequestHandler {
+export function securityHeaders({ isProduction }: { isProduction: boolean }): RequestHandler {
   return (req, res, next) => {
-    res.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+    const graphiql = !isProduction && req.method === 'GET' && req.path === '/graphql';
+    if (!graphiql) res.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Referrer-Policy', 'same-origin');
     res.set('X-Frame-Options', 'DENY');
