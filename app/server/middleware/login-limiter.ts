@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 
 import { logger } from '../logger';
+import { isPrivateAddress } from '../utils/client-ip';
 
 const log = logger('LoginLimiter');
 
@@ -131,6 +132,18 @@ export function createLoginLimiter(options: {
 
 export const WEB_LOCKOUT = { maxFailures: 5, windowMs: 900_000, lockMs: 900_000 } as const;
 export const SYNC_LOCKOUT = { maxFailures: 10, windowMs: 900_000, lockMs: 900_000 } as const;
+/** Per client address across every sync username, so random usernames cannot dodge the lockout. */
+export const SYNC_IP_LOCKOUT = { maxFailures: 50, windowMs: 900_000, lockMs: 900_000 } as const;
+
+/**
+ * `begin` hint for a lock keyed on a loopback or private address: behind a
+ * proxy with `TRUST_PROXY_HOPS` too low, every client resolves to it.
+ */
+export function addressHint(ip: string): string | undefined {
+  return isPrivateAddress(ip)
+    ? ' — every client may share this address; check TRUST_PROXY_HOPS'
+    : undefined;
+}
 
 export function sendLocked(res: Response, retryAfterMs: number): void {
   const minutes = Math.ceil(retryAfterMs / 60_000);

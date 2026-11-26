@@ -1,3 +1,5 @@
+import { BlockList, isIPv4, isIPv6 } from 'node:net';
+
 import type { Request } from 'express';
 
 /**
@@ -49,4 +51,26 @@ export function resolveLoginClientIp(req: Request, trustProxyHops: number): stri
     .filter((s) => s.length > 0);
   const clientIndex = chain.length - trustProxyHops;
   return clientIndex >= 0 ? chain[clientIndex] : direct;
+}
+
+const PRIVATE = new BlockList();
+PRIVATE.addSubnet('127.0.0.0', 8, 'ipv4');
+PRIVATE.addSubnet('10.0.0.0', 8, 'ipv4');
+PRIVATE.addSubnet('172.16.0.0', 12, 'ipv4');
+PRIVATE.addSubnet('192.168.0.0', 16, 'ipv4');
+PRIVATE.addSubnet('169.254.0.0', 16, 'ipv4');
+PRIVATE.addAddress('::1', 'ipv6');
+PRIVATE.addSubnet('fc00::', 7, 'ipv6');
+PRIVATE.addSubnet('fe80::', 10, 'ipv6');
+
+/**
+ * Loopback, private, link-local or unique-local, including IPv4-mapped IPv6
+ * (`::ffff:10.0.0.1`). A lockout keyed on one of these usually means a proxy
+ * in front and `TRUST_PROXY_HOPS` too low. Anything unparseable is false.
+ */
+export function isPrivateAddress(ip: string): boolean {
+  const mapped = /^::ffff:(.+)$/i.exec(ip);
+  const v4 = mapped !== null && isIPv4(mapped[1]) ? mapped[1] : ip;
+  if (isIPv4(v4)) return PRIVATE.check(v4, 'ipv4');
+  return isIPv6(ip) && PRIVATE.check(ip, 'ipv6');
 }
