@@ -122,11 +122,15 @@ and the log line names the user, so this is acceptable.
 
 ### Check cap
 
-One shared semaphore (`MAX_CHECKING = 2`) built once in `server.ts` and passed to the UI router
-and the GraphQL context. Wrapped around `argon2.hash` and `argon2.verify` in
-`services/password.ts` callers, acquired after the lockout check and before the provisional
+One process-wide semaphore (`MAX_CHECKING = 2`): the module singleton `argonSlots` in
+`services/check-slots.ts`, injectable into `createUiRouter` for tests. It wraps `argon2.hash` and
+`argon2.verify` at their callers, acquired after the lockout check and before the provisional
 failure is recorded, released in `finally`. argon2's default uses 64 MB per operation, which is
 the real resource being protected on this hardware.
+
+REST routes (login, reset) refuse with 429 when both slots are busy. Authenticated GraphQL
+mutations (`userChangePassword`, `userRegister`) wait for a slot instead, since the caller is
+already known and there is no lockout to protect.
 
 The config admin's credential is not argon2, so it does not take a slot.
 

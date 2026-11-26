@@ -1,3 +1,6 @@
+import argon2 from 'argon2';
+
+import { argonSlots } from '../../../../services/check-slots';
 import { setUserEmail } from '../../../../services/email';
 import { issueEmailToken } from '../../../../services/email-token';
 import { validateUser } from '../../../../services/password';
@@ -8,12 +11,15 @@ import { createHarness, type Harness } from '../../../test-util';
 vi.mock('../../../../logger');
 
 let harness: Harness;
+const held: Array<() => void> = [];
 
 beforeEach(async () => {
   harness = await createHarness();
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  while (held.length) held.pop()!();
   await harness.cleanup();
 });
 
@@ -45,6 +51,31 @@ const REGEN_SYNC_MUTATION = `
 `;
 
 describe('Mutation.userChangePassword', () => {
+  it('waits for an argon slot when both are taken', async () => {
+    held.push(await argonSlots.acquire(), await argonSlots.acquire());
+    const argonCall = vi.spyOn(argon2, 'verify');
+    let settled = false;
+    const pending = harness
+      .execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: { input: { currentPassword: 'alicepass', newPassword: 'newpass123' } },
+      })
+      .finally(() => {
+        settled = true;
+      });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(settled).toBe(false);
+    expect(argonCall).not.toHaveBeenCalled();
+
+    held.pop()!();
+    const result = await pending;
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.userChangePassword).toEqual({
+      __typename: 'UserChangePasswordPayload',
+      user: { username: 'alice', mustChangePassword: false },
+    });
+  });
+
   it("changes the viewer's own password given the correct current password", async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,

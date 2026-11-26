@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { argonSlots } from '../../../../services/check-slots';
 import { invalidateEmailTokens } from '../../../../services/email-token';
 import { changePassword, hashLoginPassword, validateUser } from '../../../../services/password';
 import { revokeAllForUsername } from '../../../../services/token';
@@ -231,10 +232,18 @@ builder.mutationField('userChangePassword', (t) =>
       const userId = context.viewer!.userId!;
       const username = context.viewer!.username;
 
-      const valid = await validateUser(context.prisma, username, parsed.data.currentPassword);
-      if (!valid) return incorrectPasswordError();
+      // One slot across the verify and the hash: this authenticated mutation
+      // waits for a free argon slot rather than being refused like REST login.
+      const release = await argonSlots.acquire();
+      let newHash: string;
+      try {
+        const valid = await validateUser(context.prisma, username, parsed.data.currentPassword);
+        if (!valid) return incorrectPasswordError();
 
-      const newHash = await hashLoginPassword(parsed.data.newPassword);
+        newHash = await hashLoginPassword(parsed.data.newPassword);
+      } finally {
+        release();
+      }
       const changed = await changePassword(context.prisma, username, newHash);
       if (!changed) return null;
 
