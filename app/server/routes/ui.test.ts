@@ -460,7 +460,7 @@ function buildApp(
   deps: Pick<CreateUiRouterDeps, 'loginRateLimitNow' | 'argonSlots' | 'webLimiter'> = {}
 ): express.Express {
   const testApp = express();
-  testApp.use(securityHeaders());
+  testApp.use(securityHeaders({ isProduction: true }));
   testApp.use(express.json());
   testApp.use(express.urlencoded({ extended: false }));
   testApp.use(cookieParser());

@@ -20,6 +20,13 @@ import { AppConfig } from './types';
 
 const log = logger('Server');
 
+/**
+ * Fail safe: hardening is the default and dev mode must be opted into. Nothing
+ * in the shipped image sets NODE_ENV, so `=== 'production'` would leave every
+ * real deployment in dev mode; the `dev` npm script sets it to `development`.
+ */
+export const isProductionEnv = (): boolean => process.env.NODE_ENV !== 'development';
+
 export type CreateServerDeps = {
   config: AppConfig;
   thumbnailQueue: ThumbnailQueue;
@@ -57,7 +64,7 @@ export function createServer({
   server.disable('x-powered-by');
 
   // First, so every response (including early 503s and errors) carries them.
-  server.use(securityHeaders());
+  server.use(securityHeaders({ isProduction: isProductionEnv() }));
 
   // Respond with a clean 503 before Cloudflare's ~100s proxy timeout (524).
   server.use(requestTimeout(90_000));

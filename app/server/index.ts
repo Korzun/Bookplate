@@ -10,7 +10,7 @@ import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { resolveMcpBaseUrl, mcpEndpointUrl } from './mcp/base-url';
 import { createMcpRouter } from './mcp/index';
-import { createServer } from './server';
+import { createServer, isProductionEnv } from './server';
 import { getStagingDir } from './services/book-paths';
 import { CoverBackfill } from './services/cover-backfill';
 import { createMailer } from './services/mailer';
@@ -120,13 +120,9 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   };
   const graphqlHandler = createGraphqlHandler({
     ...contextDeps,
-    // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
-    // the default and insecure mode must be opted into explicitly. Nothing in
-    // the shipped image sets NODE_ENV — run.sh execs node directly and the
-    // Dockerfile sets no env — so a `=== 'production'` test would leave every
-    // real deployment running in dev mode. The server's `dev` npm script sets
-    // NODE_ENV=development explicitly to keep GraphiQL locally.
-    isProduction: process.env.NODE_ENV !== 'development',
+    // No GraphiQL, masked errors, no introspection unless NODE_ENV=development;
+    // `securityHeaders` keys GraphiQL's CSP exemption on the same check.
+    isProduction: isProductionEnv(),
   });
 
   const mcpRouter =
