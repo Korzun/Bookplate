@@ -56,7 +56,7 @@ Add-on options (set in the **Configuration** tab):
 | `password`               | string | `changeme`  | Admin account password. **Change this before starting.**          |
 | `max_concurrent_uploads` | int    | `3`         | Maximum number of simultaneous uploads processed by the server.   |
 | `validation_threshold`   | list   | `Error`     | Strictness of EPUB upload validation. `Fatal` rejects only unreadable files; `Error` (default) also rejects structural errors; `Warning` and `Info` reject progressively more. |
-| `trust_proxy_hops`       | int    | `0`         | Reverse-proxy hops to trust when resolving a client's real IP for the login rate limiter (`POST /api/login`'s 10-attempts-per-minute-per-IP guard) and the MCP upload-link limiter (30 PUTs per 15 minutes per client). With the default `0` behind a proxy or Cloudflare Tunnel, every client shares one bucket. Leave at `0` unless you sit behind a reverse proxy or **Cloudflare Tunnel** (see "Usage" below) — set to `1` for a single such hop. Trusting a hop you don't actually run behind lets a client bypass the limiter, so don't set this higher than your real proxy count. |
+| `trust_proxy_hops`       | int    | `0`         | Reverse-proxy hops to trust when resolving a client's real IP. That IP keys the login rate limiter (`POST /api/login`'s 10-attempts-per-minute-per-IP guard), the login and password-reset lockout (5 failures in 15 minutes locks that address for 15 minutes), the e-reader sync lockouts for OPDS and KOSync (10 failures per address and username, 50 per address), and the MCP upload-link limiter (30 PUTs per 15 minutes per client). A wrong value behind a proxy or Cloudflare Tunnel makes every client share the proxy's address, so a few bad attempts from anyone lock everyone out; the lockout log line then says to check this setting. Leave at `0` unless you sit behind a reverse proxy or **Cloudflare Tunnel** (see "Usage" below) — set to `1` for a single such hop. Trusting a hop you don't actually run behind lets a client bypass the limiter, so don't set this higher than your real proxy count. |
 | `email_cloudflare_account_id` | string | *(none)* | Cloudflare account ID for Email Sending. Required together with `email_cloudflare_api_token` and `email_from_address` — email stays switched off unless all three are set. |
 | `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
 | `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
@@ -288,7 +288,9 @@ domains per service.
 3. **Environment variables:** `ADMIN_PASS` (mark it as a secret), `PUBLIC_URL`
    (the `https` origin the browser uses, whatever the domain above says; it also
    turns on the MCP server), and `TRUST_PROXY_HOPS=2` when a tunnel sits in
-   front of Coolify's proxy (`1` for the proxy alone). Optionally `ADMIN_USER`,
+   front of Coolify's proxy (`1` for the proxy alone). Get this right: the
+   login and sync lockouts key on the address it resolves, and too low a value
+   lets a few bad attempts lock every client out. Optionally `ADMIN_USER`,
    `LIBRARY_NAME` and the email variables (`CF_ACCOUNT_ID`, `CF_API_TOKEN`,
    `EMAIL_FROM`).
 4. **Persistent storage:** volumes mounted at `/data` and `/media/books`, or a
@@ -356,7 +358,7 @@ variables. A variable set to the empty string counts as unset.
 | `PORT`          | `3000`         | HTTP listen port.                            |
 | `LOG_LEVEL`     | `info`         | Log verbosity.                               |
 | `VALIDATION_THRESHOLD` | `Error` | Strictness of EPUB upload validation: `Fatal`, `Error`, `Warning` or `Info`. `Fatal` rejects only unreadable files; `Error` also rejects structural errors; `Warning` and `Info` reject progressively more. |
-| `TRUST_PROXY_HOPS` | `0`         | Same as the add-on's `trust_proxy_hops` option above — reverse-proxy hops to trust for the login rate limiter's client-IP resolution only. Overrides the add-on option if both are somehow set. Leave at `0` unless you run one; trusting a hop you don't control lets a client bypass the limiter. |
+| `TRUST_PROXY_HOPS` | `0`         | Same as the add-on's `trust_proxy_hops` option above — reverse-proxy hops to trust when resolving the client IP that keys the login rate limiter, the login and reset lockout (5 failures / 15 min) and the e-reader sync lockouts. Overrides the add-on option if both are somehow set. Leave at `0` unless you run one; trusting a hop you don't control lets a client bypass the limiters, and too few hops makes every client share the proxy's address, so a few bad attempts lock everyone out. |
 | `CF_ACCOUNT_ID` | *(none)* | Same as the add-on's `email_cloudflare_account_id` option above. Required together with `CF_API_TOKEN` and `EMAIL_FROM` — email stays switched off unless all three are set. |
 | `CF_API_TOKEN`  | *(none)* | Same as the add-on's `email_cloudflare_api_token` option above — a Cloudflare API token with the **Email Sending: Edit** permission. Required together with `CF_ACCOUNT_ID` and `EMAIL_FROM`. |
 | `EMAIL_FROM`    | *(none)* | Same as the add-on's `email_from_address` option above. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `CF_ACCOUNT_ID` and `CF_API_TOKEN`. |
