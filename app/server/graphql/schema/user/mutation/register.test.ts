@@ -1,18 +1,24 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import argon2 from 'argon2';
+
+import { argonSlots } from '../../../../services/check-slots';
 import { validateUser } from '../../../../services/password';
 import { createHarness, type Harness } from '../../../test-util';
 
 vi.mock('../../../../logger');
 
 let harness: Harness;
+const held: Array<() => void> = [];
 
 beforeEach(async () => {
   harness = await createHarness();
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  while (held.length) held.pop()!();
   await harness.cleanup();
 });
 
@@ -37,6 +43,31 @@ const MUTATION = `
 `;
 
 describe('Mutation.userRegister', () => {
+  it('waits for an argon slot when both are taken', async () => {
+    held.push(await argonSlots.acquire(), await argonSlots.acquire());
+    const argonCall = vi.spyOn(argon2, 'hash');
+    let settled = false;
+    const pending = harness
+      .execute(MUTATION, {
+        viewer: harness.adminViewer,
+        variables: { input: { username: 'slotwaiter' } },
+      })
+      .finally(() => {
+        settled = true;
+      });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(settled).toBe(false);
+    expect(argonCall).not.toHaveBeenCalled();
+
+    held.pop()!();
+    const result = await pending;
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.userRegister).toMatchObject({
+      __typename: 'UserRegisterPayload',
+      user: { username: 'slotwaiter', mustChangePassword: true },
+    });
+  });
+
   it('creates a user for an admin, on disk and in the DB, and returns a generated password', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,

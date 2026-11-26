@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import { z } from 'zod';
 
+import { argonSlots } from '../../../../services/check-slots';
 import { generateLoginPassword, hashLoginPassword } from '../../../../services/password';
 import { createUser } from '../../../../services/user';
 import { isValidUsername, MIN_USERNAME_LENGTH } from '../../../../utils/username';
@@ -166,7 +167,14 @@ builder.mutationField('userRegister', (t) =>
       fs.mkdirSync(path.join(context.config.booksDir, username), { recursive: true });
 
       const password = generateLoginPassword();
-      const passwordHash = await hashLoginPassword(password);
+      // Authenticated: waits for a free argon slot instead of being refused.
+      const release = await argonSlots.acquire();
+      let passwordHash: string;
+      try {
+        passwordHash = await hashLoginPassword(password);
+      } finally {
+        release();
+      }
       const created = await createUser(context.prisma, username, passwordHash, undefined, true);
       if (!created) return usernameAlreadyExistsError(username);
 
