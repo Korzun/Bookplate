@@ -83,6 +83,32 @@ describe('LoginPage', () => {
     expect(screen.queryByText(/invalid credentials/i)).not.toBeInTheDocument();
   });
 
+  it.each([
+    'Too many attempts. Try again in 15 min.',
+    'Server busy. Try again in a minute.',
+    'Too many login attempts. Please try again later.',
+  ])('shows the server text on 429: %s', async (error) => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error }), {
+            status: 429,
+            headers: { 'Retry-After': '900' },
+          })
+      )
+    );
+
+    renderWithProviders(<LoginPage />);
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'hunter2');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(error)).toBeInTheDocument();
+    expect(screen.queryByText(/900 second/i)).not.toBeInTheDocument();
+  });
+
   it('still shows "Invalid credentials" on 401', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

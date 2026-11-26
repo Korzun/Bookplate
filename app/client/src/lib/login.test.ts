@@ -58,12 +58,30 @@ describe('login', () => {
     await expect(login('alice', 'pw')).resolves.toEqual({
       status: 'rate-limited',
       retryAfterSeconds: 42,
+      message: null,
     });
     stubFetch({ ok: false, status: 429, headers: new Headers({ 'Retry-After': 'soon' }) });
     await expect(login('alice', 'pw')).resolves.toEqual({
       status: 'rate-limited',
       retryAfterSeconds: null,
+      message: null,
     });
+  });
+
+  it("surfaces the server's error text on 429", async () => {
+    stubFetch({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'Retry-After': '900' }),
+      json: async () => ({ error: 'Too many attempts. Try again in 15 min.' }),
+    });
+    await expect(login('alice', 'pw')).resolves.toEqual({
+      status: 'rate-limited',
+      retryAfterSeconds: 900,
+      message: 'Too many attempts. Try again in 15 min.',
+    });
+    stubFetch({ ok: false, status: 429, json: async () => ({ error: 42 }) });
+    await expect(login('alice', 'pw')).resolves.toMatchObject({ message: null });
   });
 
   it('reports network-error when fetch throws', async () => {

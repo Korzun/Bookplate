@@ -30,14 +30,15 @@ export const LoginPage = () => {
         showToast('Unexpected response from server', 'error');
         break;
       case 'rate-limited':
-        // POST /api/login rate-limits at 10 attempts/minute/IP. This is NOT a
-        // credentials failure: a successful login does not reset the counter
-        // (see routes/ui.ts), so "Invalid credentials" would be both wrong and
-        // would not clear on a correct retry.
+        // A 429 is NOT a credentials failure. It is the 10/minute IP limiter,
+        // the 5-failure lockout, or "server busy" when every password check
+        // slot is taken (routes/ui.ts); the server's text says which. The
+        // seconds wording is only for a body without one.
         showToast(
-          result.retryAfterSeconds !== null
-            ? `Too many attempts — try again in ${result.retryAfterSeconds} seconds`
-            : 'Too many attempts — please wait a moment and try again',
+          result.message ??
+            (result.retryAfterSeconds !== null
+              ? `Too many attempts — try again in ${result.retryAfterSeconds} seconds`
+              : 'Too many attempts — please wait a moment and try again'),
           'error'
         );
         break;
