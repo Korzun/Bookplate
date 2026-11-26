@@ -110,6 +110,47 @@ describe('ResetPasswordPage', () => {
     expect(await screen.findByText(/not valid or has expired/i)).toBeInTheDocument();
   });
 
+  it.each([
+    'Too many attempts. Try again in 15 min.',
+    'Server busy. Try again in a minute.',
+    'Too many login attempts. Please try again later.',
+  ])('shows the server text on 429: %s', async (error) => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error }), {
+            status: 429,
+            headers: { 'Retry-After': '900' },
+          })
+      )
+    );
+    renderWithProviders(<ResetPasswordPage />);
+    await user.type(screen.getByPlaceholderText('Email address'), 'ann@example.com');
+    await user.type(screen.getByPlaceholderText('Reset code'), 'K7M2QX4P');
+    await user.type(screen.getByPlaceholderText('New password'), 'a-brand-new-password');
+    await user.type(screen.getByPlaceholderText('Confirm new password'), 'a-brand-new-password');
+    await user.click(screen.getByRole('button', { name: /reset password/i }));
+    expect(await screen.findByText(error)).toBeInTheDocument();
+    expect(screen.queryByText(/900 second/i)).not.toBeInTheDocument();
+  });
+
+  it('falls back to a seconds message on a 429 without an error body', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 429, headers: { 'Retry-After': '42' } }))
+    );
+    renderWithProviders(<ResetPasswordPage />);
+    await user.type(screen.getByPlaceholderText('Email address'), 'ann@example.com');
+    await user.type(screen.getByPlaceholderText('Reset code'), 'K7M2QX4P');
+    await user.type(screen.getByPlaceholderText('New password'), 'a-brand-new-password');
+    await user.type(screen.getByPlaceholderText('Confirm new password'), 'a-brand-new-password');
+    await user.click(screen.getByRole('button', { name: /reset password/i }));
+    expect(await screen.findByText(/try again in 42 seconds/i)).toBeInTheDocument();
+  });
+
   it('shows a mail-not-configured message on 404 rather than blaming the code', async () => {
     const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));

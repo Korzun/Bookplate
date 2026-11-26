@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
+import { errorText } from '~/lib/login';
 import { path } from '~/router';
 
 import { useStyle } from './style';
@@ -46,11 +47,13 @@ export const ResetPasswordPage = () => {
         return null;
       }
       if (response.status === 429) {
+        // Lockout, busy or the IP limiter: the server's text says which.
         const retryAfter = Number(response.headers.get('Retry-After'));
         setError(
-          Number.isFinite(retryAfter) && retryAfter > 0
-            ? `Too many attempts — try again in ${retryAfter} seconds`
-            : 'Too many attempts — please wait a moment and try again'
+          (await errorText(response)) ??
+            (Number.isFinite(retryAfter) && retryAfter > 0
+              ? `Too many attempts — try again in ${retryAfter} seconds`
+              : 'Too many attempts — please wait a moment and try again')
         );
         return null;
       }

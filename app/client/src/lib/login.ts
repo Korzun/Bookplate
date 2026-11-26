@@ -3,8 +3,12 @@ import { extractAccessToken, setToken } from './token';
 export type LoginResult =
   /** Signed in; the access token is already stored (`setToken`). */
   | { status: 'ok' }
-  /** `POST /api/login` answered 429. `retryAfterSeconds` is null when the header was absent or unusable. */
-  | { status: 'rate-limited'; retryAfterSeconds: number | null }
+  /**
+   * `POST /api/login` answered 429. `message` is the server's `error` text
+   * (lockout, busy or the IP limiter), null when the body had none;
+   * `retryAfterSeconds` is null when the header was absent or unusable.
+   */
+  | { status: 'rate-limited'; retryAfterSeconds: number | null; message: string | null }
   /** Any other non-2xx: wrong credentials, password not set, and so on. */
   | { status: 'rejected' }
   /** 2xx, but no usable `accessToken` in the body. */
@@ -27,6 +31,19 @@ export type LoginResult =
  * `identifier` is what `/api/login` calls `username`: a username, or an email
  * address when it contains `@` (`routes/ui.ts` resolves it).
  */
+/** The `error` string of a JSON body, or null when there is none to read. */
+export const errorText = async (response: Response): Promise<string | null> => {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === 'object' && body !== null && 'error' in body) {
+      return typeof body.error === 'string' ? body.error : null;
+    }
+  } catch {
+    // Not JSON: the caller falls back to its own wording.
+  }
+  return null;
+};
+
 export const login = async (identifier: string, password: string): Promise<LoginResult> => {
   let response: Response;
   try {
@@ -43,6 +60,7 @@ export const login = async (identifier: string, password: string): Promise<Login
     return {
       status: 'rate-limited',
       retryAfterSeconds: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
+      message: await errorText(response),
     };
   }
   if (!response.ok) return { status: 'rejected' };
