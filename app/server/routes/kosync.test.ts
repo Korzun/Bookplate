@@ -6,13 +6,25 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import express from 'express';
 import request from 'supertest';
+import type { Mock } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
+import { logger } from '../logger';
 import { hashSyncPassword } from '../services/password';
 import { createUser } from '../services/user';
 import { createKosyncRouter } from './kosync';
 
 vi.mock('../logger');
+
+// Captured at module load, before mockReset clears logger's call history.
+function warnOf(namespace: string): Mock {
+  const mocked = vi.mocked(logger);
+  const index = mocked.mock.calls.findIndex(([name]) => name === namespace);
+  if (index === -1) throw new Error(`logger('${namespace}') was never called`);
+  return (mocked.mock.results[index].value as { warn: Mock }).warn;
+}
+const authWarn = warnOf('Auth');
+const limiterWarn = warnOf('LoginLimiter');
 
 let prisma: PrismaClient;
 let app: express.Express;
@@ -435,5 +447,52 @@ describe('sync lockout', () => {
       .set(authHeaders('alice', ALICE_SYNC_PASSWORD));
     expect(ok.status).toBe(200);
     for (let i = 0; i < 9; i++) expect((await wrong('alice')).status).toBe(401);
+  });
+
+  const okAlice = () =>
+    request(app).get('/sync/users/auth').set(authHeaders('alice', ALICE_SYNC_PASSWORD));
+
+  it('50 wrong attempts across usernames from one address lock that address', async () => {
+    for (let i = 0; i < 50; i++) expect((await wrong(`user${i}`)).status).toBe(401);
+    const res = await okAlice();
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual({ error: 'Too many attempts. Try again in 15 min.' });
+  });
+
+  it('a refusal from a locked user bucket does not count against the address', async () => {
+    for (let i = 0; i < 10; i++) expect((await wrong('alice')).status).toBe(401);
+    for (let i = 0; i < 20; i++) expect((await wrong('alice')).status).toBe(429);
+    // 10 address failures so far; 39 more stay under the 50 lock.
+    for (let i = 0; i < 39; i++) expect((await wrong(`user${i}`)).status).toBe(401);
+    const res = await request(app).get('/sync/users/auth').set(authHeaders('bob', 'bobsecret'));
+    expect(res.status).toBe(200);
+  });
+
+  it('another address is unaffected by a locked one', async () => {
+    const proxied = express();
+    proxied.use('/sync', createKosyncRouter(prisma, { trustProxyHops: 1 }));
+    const from = (ip: string, user: string, password: string) =>
+      request(proxied)
+        .get('/sync/users/auth')
+        .set('X-Forwarded-For', ip)
+        .set(authHeaders(user, password));
+    for (let i = 0; i < 50; i++) await from('203.0.113.1', `user${i}`, 'nope');
+    expect((await from('203.0.113.1', 'alice', ALICE_SYNC_PASSWORD)).status).toBe(429);
+    expect((await from('203.0.113.2', 'alice', ALICE_SYNC_PASSWORD)).status).toBe(200);
+  });
+
+  it('a 10,000-character username is a 401 and logs at most a 64-character prefix', async () => {
+    const res = await wrong('x'.repeat(10_000));
+    expect(res.status).toBe(401);
+    const lines = authWarn.mock.calls.map(([line]) => String(line));
+    expect(lines.some((line) => line.includes(JSON.stringify('x'.repeat(64))))).toBe(true);
+    expect(lines.some((line) => line.includes('x'.repeat(65)))).toBe(false);
+  });
+
+  it('a lockout keyed on a loopback address carries the TRUST_PROXY_HOPS hint', async () => {
+    for (let i = 0; i < 10; i++) await wrong('alice');
+    const lines = limiterWarn.mock.calls.map(([line]) => String(line));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/ — every client may share this address; check TRUST_PROXY_HOPS$/);
   });
 });

@@ -1308,4 +1308,26 @@ describe('sync lockout', () => {
     }
     expect((await request(shared).get('/sync/users/auth').set(badKey)).status).toBe(429);
   });
+
+  it('50 wrong Basic passwords across usernames from one address lock that address', async () => {
+    for (let i = 0; i < 50; i++) {
+      expect(
+        (
+          await request(app)
+            .get('/opds/')
+            .set(basicAuth(`user${i}`, 'wrong'))
+        ).status
+      ).toBe(401);
+    }
+    const res = await request(app).get('/opds/').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual({ error: 'Too many attempts. Try again in 15 min.' });
+  });
+
+  it('a 10,000-character Basic username is a 401', async () => {
+    const res = await request(app)
+      .get('/opds/')
+      .set(basicAuth('x'.repeat(10_000), 'wrong'));
+    expect(res.status).toBe(401);
+  });
 });
