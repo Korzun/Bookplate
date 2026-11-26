@@ -6,7 +6,7 @@ import express, { NextFunction, Request, RequestHandler, Response, Router } from
 
 import { logger } from './logger';
 import { graphqlBodyLimit } from './middleware/graphql-body-limit';
-import { createLoginLimiter, SYNC_LOCKOUT } from './middleware/login-limiter';
+import { createLoginLimiter, SYNC_IP_LOCKOUT, SYNC_LOCKOUT } from './middleware/login-limiter';
 import { requestLog } from './middleware/request-log';
 import { securityHeaders } from './middleware/security-headers';
 import { requestTimeout } from './middleware/timeout';
@@ -90,9 +90,10 @@ export function createServer({
   server.use(express.urlencoded({ extended: false }));
   server.use(cookieParser());
 
-  // One bucket shared by OPDS and KOSync: a sync password guessed across both
-  // surfaces counts against the same lockout.
+  // Shared by OPDS and KOSync: a sync password guessed across both surfaces
+  // counts against the same lockouts.
   const syncLimiter = createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' });
+  const syncIpLimiter = createLoginLimiter({ ...SYNC_IP_LOCKOUT, label: 'Sync IP' });
   const trustProxyHops = config.trustProxyHops ?? 0;
 
   server.use(
@@ -105,10 +106,11 @@ export function createServer({
       editionsRoot,
       validationThreshold: config.validationThreshold,
       syncLimiter,
+      syncIpLimiter,
       trustProxyHops,
     })
   );
-  server.use('/sync', createKosyncRouter(prisma, { syncLimiter, trustProxyHops }));
+  server.use('/sync', createKosyncRouter(prisma, { syncLimiter, syncIpLimiter, trustProxyHops }));
   server.use(
     '/',
     createUiRouter({

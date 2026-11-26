@@ -7,7 +7,7 @@ import request from 'supertest';
 import { signAccessToken } from '../services/jwt';
 import { authenticate } from '../services/password';
 import { emailSetupGate, jwtAuth, kosyncAuth, opdsAuth, passwordChangeGate } from './auth';
-import { createLoginLimiter, SYNC_LOCKOUT } from './login-limiter';
+import { createLoginLimiter, SYNC_IP_LOCKOUT, SYNC_LOCKOUT } from './login-limiter';
 
 const warnSpy = vi.hoisted(() => vi.fn());
 vi.mock('../logger', () => ({
@@ -215,6 +215,7 @@ describe('sync auth logging', () => {
   function syncApp() {
     const deps = {
       syncLimiter: createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' }),
+      syncIpLimiter: createLoginLimiter({ ...SYNC_IP_LOCKOUT, label: 'Sync IP' }),
       trustProxyHops: 0,
     };
     const app = express();
@@ -256,5 +257,28 @@ describe('sync auth logging', () => {
     const lockout = warnSpy.mock.calls.map((c) => String(c[0])).find((l) => l.includes('lockout'));
     expect(lockout).toBeDefined();
     expect(lockout).not.toContain('\n');
+  });
+
+  it('auth-failed log lines JSON-quote the username', async () => {
+    vi.mocked(authenticate).mockResolvedValue(false);
+    const app = syncApp();
+    const basic = Buffer.from('alice\nFAKE LINE:pw').toString('base64');
+    await request(app).get('/opds').set('Authorization', `Basic ${basic}`);
+    await request(app).get('/sync').set({ 'x-auth-user': 'bob" FAKE', 'x-auth-key': KEY });
+    const failed = warnSpy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('failed'));
+    expect(failed).toEqual([
+      'OPDS auth failed for user "alice\\nFAKE LINE"',
+      'KOSync auth failed for user "bob\\" FAKE"',
+    ]);
+  });
+
+  it('a throwing credential check counts against neither bucket', async () => {
+    vi.mocked(authenticate).mockRejectedValue(new Error('db down'));
+    const app = syncApp();
+    const headers = { 'x-auth-user': 'bob', 'x-auth-key': KEY };
+    for (let i = 0; i < 60; i++)
+      expect((await request(app).get('/sync').set(headers)).status).toBe(500);
+    vi.mocked(authenticate).mockResolvedValue('bob-id');
+    expect((await request(app).get('/sync').set(headers)).status).toBe(200);
   });
 });

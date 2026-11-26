@@ -6,7 +6,12 @@ import { Router, Request, Response, RequestHandler } from 'express';
 
 import { logger } from '../logger';
 import { opdsAuth } from '../middleware/auth';
-import { createLoginLimiter, SYNC_LOCKOUT, type LoginLimiter } from '../middleware/login-limiter';
+import {
+  createLoginLimiter,
+  SYNC_IP_LOCKOUT,
+  SYNC_LOCKOUT,
+  type LoginLimiter,
+} from '../middleware/login-limiter';
 import { getCover, getThumbnail } from '../services/book-assets';
 import {
   getAuthors,
@@ -96,6 +101,8 @@ export type CreateOpdsRouterDeps = {
   validationThreshold?: ValidationThreshold;
   /** Shared sync-password lockout; omitted, the router builds its own. */
   syncLimiter?: LoginLimiter;
+  /** Shared per-address sync lockout; omitted, the router builds its own. */
+  syncIpLimiter?: LoginLimiter;
   /** See `AppConfig.trustProxyHops`; 0 ignores X-Forwarded-For. */
   trustProxyHops?: number;
 };
@@ -108,10 +115,11 @@ export function createOpdsRouter({
   editionsRoot,
   validationThreshold = ValidationThreshold.ERROR,
   syncLimiter = createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' }),
+  syncIpLimiter = createLoginLimiter({ ...SYNC_IP_LOCKOUT, label: 'Sync IP' }),
   trustProxyHops = 0,
 }: CreateOpdsRouterDeps): Router {
   const router = Router();
-  const auth = opdsAuth(prisma, libraryName, { syncLimiter, trustProxyHops });
+  const auth = opdsAuth(prisma, libraryName, { syncLimiter, syncIpLimiter, trustProxyHops });
   const smallestWidth = thumbnailWidths.length > 0 ? Math.min(...thumbnailWidths) : null;
 
   // Base vs device-scoped context. `req.opdsDevice` is set only under the

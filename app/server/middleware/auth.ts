@@ -1,4 +1,6 @@
 // app/middleware/auth.ts
+import { createHash } from 'crypto';
+
 import type { PrismaClient } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 
@@ -6,23 +8,64 @@ import { logger } from '../logger';
 import { verifyAccessToken, AuthUser } from '../services/jwt';
 import { authenticate, hashSyncPassword } from '../services/password';
 import { resolveLoginClientIp } from '../utils/client-ip';
-import { sendLocked, type LoginLimiter } from './login-limiter';
+import { addressHint, sendLocked, type LoginLimiter } from './login-limiter';
 
 export type { AuthUser };
 
 const log = logger('Auth');
 
-export type SyncAuthDeps = { syncLimiter: LoginLimiter; trustProxyHops: number };
+export type SyncAuthDeps = {
+  /** Per client address AND username, so one stale device cannot lock another user behind it. */
+  syncLimiter: LoginLimiter;
+  /** Per client address alone, so a stream of made-up usernames is still capped. */
+  syncIpLimiter: LoginLimiter;
+  trustProxyHops: number;
+};
+
+/** A username for a log line: capped, and JSON-quoted so a CR/LF cannot forge a line. */
+function logName(username: string): string {
+  return JSON.stringify(username.slice(0, 64));
+}
 
 /**
- * Lockout key and log subject for a sync credential attempt. One bucket per
- * client address AND username, so one stale device cannot lock a different
- * user behind the same address. `who` JSON-quotes the username so a CR/LF in
- * it cannot forge a log line.
+ * Runs a sync credential check under both lockouts. Resolves to the check's
+ * result, or null when a lock refused the request (the 429 is already sent).
+ * A refusal by the user bucket is not counted against the address.
  */
-function syncAttemptIdentity(req: Request, trustProxyHops: number, username: string) {
-  const ip = resolveLoginClientIp(req, trustProxyHops);
-  return { key: `${ip}\u0000${username}`, who: `${ip} user ${JSON.stringify(username)}` };
+async function checkSyncCredential(
+  req: Request,
+  res: Response,
+  deps: SyncAuthDeps,
+  username: string,
+  check: () => Promise<string | false>
+): Promise<string | false | null> {
+  const ip = resolveLoginClientIp(req, deps.trustProxyHops);
+  const ipLockedMs = deps.syncIpLimiter.lockedForMs(ip);
+  if (ipLockedMs !== null) {
+    sendLocked(res, ipLockedMs);
+    return null;
+  }
+  // Hashed so a huge username cannot bloat the key.
+  const key = `${ip}\u0000${createHash('sha256').update(username).digest('hex')}`;
+  const userLockedMs = deps.syncLimiter.lockedForMs(key);
+  if (userLockedMs !== null) {
+    sendLocked(res, userLockedMs);
+    return null;
+  }
+  const hint = addressHint(ip);
+  const attempts = [
+    deps.syncIpLimiter.begin(ip, ip, hint),
+    deps.syncLimiter.begin(key, `${ip} user ${logName(username)}`, hint),
+  ];
+  let userId: string | false;
+  try {
+    userId = await check();
+  } catch (err) {
+    for (const attempt of attempts) attempt.cancelled();
+    throw err;
+  }
+  if (userId) for (const attempt of attempts) attempt.succeeded();
+  return userId;
 }
 
 /**
@@ -45,27 +88,16 @@ export function opdsAuth(prisma: PrismaClient, realm: string, deps: SyncAuthDeps
       const colonIndex = decoded.indexOf(':');
       const username = decoded.slice(0, colonIndex);
       const password = decoded.slice(colonIndex + 1);
-      const { key, who } = syncAttemptIdentity(req, deps.trustProxyHops, username);
-      const lockedMs = deps.syncLimiter.lockedForMs(key);
-      if (lockedMs !== null) {
-        sendLocked(res, lockedMs);
-        return;
-      }
-      const attempt = deps.syncLimiter.begin(key, who);
-      let userId: string | false;
-      try {
-        userId = await authenticate(prisma, username, hashSyncPassword(password));
-      } catch (err) {
-        attempt.cancelled();
-        throw err;
-      }
+      const userId = await checkSyncCredential(req, res, deps, username, () =>
+        authenticate(prisma, username, hashSyncPassword(password))
+      );
+      if (userId === null) return;
       if (!userId) {
-        log.warn(`OPDS auth failed for user "${username}"`);
+        log.warn(`OPDS auth failed for user ${logName(username)}`);
         res.set('WWW-Authenticate', `Basic realm="${safeRealm}"`);
         res.status(401).send();
         return;
       }
-      attempt.succeeded();
       req.opdsOwner = { userId, username };
       next();
     } catch (err) {
@@ -85,26 +117,15 @@ export function kosyncAuth(prisma: PrismaClient, deps: SyncAuthDeps) {
         res.status(401).json({ message: 'Unauthorized' });
         return;
       }
-      const identity = syncAttemptIdentity(req, deps.trustProxyHops, username);
-      const lockedMs = deps.syncLimiter.lockedForMs(identity.key);
-      if (lockedMs !== null) {
-        sendLocked(res, lockedMs);
-        return;
-      }
-      const attempt = deps.syncLimiter.begin(identity.key, identity.who);
-      let userId: string | false;
-      try {
-        userId = await authenticate(prisma, username, key);
-      } catch (err) {
-        attempt.cancelled();
-        throw err;
-      }
+      const userId = await checkSyncCredential(req, res, deps, username, () =>
+        authenticate(prisma, username, key)
+      );
+      if (userId === null) return;
       if (!userId) {
-        log.warn(`KOSync auth failed for user "${username}"`);
+        log.warn(`KOSync auth failed for user ${logName(username)}`);
         res.status(401).json({ message: 'Unauthorized' });
         return;
       }
-      attempt.succeeded();
       req.kosyncUser = username;
       req.kosyncUserId = userId;
       next();

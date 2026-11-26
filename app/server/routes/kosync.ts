@@ -4,7 +4,12 @@ import { Router, Request, Response } from 'express';
 
 import { logger } from '../logger';
 import { kosyncAuth } from '../middleware/auth';
-import { createLoginLimiter, SYNC_LOCKOUT, type LoginLimiter } from '../middleware/login-limiter';
+import {
+  createLoginLimiter,
+  SYNC_IP_LOCKOUT,
+  SYNC_LOCKOUT,
+  type LoginLimiter,
+} from '../middleware/login-limiter';
 import { resolveBookId } from '../services/book-lineage';
 import { getProgress, saveProgress } from '../services/progress';
 import { parseReadingEventEnvelope, recordReadingEvent } from '../services/reading-events';
@@ -15,11 +20,12 @@ export function createKosyncRouter(
   prisma: PrismaClient,
   {
     syncLimiter = createLoginLimiter({ ...SYNC_LOCKOUT, label: 'Sync' }),
+    syncIpLimiter = createLoginLimiter({ ...SYNC_IP_LOCKOUT, label: 'Sync IP' }),
     trustProxyHops = 0,
-  }: { syncLimiter?: LoginLimiter; trustProxyHops?: number } = {}
+  }: { syncLimiter?: LoginLimiter; syncIpLimiter?: LoginLimiter; trustProxyHops?: number } = {}
 ): Router {
   const router = Router();
-  const auth = kosyncAuth(prisma, { syncLimiter, trustProxyHops });
+  const auth = kosyncAuth(prisma, { syncLimiter, syncIpLimiter, trustProxyHops });
 
   // Auth check: GET /sync/users/auth
   router.get('/users/auth', auth, (_req: Request, res: Response) => {
