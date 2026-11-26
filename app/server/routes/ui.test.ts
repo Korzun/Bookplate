@@ -19,6 +19,7 @@ import type { Mock, MockedFunction } from 'vitest';
 import { runMigrations } from '../db/migrate';
 import type { Context, Viewer } from '../graphql/context';
 import { schema } from '../graphql/schema';
+import { logger } from '../logger';
 import { securityHeaders } from '../middleware/security-headers';
 import { ensureAdminUser } from '../services/admin-account';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
@@ -43,6 +44,14 @@ import { AppConfig, EpubMeta, Owner } from '../types';
 import { createIpRateLimit, createUiRouter, type CreateUiRouterDeps } from './ui';
 
 vi.mock('../logger');
+
+// Captured at module load, before mockReset clears logger's call history.
+const limiterWarn = ((): Mock => {
+  const mocked = vi.mocked(logger);
+  const index = mocked.mock.calls.findIndex(([name]) => name === 'LoginLimiter');
+  if (index === -1) throw new Error("logger('LoginLimiter') was never called");
+  return (mocked.mock.results[index].value as { warn: Mock }).warn;
+})();
 // Wrap (not replace) the real implementation so every other upload test in
 // this file keeps exercising real detection behavior. Individual tests can
 // override the return value with mockReturnValueOnce/mockImplementationOnce
@@ -844,6 +853,25 @@ describe('login lockout', () => {
     slots.tryAcquire();
     slots.tryAcquire();
     expect((await login('admin', 'pass', busyApp)).status).toBe(200);
+  });
+
+  it('a throw during the check is not counted', async () => {
+    vi.spyOn(prisma.user, 'findUnique').mockRejectedValueOnce(new Error('db down'));
+    expect((await login('alice', 'wrong')).status).toBe(500);
+    for (let i = 0; i < 4; i++) {
+      expect((await login('alice', 'wrong')).status).toBe(401);
+    }
+    // Had the throw counted, the 4th wrong password would have started the lock.
+    expect((await login('alice', 'wrong')).status).toBe(401);
+  });
+
+  it('logs the lock as Web, with the TRUST_PROXY_HOPS hint for a loopback client', async () => {
+    for (let i = 0; i < 5; i++) await login('alice', 'wrong');
+    const lines = limiterWarn.mock.calls.map(([line]) => String(line));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(
+      /^Web lockout: .* — every client may share this address; check TRUST_PROXY_HOPS$/
+    );
   });
 
   it('wrong config-admin password is a counted 401 even when every slot is busy', async () => {

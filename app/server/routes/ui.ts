@@ -11,6 +11,7 @@ import { encodeBookGlobalId, parseCompoundId } from '../graphql/schema/node-scop
 import { logger } from '../logger';
 import { emailSetupGate, jwtAuth, passwordChangeGate } from '../middleware/auth';
 import {
+  addressHint,
   createLoginLimiter,
   sendBusy,
   sendLocked,
@@ -378,7 +379,7 @@ export function createUiRouter({
   replaceStaging,
   mailer,
   loginRateLimitNow = Date.now,
-  webLimiter = createLoginLimiter({ now: loginRateLimitNow, ...WEB_LOCKOUT, label: 'Login' }),
+  webLimiter = createLoginLimiter({ now: loginRateLimitNow, ...WEB_LOCKOUT, label: 'Web' }),
   argonSlots = sharedArgonSlots,
 }: CreateUiRouterDeps): Router {
   const router = Router();
@@ -671,108 +672,114 @@ export function createUiRouter({
     // Lockout bookkeeping: `begin` records a provisional failure before any
     // await, so a concurrent burst cannot slip past the count. Every exit
     // below either leaves it (a real credential failure), `succeeded()`s or
-    // `cancelled()`s it.
+    // `cancelled()`s it; a throw cancels it too.
     const ip = resolveLoginClientIp(req, trustProxyHops);
     const lockedFor = webLimiter.lockedForMs(ip);
     if (lockedFor !== null) {
       sendLocked(res, lockedFor);
       return;
     }
-    const attempt = webLimiter.begin(ip, ip);
-    // The field is named `username` for compatibility — REST's contract is
-    // unchanged — but it is an IDENTIFIER: an address when it contains an `@`,
-    // a username otherwise. Resolving to a username here means everything
-    // below, including the config-admin comparison and `validateUser`, keeps
-    // working on usernames alone and no branch had to be duplicated.
-    //
-    // `@`-detection rather than "try both": a username cannot contain `@`
-    // (`utils/username.ts`), so the two namespaces cannot collide and one
-    // lookup is always enough.
-    let loginName = username;
-    if (username.includes('@')) {
-      const byEmail = await findUserByEmail(prisma, username);
-      if (byEmail === null) {
-        log.warn('Login failed — no account for that email address');
+    const attempt = webLimiter.begin(ip, ip, addressHint(ip));
+    try {
+      // The field is named `username` for compatibility — REST's contract is
+      // unchanged — but it is an IDENTIFIER: an address when it contains an `@`,
+      // a username otherwise. Resolving to a username here means everything
+      // below, including the config-admin comparison and `validateUser`, keeps
+      // working on usernames alone and no branch had to be duplicated.
+      //
+      // `@`-detection rather than "try both": a username cannot contain `@`
+      // (`utils/username.ts`), so the two namespaces cannot collide and one
+      // lookup is always enough.
+      let loginName = username;
+      if (username.includes('@')) {
+        const byEmail = await findUserByEmail(prisma, username);
+        if (byEmail === null) {
+          log.warn('Login failed — no account for that email address');
+          res.sendStatus(401);
+          return;
+        }
+        loginName = byEmail.username;
+      }
+      if (loginName === config.username && safeEqual(password, config.password)) {
+        attempt.succeeded();
+        log.info(`Admin "${loginName}" logged in`);
+        await deleteExpired(prisma);
+        await issueTokens(res, {
+          username: loginName,
+          isAdmin: true,
+          mustChangePassword: false,
+          // By flag, not by `loginName` — see `computeMustSetEmail`'s doc
+          // comment for why a username lookup can answer for the wrong row.
+          mustSetEmail: await computeMustSetEmail(prisma, config, { isConfigAdmin: true }),
+        });
+        return;
+      }
+      // A wrong admin password ends here, counted and without asking for an
+      // argon slot. Otherwise a busy 429 for a wrong guess against the 200 a
+      // right one gets (the admin never needs a slot) would make an uncounted
+      // oracle. Unknown usernames still go through the slot, so the busy path
+      // adds no new existence oracle for them (argon timing and the unknown-email
+      // path already reveal existence).
+      if (loginName === config.username) {
+        log.warn(`Login failed for admin "${loginName}"`);
         res.sendStatus(401);
         return;
       }
-      loginName = byEmail.username;
-    }
-    if (loginName === config.username && safeEqual(password, config.password)) {
-      attempt.succeeded();
-      log.info(`Admin "${loginName}" logged in`);
-      await deleteExpired(prisma);
-      await issueTokens(res, {
-        username: loginName,
-        isAdmin: true,
-        mustChangePassword: false,
-        // By flag, not by `loginName` — see `computeMustSetEmail`'s doc
-        // comment for why a username lookup can answer for the wrong row.
-        mustSetEmail: await computeMustSetEmail(prisma, config, { isConfigAdmin: true }),
+      // Single-statement `findUnique` with exactly one production caller —
+      // inlined under the placement rule. One query, selecting only
+      // `passwordHash`, answers both "does this user exist" and "does it
+      // have a password set" in a single round-trip. The two outcomes are
+      // still handled separately below: no such user (`loginUser === null`)
+      // falls through to `validateUser` and the generic 401, while a user
+      // that exists but has no password set is reported immediately as its
+      // own 403 — that is a distinct condition from a wrong password, not
+      // something to fold into the generic login failure.
+      const loginUser = await prisma.user.findUnique({
+        where: { username: loginName },
+        select: { passwordHash: true, isConfigAdmin: true },
       });
-      return;
-    }
-    // A wrong admin password ends here, counted and without asking for an
-    // argon slot. Otherwise a busy 429 for a wrong guess against the 200 a
-    // right one gets (the admin never needs a slot) would make an uncounted
-    // oracle. Unknown usernames still go through the slot, so busy-vs-401
-    // cannot reveal whether an account exists.
-    if (loginName === config.username) {
-      log.warn(`Login failed for admin "${loginName}"`);
+      // `!isConfigAdmin` (G1): the admin row deliberately has NO passwordHash —
+      // the add-on options are its only credential (`services/admin-account.ts`).
+      // Without this, a wrong admin password would fall into this branch and
+      // answer 403 "password not set" instead of the generic 401, which both
+      // differs from every other failed login and confirms the username exists.
+      if (loginUser !== null && !loginUser.passwordHash && !loginUser.isConfigAdmin) {
+        attempt.cancelled();
+        log.warn(`Login failed for "${loginName}" — password not set`);
+        res.sendStatus(403);
+        return;
+      }
+      const release = argonSlots.tryAcquire();
+      if (release === null) {
+        attempt.cancelled();
+        sendBusy(res, ip, 'Login');
+        return;
+      }
+      let userId: string | false;
+      try {
+        userId = await validateUser(prisma, loginName, password);
+      } finally {
+        release();
+      }
+      if (userId) {
+        attempt.succeeded();
+        log.info(`User "${loginName}" logged in`);
+        await deleteExpired(prisma);
+        await issueTokens(res, {
+          userId,
+          username: loginName,
+          isAdmin: false,
+          mustChangePassword: await getMustChangePassword(prisma, loginName),
+          mustSetEmail: await computeMustSetEmail(prisma, config, { username: loginName }),
+        });
+        return;
+      }
+      log.warn(`Login failed for username "${loginName}"`);
       res.sendStatus(401);
-      return;
-    }
-    // Single-statement `findUnique` with exactly one production caller —
-    // inlined under the placement rule. One query, selecting only
-    // `passwordHash`, answers both "does this user exist" and "does it
-    // have a password set" in a single round-trip. The two outcomes are
-    // still handled separately below: no such user (`loginUser === null`)
-    // falls through to `validateUser` and the generic 401, while a user
-    // that exists but has no password set is reported immediately as its
-    // own 403 — that is a distinct condition from a wrong password, not
-    // something to fold into the generic login failure.
-    const loginUser = await prisma.user.findUnique({
-      where: { username: loginName },
-      select: { passwordHash: true, isConfigAdmin: true },
-    });
-    // `!isConfigAdmin` (G1): the admin row deliberately has NO passwordHash —
-    // the add-on options are its only credential (`services/admin-account.ts`).
-    // Without this, a wrong admin password would fall into this branch and
-    // answer 403 "password not set" instead of the generic 401, which both
-    // differs from every other failed login and confirms the username exists.
-    if (loginUser !== null && !loginUser.passwordHash && !loginUser.isConfigAdmin) {
+    } catch (err) {
       attempt.cancelled();
-      log.warn(`Login failed for "${loginName}" — password not set`);
-      res.sendStatus(403);
-      return;
+      throw err;
     }
-    const release = argonSlots.tryAcquire();
-    if (release === null) {
-      attempt.cancelled();
-      sendBusy(res, ip, 'Login');
-      return;
-    }
-    let userId: string | false;
-    try {
-      userId = await validateUser(prisma, loginName, password);
-    } finally {
-      release();
-    }
-    if (userId) {
-      attempt.succeeded();
-      log.info(`User "${loginName}" logged in`);
-      await deleteExpired(prisma);
-      await issueTokens(res, {
-        userId,
-        username: loginName,
-        isAdmin: false,
-        mustChangePassword: await getMustChangePassword(prisma, loginName),
-        mustSetEmail: await computeMustSetEmail(prisma, config, { username: loginName }),
-      });
-      return;
-    }
-    log.warn(`Login failed for username "${loginName}"`);
-    res.sendStatus(401);
   });
 
   router.post('/api/auth/refresh', async (req: Request, res: Response) => {
